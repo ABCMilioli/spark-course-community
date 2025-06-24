@@ -1,0 +1,1 @@
+// Supabase removido. Agora usamos backend próprio Node.js/Express.

@@ -1,0 +1,83 @@
+
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/Layout/AppSidebar";
+import { Header } from "@/components/Layout/Header";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { LoginForm } from "@/components/Auth/LoginForm";
+import Index from "./pages/Index";
+import Community from "./pages/Community";
+import Courses from "./pages/Courses";
+import VideoPlayer from "./pages/VideoPlayer";
+import Admin from "./pages/Admin";
+import Profile from "./pages/Profile";
+import Explore from "./pages/Explore";
+import CourseDetail from "./pages/CourseDetail";
+import NotFound from "./pages/NotFound";
+import CourseAdmin from "./pages/CourseAdmin";
+
+const queryClient = new QueryClient();
+
+function AppContent() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginForm />;
+  }
+
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <main className="flex-1 flex flex-col">
+          <Header />
+          <div className="flex-1 overflow-auto">
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/community" element={<Community />} />
+              <Route path="/courses" element={<Courses />} />
+              <Route path="/course" element={<CourseDetail />} />
+              <Route path="/player" element={<VideoPlayer />} />
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/explore" element={<Explore />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/course/edit/:courseId" element={<CourseAdmin />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <AuthProvider>
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </AuthProvider>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;
