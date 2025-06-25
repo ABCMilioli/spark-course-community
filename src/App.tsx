@@ -19,6 +19,8 @@ import CourseDetail from "./pages/CourseDetail";
 import PostDetail from "./pages/PostDetail";
 import NotFound from "./pages/NotFound";
 import CourseAdmin from "./pages/CourseAdmin";
+import Classes from "./pages/Classes";
+import ClassDetail from "./pages/ClassDetail";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +53,8 @@ function AppContent() {
               <Route path="/" element={<Index />} />
               <Route path="/community" element={<Community />} />
               <Route path="/courses" element={<Courses />} />
+              <Route path="/classes" element={<Classes />} />
+              <Route path="/classes/:classId" element={<ClassDetail />} />
               <Route path="/course" element={<CourseDetail />} />
               <Route path="/post/:postId" element={<PostDetail />} />
               <Route path="/player" element={<VideoPlayer />} />

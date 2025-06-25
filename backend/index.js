@@ -129,7 +129,7 @@ app.post('/api/auth/signup', async (req, res) => {
     if (rows.length > 0) return res.status(409).json({ error: 'Email já cadastrado.' });
     const hash = await bcrypt.hash(password, 10);
     const id = crypto.randomUUID();
-    await pool.query('INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [id, name, email, hash, 'free']);
+    await pool.query('INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [id, name, email, hash, 'student']);
     res.status(201).json({ message: 'Usuário criado com sucesso.' });
   } catch (err) {
     console.error(err);
@@ -1103,6 +1103,322 @@ app.get('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[GET /api/posts/:id/favorite] Erro:', err);
     res.status(500).json({ error: 'Erro ao verificar favorito.' });
+  }
+});
+
+// ===== SISTEMA DE TURMAS =====
+
+// Listar turmas do usuário
+app.get('/api/classes', authenticateToken, async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    const userId = user_id || req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        c.*,
+        p.name as instructor_name,
+        (SELECT COUNT(*) FROM class_enrollments WHERE class_id = c.id AND status = 'active') as current_students
+      FROM classes c
+      JOIN profiles p ON c.instructor_id = p.id
+      WHERE c.is_active = true
+      AND (
+        c.is_public = true 
+        OR c.id IN (SELECT class_id FROM class_enrollments WHERE user_id = $1 AND status = 'active')
+        OR c.instructor_id = $1
+      )
+      ORDER BY c.created_at DESC
+    `, [userId]);
+    
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/classes] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Criar nova turma
+app.post('/api/classes', authenticateToken, async (req, res) => {
+  try {
+    const { name, description, is_public, max_students } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Nome da turma é obrigatório.' });
+    }
+    
+    // Verificar se o usuário é instructor ou admin
+    if (!['instructor', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Apenas instrutores podem criar turmas.' });
+    }
+    
+    const id = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO classes (id, name, description, instructor_id, is_public, max_students)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [id, name, description, req.user.id, is_public || false, max_students]);
+    
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/classes] Erro:', err);
+    res.status(500).json({ error: 'Erro ao criar turma.' });
+  }
+});
+
+// Detalhes de uma turma específica
+app.get('/api/classes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar acesso à turma
+    const accessCheck = await pool.query(`
+      SELECT * FROM user_class_access 
+      WHERE class_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    }
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        c.*,
+        p.name as instructor_name,
+        (SELECT COUNT(*) FROM class_enrollments WHERE class_id = c.id AND status = 'active') as current_students
+      FROM classes c
+      JOIN profiles p ON c.instructor_id = p.id
+      WHERE c.id = $1
+    `, [id]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[GET /api/classes/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Matricular usuário em turma
+app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, role = 'student' } = req.body;
+    
+    // Verificar se o usuário atual é instructor da turma ou admin
+    const classCheck = await pool.query(`
+      SELECT instructor_id FROM classes WHERE id = $1
+    `, [id]);
+    
+    if (classCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode matricular usuários.' });
+    }
+    
+    // Verificar limite de alunos
+    const enrollmentCount = await pool.query(`
+      SELECT COUNT(*) as count FROM class_enrollments WHERE class_id = $1 AND status = 'active'
+    `, [id]);
+    
+    const classInfo = await pool.query(`
+      SELECT max_students FROM classes WHERE id = $1
+    `, [id]);
+    
+    if (classInfo.rows[0].max_students && 
+        parseInt(enrollmentCount.rows[0].count) >= classInfo.rows[0].max_students) {
+      return res.status(400).json({ error: 'Turma está lotada.' });
+    }
+    
+    const enrollmentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO class_enrollments (id, class_id, user_id, role)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (class_id, user_id) 
+      DO UPDATE SET status = 'active', role = $4
+    `, [enrollmentId, id, user_id, role]);
+    
+    res.status(201).json({ message: 'Usuário matriculado com sucesso.' });
+  } catch (err) {
+    console.error('[POST /api/classes/:id/enroll] Erro:', err);
+    res.status(500).json({ error: 'Erro ao matricular usuário.' });
+  }
+});
+
+// Listar matrículas de uma turma
+app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar se o usuário tem acesso à turma
+    const accessCheck = await pool.query(`
+      SELECT * FROM user_class_access 
+      WHERE class_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    }
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        ce.*,
+        p.name as user_name,
+        p.email as user_email
+      FROM class_enrollments ce
+      JOIN profiles p ON ce.user_id = p.id
+      WHERE ce.class_id = $1
+      ORDER BY ce.enrolled_at DESC
+    `, [id]);
+    
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/classes/:id/enrollments] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Adicionar curso à turma
+app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { course_id, is_required = false, order_index = 0 } = req.body;
+    
+    // Verificar se o usuário é instructor da turma ou admin
+    const classCheck = await pool.query(`
+      SELECT instructor_id FROM classes WHERE id = $1
+    `, [id]);
+    
+    if (classCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode adicionar cursos.' });
+    }
+    
+    const classCourseId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO class_courses (id, class_id, course_id, is_required, order_index)
+      VALUES ($1, $2, $3, $4, $5)
+      ON CONFLICT (class_id, course_id) 
+      DO UPDATE SET is_required = $4, order_index = $5
+    `, [classCourseId, id, course_id, is_required, order_index]);
+    
+    res.status(201).json({ message: 'Curso adicionado à turma com sucesso.' });
+  } catch (err) {
+    console.error('[POST /api/classes/:id/courses] Erro:', err);
+    res.status(500).json({ error: 'Erro ao adicionar curso à turma.' });
+  }
+});
+
+// Listar cursos de uma turma
+app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar acesso à turma
+    const accessCheck = await pool.query(`
+      SELECT * FROM user_class_access 
+      WHERE class_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    }
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        cc.*,
+        c.title as course_title,
+        c.description as course_description,
+        c.thumbnail_url as course_thumbnail
+      FROM class_courses cc
+      JOIN courses c ON cc.course_id = c.id
+      WHERE cc.class_id = $1
+      ORDER BY cc.order_index, c.title
+    `, [id]);
+    
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/classes/:id/courses] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Criar conteúdo na turma
+app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, content_type = 'announcement', is_pinned = false } = req.body;
+    
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+    }
+    
+    // Verificar se o usuário tem permissão para criar conteúdo
+    const accessCheck = await pool.query(`
+      SELECT user_role FROM user_class_access 
+      WHERE class_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    }
+    
+    const userRole = accessCheck.rows[0].user_role;
+    if (!['instructor', 'assistant'].includes(userRole)) {
+      return res.status(403).json({ error: 'Apenas instrutores e assistentes podem criar conteúdo.' });
+    }
+    
+    const contentId = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO class_content (id, class_id, author_id, title, content, content_type, is_pinned)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [contentId, id, req.user.id, title, content, content_type, is_pinned]);
+    
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/classes/:id/content] Erro:', err);
+    res.status(500).json({ error: 'Erro ao criar conteúdo.' });
+  }
+});
+
+// Listar conteúdo de uma turma
+app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verificar acesso à turma
+    const accessCheck = await pool.query(`
+      SELECT * FROM user_class_access 
+      WHERE class_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    }
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        cc.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar
+      FROM class_content cc
+      JOIN profiles p ON cc.author_id = p.id
+      WHERE cc.class_id = $1
+      ORDER BY cc.is_pinned DESC, cc.created_at DESC
+    `, [id]);
+    
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/classes/:id/content] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
   }
 });
 

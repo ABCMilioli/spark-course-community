@@ -1,4 +1,3 @@
-
 import {
   Sidebar,
   SidebarContent,
@@ -11,7 +10,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut } from "lucide-react";
+import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,31 +20,37 @@ const menuItems = [
     title: "Home",
     url: "/",
     icon: Home,
-    roles: ['free', 'premium', 'instructor', 'admin']
+    roles: ['student', 'instructor', 'admin']
   },
   {
     title: "Comunidade",
     url: "/community",
     icon: MessageSquare,
-    roles: ['free', 'premium', 'instructor', 'admin']
+    roles: ['student', 'instructor', 'admin']
   },
   {
     title: "Meus Cursos",
     url: "/courses",
     icon: BookOpen,
-    roles: ['premium', 'instructor', 'admin']
+    roles: ['student', 'instructor', 'admin']
+  },
+  {
+    title: "Turmas",
+    url: "/classes",
+    icon: Users,
+    roles: ['student', 'instructor', 'admin']
   },
   {
     title: "Explorar",
     url: "/explore",
     icon: Search,
-    roles: ['premium', 'instructor', 'admin']
+    roles: ['student', 'instructor', 'admin']
   },
   {
     title: "Perfil",
     url: "/profile",
     icon: User,
-    roles: ['free', 'premium', 'instructor', 'admin']
+    roles: ['student', 'instructor', 'admin']
   }
 ];
 

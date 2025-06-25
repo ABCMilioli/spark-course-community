@@ -296,7 +296,7 @@ export default function Index() {
           </div>
 
           {/* Course Features */}
-          {(!user || user.role === 'free') && (
+          {(!user || user.role === 'student') && (
             <Card className="glass-effect">
               <CardContent className="p-8 text-center">
                 <BookOpen className="w-16 h-16 mx-auto text-primary mb-4" />

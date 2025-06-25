@@ -131,3 +131,73 @@ export type ModuleWithLessonsAdmin = Module & {
 export type CourseForAdmin = CourseWithInstructor & {
   modules: ModuleWithLessonsAdmin[];
 };
+
+// Sistema de Turmas
+export interface Class {
+  id: string;
+  name: string;
+  description?: string;
+  instructor_id: string;
+  instructor_name: string;
+  is_public: boolean;
+  is_active: boolean;
+  max_students?: number;
+  current_students: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassEnrollment {
+  id: string;
+  class_id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  enrolled_at: string;
+  role: 'student' | 'assistant' | 'instructor';
+  status: 'active' | 'inactive' | 'suspended';
+}
+
+export interface ClassCourse {
+  id: string;
+  class_id: string;
+  course_id: string;
+  course_title: string;
+  course_description?: string;
+  course_thumbnail?: string;
+  is_required: boolean;
+  order_index: number;
+  created_at: string;
+}
+
+export interface ClassContent {
+  id: string;
+  class_id: string;
+  author_id: string;
+  author_name: string;
+  author_avatar?: string;
+  title: string;
+  content: string;
+  content_type: 'announcement' | 'material' | 'assignment';
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassWithDetails extends Class {
+  enrollments: ClassEnrollment[];
+  courses: ClassCourse[];
+  recent_content: ClassContent[];
+}
+
+export interface UserClassAccess {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  class_id: string;
+  class_name: string;
+  is_public: boolean;
+  user_role: 'student' | 'assistant' | 'instructor' | 'viewer';
+  enrollment_status: 'active' | 'inactive' | 'suspended';
+  instructor_name: string;
+}
