@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +5,8 @@ import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
 
 interface CustomVideoPlayerProps {
-  youtubeId: string;
+  youtubeId?: string;
+  videoUrl?: string;
   onProgress?: (percentage: number) => void;
   onPrevious?: () => void;
   onNext?: () => void;
@@ -23,6 +23,7 @@ declare global {
 
 export function CustomVideoPlayer({ 
   youtubeId, 
+  videoUrl,
   onProgress, 
   onPrevious, 
   onNext,
@@ -164,6 +165,20 @@ export function CustomVideoPlayer({
   };
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  if (videoUrl) {
+    // Renderiza vídeo nativo
+    return (
+      <Card className="overflow-hidden bg-black">
+        <video
+          src={videoUrl}
+          controls
+          className="w-full h-[400px] bg-black"
+          style={{ objectFit: 'contain' }}
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden bg-black">

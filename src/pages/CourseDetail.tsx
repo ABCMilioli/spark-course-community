@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { PostCard } from "@/components/Community/PostCard";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from 'axios';
 import { CourseWithInstructor, PostWithAuthor } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +37,7 @@ export default function CourseDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { courseId } = useParams<{ courseId: string }>();
+  const queryClient = useQueryClient();
 
   const { data: course, isLoading: isLoadingCourse, error } = useQuery({
     queryKey: ['course-detail', courseId],
@@ -68,14 +69,17 @@ export default function CourseDetail() {
       try {
         const token = localStorage.getItem('token');
         await axios.post(`${API_URL}/enrollments`, {
-          course_id: courseId,
-          user_id: user?.id
+          course_id: courseId
         }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        
         toast.success('Matrícula realizada com sucesso!');
-        navigate(`/player?courseId=${courseId}`);
+        // Recarregar matrícula antes de redirecionar
+        await queryClient.invalidateQueries({ queryKey: ['course-enrollment', courseId] });
+        // Invalidar cache dos cursos matriculados
+        await queryClient.invalidateQueries({ queryKey: ['enrolled-courses', user?.id] });
+        // Redirecionar para a página de detalhes do curso
+        navigate(`/course/${courseId}`);
       } catch (error) {
         console.error('Erro ao matricular:', error);
         toast.error('Erro ao realizar matrícula');

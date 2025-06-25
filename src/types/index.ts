@@ -32,10 +32,10 @@ export interface PostWithAuthor extends Post {
 }
 
 export interface Course {
-  id: number;
+  id: string;
   title: string;
   description: string;
-  instructor_id: number;
+  instructor_id: string;
   thumbnail_url?: string;
   thumbnail?: string;
   price: number;
@@ -83,6 +83,7 @@ export interface Lesson {
   title: string;
   description?: string;
   video_url?: string;
+  youtube_id?: string;
   duration?: number;
   order_index: number;
   is_free: boolean;
@@ -141,14 +142,20 @@ export type CourseForAdmin = CourseWithInstructor & {
 // Sistema de Turmas
 export interface Class {
   id: string;
-  name: string;
-  description?: string;
+  course_id: string;
+  course_title: string;
   instructor_id: string;
   instructor_name: string;
+  instance_name: string;
+  instance_description?: string;
   is_public: boolean;
-  is_active: boolean;
   max_students?: number;
   current_students: number;
+  start_date?: string;
+  end_date?: string;
+  schedule?: string;
+  location?: string;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -202,6 +209,68 @@ export interface UserClassAccess {
   user_email: string;
   class_id: string;
   class_name: string;
+  is_public: boolean;
+  user_role: 'student' | 'assistant' | 'instructor' | 'viewer';
+  enrollment_status: 'active' | 'inactive' | 'suspended';
+  instructor_name: string;
+}
+
+export interface ClassInstance {
+  id: string;
+  course_id: string;
+  instructor_id: string;
+  instance_name: string;
+  instance_description?: string;
+  is_public: boolean;
+  is_active: boolean;
+  max_students?: number;
+  start_date?: string;
+  end_date?: string;
+  schedule?: string;
+  location?: string;
+  created_at: string;
+  updated_at: string;
+  instructor_name: string;
+  course_title: string;
+  current_students: number;
+}
+
+export interface ClassInstanceEnrollment {
+  id: string;
+  class_instance_id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  enrolled_at: string;
+  role: 'student' | 'assistant' | 'instructor';
+  status: 'active' | 'inactive' | 'suspended';
+}
+
+export interface ClassInstanceContent {
+  id: string;
+  class_instance_id: string;
+  author_id: string;
+  title: string;
+  content: string;
+  content_type: 'announcement' | 'material' | 'assignment';
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClassInstanceWithDetails extends ClassInstance {
+  enrollments: ClassInstanceEnrollment[];
+  content: ClassInstanceContent[];
+}
+
+export interface UserClassAccess {
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  class_instance_id: string;
+  class_instance_name: string;
+  course_id: string;
+  course_title: string;
   is_public: boolean;
   user_role: 'student' | 'assistant' | 'instructor' | 'viewer';
   enrollment_status: 'active' | 'inactive' | 'suspended';

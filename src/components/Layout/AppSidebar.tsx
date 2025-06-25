@@ -38,7 +38,7 @@ const menuItems = [
     title: "Turmas",
     url: "/classes",
     icon: Users,
-    roles: ['student', 'instructor', 'admin']
+    roles: ['instructor', 'admin']
   },
   {
     title: "Explorar",

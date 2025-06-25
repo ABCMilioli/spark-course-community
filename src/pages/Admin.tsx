@@ -9,6 +9,7 @@ import { MoreHorizontal, FileText, Video, UserPlus, Edit, Trash2, Settings } fro
 import { CreateUserModal } from "@/components/Admin/CreateUserModal";
 import { CreateCourseModal } from "@/components/Admin/CreateCourseModal";
 import { CreatePostModal } from "@/components/Admin/CreatePostModal";
+import { MinioTest } from "@/components/Admin/MinioTest";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from 'axios';
 import { Profile, Course, Post } from "@/types";
@@ -232,6 +233,7 @@ export default function Admin() {
             <TabsTrigger value="users">Usuários</TabsTrigger>
             <TabsTrigger value="courses">Cursos</TabsTrigger>
             <TabsTrigger value="posts">Posts</TabsTrigger>
+            <TabsTrigger value="minio">MinIO Test</TabsTrigger>
           </TabsList>
           {/* Add buttons */}
         </div>
@@ -434,6 +436,11 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* MinIO Test Tab */}
+        <TabsContent value="minio">
+          <MinioTest />
         </TabsContent>
       </Tabs>
 

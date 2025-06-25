@@ -32,13 +32,35 @@ export default function Courses() {
     queryKey: ['enrolled-courses', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await axios.get(`${API_URL}/enrollments`, {
+      const { data } = await axios.get(`${API_URL}/enrollments?user_id=${user.id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       
-      if (error) throw error;
-      
-      return data.map(e => ({ ...e.courses!, progress: e.progress })) as EnrolledCourse[];
+      return data.map((e: any) => ({ 
+        id: e.course_id,
+        title: e.course_title,
+        description: e.course_description,
+        thumbnail_url: e.course_thumbnail,
+        instructor_name: e.instructor_name,
+        instructor_id: e.instructor_id || '',
+        price: 0,
+        created_at: e.enrolled_at,
+        updated_at: e.enrolled_at,
+        instructor_avatar: undefined,
+        enrollment_count: 0,
+        rating: 0,
+        rating_count: 0,
+        category: undefined,
+        level: undefined,
+        instructor: {
+          id: e.instructor_id || '',
+          name: e.instructor_name || '',
+          email: '',
+          role: 'instructor' as const,
+          created_at: e.enrolled_at
+        },
+        progress: e.progress 
+      })) as EnrolledCourse[];
     },
     enabled: !!user,
   });
@@ -46,10 +68,9 @@ export default function Courses() {
   const { data: availableCourses, isLoading: isLoadingAvailable } = useQuery<CourseWithInstructor[]>({
     queryKey: ['available-courses', user?.id],
     queryFn: async () => {
-      const { data: courses, error } = await axios.get(`${API_URL}/courses`, {
+      const { data: courses } = await axios.get(`${API_URL}/courses`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      if (error) throw error;
       if (!user) return courses as CourseWithInstructor[];
 
       const enrolledCourseIds = enrolledCourses?.map(c => c.id) || [];
@@ -127,7 +148,6 @@ export default function Courses() {
                     <CardContent className="p-6">
                       <div className="space-y-3">
                         <div className="flex items-center gap-2">
-                          {course.tags?.slice(0, 1).map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}
                           <Badge variant="secondary">{course.level}</Badge>
                         </div>
                         
@@ -139,12 +159,8 @@ export default function Courses() {
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
-                            {course.duration}
+                            Duração não informada
                           </div>
-                          {/* <div className="flex items-center gap-1">
-                            <BookOpen className="w-4 h-4" />
-                            TODO: Add lesson count
-                          </div> */}
                         </div>
 
                         <div className="space-y-2">
@@ -206,7 +222,6 @@ export default function Courses() {
                   <CardContent className="p-6">
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                         {course.tags?.slice(0, 1).map(tag => <Badge key={tag} variant="outline">{tag}</Badge>)}
                         <Badge variant="secondary">{course.level}</Badge>
                       </div>
                       
@@ -218,11 +233,11 @@ export default function Courses() {
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          {course.duration}
+                          Duração não informada
                         </div>
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
-                          {course.students_count}
+                          {course.enrollment_count}
                         </div>
                         <div className="flex items-center gap-1">
                           <Star className="w-4 h-4 text-yellow-500" />

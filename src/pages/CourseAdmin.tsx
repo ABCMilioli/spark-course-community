@@ -12,7 +12,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Plus, Trash2, ArrowLeft, Eye, EyeOff, Calendar } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Eye, EyeOff, Calendar, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { CourseForAdmin, Profile } from '@/types';
@@ -35,6 +35,7 @@ const lessonSchema = z.object({
   title: z.string().min(3, "O título da aula deve ter pelo menos 3 caracteres."),
   duration: z.string().min(4, "A duração deve ser no formato (ex: 10 min)."),
   youtube_id: z.string().optional().nullable(),
+  video_url: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   is_visible: z.boolean().default(true),
   release_days: z.number().min(0, "Dias de liberação deve ser 0 ou maior.").default(0),
@@ -72,6 +73,9 @@ export default function CourseAdmin() {
   // Estados para confirmação de deleção
   const [deleteModule, setDeleteModule] = useState<{ index: number; title: string } | null>(null);
   const [deleteLesson, setDeleteLesson] = useState<{ moduleIndex: number; lessonIndex: number; title: string } | null>(null);
+  
+  // Estados para upload de vídeo
+  const [uploadingVideos, setUploadingVideos] = useState<{ [key: string]: boolean }>({});
 
   const { data: course, isLoading, error } = useQuery({
     queryKey: ['course-admin', courseId],
@@ -213,6 +217,49 @@ export default function CourseAdmin() {
     name: "modules",
   });
 
+  // Função para upload de vídeo de aula
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>, moduleIndex: number, lessonIndex: number, field: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    if (!file.type.startsWith('video/')) {
+      sonnerToast.error('Por favor, selecione apenas arquivos de vídeo.');
+      return;
+    }
+
+    // Validar tamanho (100MB)
+    if (file.size > 100 * 1024 * 1024) {
+      sonnerToast.error('O vídeo deve ter no máximo 100MB.');
+      return;
+    }
+
+    const videoKey = `${moduleIndex}-${lessonIndex}`;
+    setUploadingVideos(prev => ({ ...prev, [videoKey]: true }));
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API_URL}/upload/lesson-video`, formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      const videoUrl = response.data.url;
+      field.onChange(videoUrl);
+      sonnerToast.success('Vídeo enviado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao fazer upload do vídeo:', error);
+      sonnerToast.error('Erro ao fazer upload do vídeo');
+    } finally {
+      setUploadingVideos(prev => ({ ...prev, [videoKey]: false }));
+    }
+  };
+
   if (isLoading || isLoadingInstructors) {
     return (
         <div className="container mx-auto px-6 py-8 text-center">
@@ -303,6 +350,8 @@ export default function CourseAdmin() {
                           confirmDeleteModule={handleConfirmDeleteModule}
                           confirmDeleteLesson={handleConfirmDeleteLesson}
                           saveCourseMutation={saveCourseMutation}
+                          handleVideoUpload={handleVideoUpload}
+                          uploadingVideos={uploadingVideos}
                         />
                     ))}
                     <Button type="button" variant="outline" className="mt-4" onClick={() => appendModule({ 
@@ -390,7 +439,9 @@ function ModuleField({
   removeLesson,
   confirmDeleteModule,
   confirmDeleteLesson,
-  saveCourseMutation
+  saveCourseMutation,
+  handleVideoUpload,
+  uploadingVideos
 }: { 
   form: any, 
   moduleIndex: number, 
@@ -398,7 +449,9 @@ function ModuleField({
   removeLesson: (moduleIndex: number, lessonIndex: number) => void,
   confirmDeleteModule: (index: number) => void,
   confirmDeleteLesson: (moduleIndex: number, lessonIndex: number) => void,
-  saveCourseMutation: any
+  saveCourseMutation: any,
+  handleVideoUpload: (e: React.ChangeEvent<HTMLInputElement>, moduleIndex: number, lessonIndex: number, field: any) => void,
+  uploadingVideos: { [key: string]: boolean }
 }) {
     const { fields: lessonFields, append: appendLesson, remove: removeLessonField } = useFieldArray({
         control: form.control,
@@ -440,7 +493,7 @@ function ModuleField({
                 <AccordionContent className="space-y-4 pt-4">
                     {lessonFields.map((lesson, lessonIndex) => (
                         <div key={lesson.id} className="flex items-end gap-2 p-3 border rounded-md bg-background">
-                             <div className="grid grid-cols-1 md:grid-cols-6 gap-2 flex-1">
+                             <div className="grid grid-cols-1 md:grid-cols-7 gap-2 flex-1">
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.title`} render={({ field }) => (
                                     <FormItem><FormLabel>Aula</FormLabel><FormControl><Input placeholder="Título da Aula" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
@@ -448,7 +501,26 @@ function ModuleField({
                                     <FormItem><FormLabel>Duração</FormLabel><FormControl><Input placeholder="Ex: 15 min" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.youtube_id`} render={({ field }) => (
-                                    <FormItem><FormLabel>ID do Vídeo</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel>ID do Vídeo (YouTube)</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.video_url`} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Upload de Vídeo</FormLabel>
+                                        <FormControl>
+                                            <div className="flex items-center gap-2">
+                                                <Input 
+                                                    type="file" 
+                                                    accept="video/*" 
+                                                    onChange={(e) => handleVideoUpload(e, moduleIndex, lessonIndex, field)}
+                                                    disabled={uploadingVideos[`${moduleIndex}-${lessonIndex}`]}
+                                                />
+                                                {uploadingVideos[`${moduleIndex}-${lessonIndex}`] && (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                )}
+                                            </div>
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.description`} render={({ field }) => (
                                     <FormItem><FormLabel>Descrição</FormLabel><FormControl><Input placeholder="Descrição da aula" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
@@ -499,6 +571,7 @@ function ModuleField({
                       title: '', 
                       duration: '', 
                       youtube_id: '', 
+                      video_url: '',
                       description: '',
                       is_visible: true,
                       release_days: 0

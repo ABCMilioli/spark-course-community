@@ -100,8 +100,8 @@ export default function ClassManagement() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({
-    name: "",
-    description: "",
+    instance_name: "",
+    instance_description: "",
     is_public: false,
     max_students: ""
   });
@@ -235,8 +235,8 @@ export default function ClassManagement() {
 
   const handleEditClick = () => {
     setEditForm({
-      name: classDetails.name,
-      description: classDetails.description || "",
+      instance_name: classDetails.instance_name,
+      instance_description: classDetails.instance_description || "",
       is_public: classDetails.is_public,
       max_students: classDetails.max_students?.toString() || ""
     });
@@ -245,8 +245,8 @@ export default function ClassManagement() {
 
   const handleSave = () => {
     const classData = {
-      name: editForm.name.trim(),
-      description: editForm.description.trim() || null,
+      instance_name: editForm.instance_name.trim(),
+      instance_description: editForm.instance_description.trim() || null,
       is_public: editForm.is_public,
       max_students: editForm.max_students ? parseInt(editForm.max_students) : null
     };
@@ -273,7 +273,7 @@ export default function ClassManagement() {
           <div>
             <div className="flex items-center gap-2">
               <Crown className="w-5 h-5 text-blue-600" />
-              <h1 className="text-2xl font-bold">{classDetails.name}</h1>
+              <h1 className="text-2xl font-bold">{classDetails.instance_name}</h1>
               {classDetails.is_public ? (
                 <Eye className="w-4 h-4 text-green-600" />
               ) : (
@@ -408,13 +408,13 @@ export default function ClassManagement() {
           <CardContent className="space-y-4">
             <div>
               <Label className="text-sm font-medium">Nome</Label>
-              <p className="text-sm text-muted-foreground">{classDetails.name}</p>
+              <p className="text-sm text-muted-foreground">{classDetails.instance_name}</p>
             </div>
             
-            {classDetails.description && (
+            {classDetails.instance_description && (
               <div>
                 <Label className="text-sm font-medium">Descrição</Label>
-                <p className="text-sm text-muted-foreground">{classDetails.description}</p>
+                <p className="text-sm text-muted-foreground">{classDetails.instance_description}</p>
               </div>
             )}
 
@@ -514,29 +514,29 @@ export default function ClassManagement() {
 
       {/* Modal de Edição */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Editar Turma</DialogTitle>
             <DialogDescription>
-              Faça as alterações necessárias nos dados da turma.
+              Altere os dados da turma conforme necessário. Os campos marcados com * são obrigatórios.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Nome da Turma *</Label>
+              <Label htmlFor="instance_name">Nome da Turma *</Label>
               <Input
-                id="name"
-                value={editForm.name}
-                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                id="instance_name"
+                value={editForm.instance_name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, instance_name: e.target.value }))}
                 placeholder="Nome da turma"
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="description">Descrição</Label>
+              <Label htmlFor="instance_description">Descrição</Label>
               <Textarea
-                id="description"
-                value={editForm.description}
-                onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                id="instance_description"
+                value={editForm.instance_description}
+                onChange={(e) => setEditForm(prev => ({ ...prev, instance_description: e.target.value }))}
                 placeholder="Descrição da turma"
                 rows={3}
               />
@@ -549,27 +549,21 @@ export default function ClassManagement() {
                 value={editForm.max_students}
                 onChange={(e) => setEditForm(prev => ({ ...prev, max_students: e.target.value }))}
                 placeholder="Deixe em branco para sem limite"
-                min="1"
               />
             </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="is_public">Turma Pública</Label>
-                <p className="text-xs text-muted-foreground">
-                  Turmas públicas são visíveis para todos os usuários
-                </p>
-              </div>
+            <div className="flex items-center space-x-2">
               <Switch
                 id="is_public"
                 checked={editForm.is_public}
-                onCheckedChange={(checked) => setEditForm(prev => ({ ...prev, is_public: checked }))}
+                onCheckedChange={(checked) => setEditForm(prev => ({ ...prev, is_public: checked as boolean }))}
               />
+              <Label htmlFor="is_public">Turma pública</Label>
             </div>
           </div>
           <DialogFooter>
             <Button 
               onClick={handleSave}
-              disabled={updateClassMutation.isPending || !editForm.name.trim()}
+              disabled={updateClassMutation.isPending || !editForm.instance_name.trim()}
             >
               {updateClassMutation.isPending ? (
                 <>
@@ -596,7 +590,7 @@ export default function ClassManagement() {
               Confirmar Exclusão
             </DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja excluir a turma "{classDetails.name}"? Esta ação não pode ser desfeita.
+              Tem certeza que deseja excluir a turma "{classDetails.instance_name}"? Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

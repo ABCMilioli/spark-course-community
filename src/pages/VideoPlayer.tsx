@@ -78,7 +78,7 @@ export default function VideoPlayer() {
 
   const setLesson = (lesson: LessonWithCompletion) => {
     setCurrentLesson(lesson);
-    setSearchParams({ courseId: courseId!, lessonId: lesson.id });
+    setSearchParams({ courseId: courseId!, lessonId: String(lesson.id) });
   };
 
   const handlePrevious = () => {
@@ -156,6 +156,7 @@ export default function VideoPlayer() {
           {/* Video Player */}
           <div className="lg:col-span-2 space-y-6">
             <CustomVideoPlayer
+              videoUrl={currentLesson.video_url}
               youtubeId={currentLesson.youtube_id || ''}
               onProgress={handleProgress}
               onPrevious={handlePrevious}

@@ -10,6 +10,14 @@ services:
       - POSTGRES_DB=nome_do_banco
       - POSTGRES_USER=usuario
       - POSTGRES_PASSWORD=senha
+      - MINIO_ENDPOINT=mp.iacas.top
+      - MINIO_PORT=443
+      - MINIO_ACCESS_KEY=1013141255245882
+      - MINIO_SECRET_KEY=5420658821784955
+      - MINIO_USE_SSL=true
+      - MINIO_BUCKET=community
+      - MINIO_PUBLIC_URL=https://mp.iacas.top
+      - MINIO_REGION=us-east-1
     networks:
       - network_public
     deploy:

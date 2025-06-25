@@ -1,53 +1,33 @@
 #!/bin/bash
 
-# Script de deploy para Docker Swarm
-set -e
+# Script para fazer deploy da stack Docker Swarm
+echo "🚀 Iniciando deploy da stack Docker Swarm..."
 
-echo "🚀 Iniciando deploy do Spark Course Community..."
+# Definir variáveis
+STACK_NAME="spark-course"
+COMPOSE_FILE="docker-stack.yml"
 
-# Verificar se estamos no modo swarm
+# Verificar se o arquivo docker-stack.yml existe
+if [ ! -f "$COMPOSE_FILE" ]; then
+    echo "❌ Arquivo $COMPOSE_FILE não encontrado!"
+    exit 1
+fi
+
+# Verificar se estamos em um swarm
 if ! docker info | grep -q "Swarm: active"; then
-    echo "❌ Docker Swarm não está ativo. Inicializando..."
-    docker swarm init
+    echo "❌ Docker Swarm não está ativo!"
+    echo "💡 Execute: docker swarm init"
+    exit 1
 fi
 
-# Criar rede se não existir
-if ! docker network ls | grep -q "network_public"; then
-    echo "🌐 Criando rede network_public..."
-    docker network create --driver overlay --attachable network_public
-fi
+# Fazer deploy da stack
+echo "📦 Fazendo deploy da stack..."
+docker stack deploy -c $COMPOSE_FILE $STACK_NAME
 
-# Criar volumes se não existirem
-if ! docker volume ls | grep -q "volume_swarm_certificates"; then
-    echo "📦 Criando volume volume_swarm_certificates..."
-    docker volume create volume_swarm_certificates
-fi
-
-if ! docker volume ls | grep -q "volume_swarm_shared"; then
-    echo "📦 Criando volume volume_swarm_shared..."
-    docker volume create volume_swarm_shared
-fi
-
-# Build da imagem
-echo "🔨 Fazendo build da imagem automacaodebaixocusto/spark-course-community:latest..."
-docker build -t automacaodebaixocusto/spark-course-community:latest .
-
-# Deploy do Traefik (se não estiver rodando)
-if ! docker stack ls | grep -q "traefik"; then
-    echo "🔧 Deployando Traefik..."
-    docker stack deploy -c traefik-stack.yml traefik
-    echo "⏳ Aguardando Traefik inicializar..."
-    sleep 30
-fi
-
-# Deploy da aplicação
-echo "📦 Deployando aplicação..."
-docker stack deploy -c docker-stack.yml spark-course
+# Verificar status
+echo "🔍 Verificando status da stack..."
+docker stack services $STACK_NAME
 
 echo "✅ Deploy concluído!"
-echo "📊 Dashboard Traefik: http://traefik.community.iacas.top:8080"
-echo "🌐 Aplicação: https://community.iacas.top"
-
-# Mostrar status
-echo "📋 Status dos serviços:"
-docker stack services spark-course 
+echo "📊 Para ver os logs: docker service logs spark-course_app"
+echo "🔍 Para ver o status: docker stack ps spark-course" 

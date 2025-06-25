@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Users, BookOpen, MessageSquare, Eye, Lock, Calendar, User } from "lucide-react";
+import { Plus, Users, BookOpen, MessageSquare, Eye, Lock, Calendar, User, MoreVertical, Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Class } from "@/types";
 import { CreateClassModal } from "@/components/Admin/CreateClassModal";
 import { Link, useNavigate } from "react-router-dom";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Settings } from "lucide-react";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -33,9 +35,9 @@ export default function Classes() {
   const navigate = useNavigate();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const { data: classes, isLoading, error } = useQuery({
+  const { data: classesData = [], isLoading, error } = useQuery({
     queryKey: ['classes', user?.id],
-    queryFn: () => fetchClasses(user!.id),
+    queryFn: () => fetchClasses(user?.id),
     enabled: !!user?.id
   });
 
@@ -85,6 +87,38 @@ export default function Classes() {
     navigate(`/classes/${classId}/manage`);
   };
 
+  const handleEditClass = (classItem: Class) => {
+    // TODO: Implementar edição de turma
+    console.log('Editar turma:', classItem);
+    toast.info('Funcionalidade de edição será implementada em breve');
+  };
+
+  const handleDeleteClass = async (classId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta turma?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/classes/${classId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Turma excluída com sucesso');
+        fetchClasses(user?.id); // Recarregar lista
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Erro ao excluir turma');
+      }
+    } catch (error) {
+      console.error('Erro ao excluir turma:', error);
+      toast.error('Erro ao excluir turma');
+    }
+  };
+
   if (error) {
     return (
       <div className="container mx-auto p-6">
@@ -106,7 +140,6 @@ export default function Classes() {
             Gerencie suas turmas e acesse o conteúdo específico de cada uma
           </p>
         </div>
-        
         {['instructor', 'admin'].includes(user?.role || '') && (
           <Button onClick={() => setIsCreateModalOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" />
@@ -125,7 +158,7 @@ export default function Classes() {
               </div>
               <div>
                 <p className="text-2xl font-bold">
-                  {isLoading ? <Skeleton className="h-8 w-12" /> : classes?.length || 0}
+                  {isLoading ? <Skeleton className="h-8 w-12" /> : classesData.length || 0}
                 </p>
                 <p className="text-sm text-muted-foreground">Minhas Turmas</p>
               </div>
@@ -142,7 +175,7 @@ export default function Classes() {
               <div>
                 <p className="text-2xl font-bold">
                   {isLoading ? <Skeleton className="h-8 w-12" /> : 
-                    classes?.reduce((total: number, cls: Class) => total + (cls.current_students || 0), 0) || 0}
+                    classesData.reduce((total: number, cls: Class) => total + (cls.current_students || 0), 0) || 0}
                 </p>
                 <p className="text-sm text-muted-foreground">Total de Alunos</p>
               </div>
@@ -159,7 +192,7 @@ export default function Classes() {
               <div>
                 <p className="text-2xl font-bold">
                   {isLoading ? <Skeleton className="h-8 w-12" /> : 
-                    classes?.filter((cls: Class) => cls.is_public).length || 0}
+                    classesData.filter((cls: Class) => cls.is_public).length || 0}
                 </p>
                 <p className="text-sm text-muted-foreground">Turmas Públicas</p>
               </div>
@@ -183,7 +216,7 @@ export default function Classes() {
               </CardContent>
             </Card>
           ))
-        ) : classes?.length === 0 ? (
+        ) : classesData.length === 0 ? (
           <div className="col-span-full text-center py-12">
             <Users className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold mb-2">Nenhuma turma encontrada</h3>
@@ -201,74 +234,60 @@ export default function Classes() {
             )}
           </div>
         ) : (
-          classes?.map((cls: Class) => (
-            <Card key={cls.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      {cls.name}
-                      {cls.is_public ? (
-                        <Eye className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <Lock className="w-4 h-4 text-orange-600" />
-                      )}
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-2 mt-2">
-                      <User className="w-4 h-4" />
-                      {cls.instructor_name}
-                    </CardDescription>
+          classesData.map((classItem) => (
+            <div key={classItem.id} className="bg-card border border-border rounded-lg shadow-md hover:shadow-lg transition-shadow">
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground mb-1">
+                      {classItem.instance_name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Curso: {classItem.course_title}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Instructor: {classItem.instructor_name}
+                    </p>
                   </div>
-                  <Badge variant={cls.is_public ? "default" : "secondary"}>
-                    {cls.is_public ? "Pública" : "Privada"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              
-              <CardContent>
-                {cls.description && (
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                    {cls.description}
-                  </p>
-                )}
-                
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      {cls.current_students} alunos
-                    </span>
-                    {cls.max_students && (
-                      <span className="text-muted-foreground">
-                        / {cls.max_students} max
+                  <div className="flex items-center space-x-2">
+                    {classItem.is_public && (
+                      <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                        Pública
                       </span>
                     )}
                   </div>
-                  
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Calendar className="w-4 h-4" />
-                    {new Date(cls.created_at).toLocaleDateString('pt-BR')}
-                  </div>
                 </div>
-                
-                <div className="mt-4 flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" asChild>
-                    <Link to={`/classes/${cls.id}`}>
-                      Ver Detalhes
-                    </Link>
+                {classItem.instance_description && (
+                  <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
+                    {classItem.instance_description}
+                  </p>
+                )}
+                <div className="flex justify-between items-center text-sm text-muted-foreground mb-4">
+                  <span>
+                    {classItem.current_students || 0} / {classItem.max_students || '∞'} alunos
+                  </span>
+                  <span>
+                    Criada em {new Date(classItem.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={() => navigate(`/classes/${classItem.id}`)}
+                    className="flex-1"
+                  >
+                    Ver Detalhes
                   </Button>
-                  {cls.instructor_id === user?.id && (
+                  {classItem.instructor_id === user?.id && (
                     <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleManageClass(cls.id)}
+                      variant="outline"
+                      onClick={() => navigate(`/classes/${classItem.id}/manage`)}
                     >
                       Gerenciar
                     </Button>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))
         )}
       </div>
