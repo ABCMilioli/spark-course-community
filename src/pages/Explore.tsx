@@ -52,6 +52,11 @@ export default function Explore() {
     }
   };
 
+  // Função para lidar com clique no post
+  const handlePostClick = (postId: string) => {
+    navigate(`/post/${postId}`);
+  };
+
   // Query de busca
   const { data: searchResults, isLoading: isLoadingSearch } = useQuery({
     queryKey: ['explore-search', searchQuery, selectedType, selectedCategory, selectedLevel, selectedPrice],
@@ -245,7 +250,7 @@ export default function Explore() {
                   <h2 className="text-2xl font-semibold mb-4">Posts Encontrados ({searchResults.posts.length})</h2>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {searchResults.posts.map((post: PostWithAuthor) => (
-                      <PostCard key={post.id} post={post} />
+                      <PostCard key={post.id} post={post} onClick={handlePostClick} />
                     ))}
                   </div>
                 </section>
@@ -324,7 +329,7 @@ export default function Explore() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {isLoadingPosts && Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-64 w-full" />)}
               {posts?.map((post) => (
-                <PostCard key={post.id} post={post} />
+                <PostCard key={post.id} post={post} onClick={handlePostClick} />
               ))}
             </div>
           </section>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/Community/PostCard";
@@ -19,12 +20,18 @@ async function fetchPosts() {
 }
 
 export default function Community() {
+  const navigate = useNavigate();
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
 
   const { data: posts, isLoading, error } = useQuery({
     queryKey: ['posts'],
     queryFn: fetchPosts,
   });
+
+  // Função para lidar com clique no post
+  const handlePostClick = (postId: string) => {
+    navigate(`/post/${postId}`);
+  };
 
   return (
     <div className="flex-1 p-6 space-y-6 bg-muted/40">
@@ -64,7 +71,7 @@ export default function Community() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
         {posts?.map((post) => (
-          <PostCard key={post.id} post={post} />
+          <PostCard key={post.id} post={post} onClick={handlePostClick} />
         ))}
       </div>
 

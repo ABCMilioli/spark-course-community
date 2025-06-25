@@ -8,7 +8,7 @@ import { TrendingUp, BookOpen, Users, MessageSquare, ArrowRight, Star } from 'lu
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -54,6 +54,7 @@ const LoadingSkeleton = () => (
 );
 
 export default function Index() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   
   console.log('Index component rendering, user:', user?.name, 'role:', user?.role);
@@ -88,6 +89,11 @@ export default function Index() {
     statsError,
     tagsError
   });
+
+  // Função para lidar com clique no post
+  const handlePostClick = (postId: string) => {
+    navigate(`/post/${postId}`);
+  };
 
   return (
     <div className="container mx-auto px-6 py-8 max-w-6xl">
@@ -225,7 +231,7 @@ export default function Index() {
                 <PostCard
                   key={post.id}
                   post={post}
-                  onClick={(postId) => console.log('Navigate to post:', postId)}
+                  onClick={handlePostClick}
                 />
               ))
             )}
