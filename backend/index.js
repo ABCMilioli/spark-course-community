@@ -1386,12 +1386,12 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       const { rows } = await pool.query(`
         SELECT 
           ce.*,
-          p.name as student_name,
-          p.email as student_email
+          p.name as user_name,
+          p.email as user_email
         FROM class_enrollments ce
         JOIN profiles p ON ce.user_id = p.id
         WHERE ce.class_id = $1
-        ORDER BY ce.created_at DESC
+        ORDER BY ce.enrolled_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1403,12 +1403,12 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       const { rows } = await pool.query(`
         SELECT 
           ce.*,
-          p.name as student_name,
-          p.email as student_email
+          p.name as user_name,
+          p.email as user_email
         FROM class_enrollments ce
         JOIN profiles p ON ce.user_id = p.id
         WHERE ce.class_id = $1 AND ce.status = 'active'
-        ORDER BY ce.created_at DESC
+        ORDER BY ce.enrolled_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1425,12 +1425,12 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       const { rows } = await pool.query(`
         SELECT 
           ce.*,
-          p.name as student_name,
-          p.email as student_email
+          p.name as user_name,
+          p.email as user_email
         FROM class_enrollments ce
         JOIN profiles p ON ce.user_id = p.id
         WHERE ce.class_id = $1 AND ce.status = 'active'
-        ORDER BY ce.created_at DESC
+        ORDER BY ce.enrolled_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1883,6 +1883,46 @@ app.put('/api/classes/:id', authenticateToken, async (req, res) => {
     
   } catch (err) {
     console.error('[PUT /api/classes/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Excluir turma
+app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[DELETE /api/classes/:id] Excluindo turma:', id);
+    console.log('[DELETE /api/classes/:id] Usuário:', req.user);
+    
+    // Verificar se a turma existe
+    const classCheck = await pool.query(`
+      SELECT instructor_id, name FROM classes WHERE id = $1
+    `, [id]);
+    
+    if (classCheck.rows.length === 0) {
+      console.log('[DELETE /api/classes/:id] Turma não encontrada');
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    // Verificar se o usuário é o instructor da turma ou admin
+    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      console.log('[DELETE /api/classes/:id] Acesso negado - usuário não é instructor da turma');
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode excluí-la.' });
+    }
+    
+    const className = classCheck.rows[0].name;
+    
+    // Excluir turma (as tabelas relacionadas serão excluídas automaticamente devido ao CASCADE)
+    await pool.query(`
+      DELETE FROM classes WHERE id = $1
+    `, [id]);
+    
+    console.log('[DELETE /api/classes/:id] Turma excluída com sucesso:', className);
+    res.json({ message: 'Turma excluída com sucesso.' });
+    
+  } catch (err) {
+    console.error('[DELETE /api/classes/:id] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
