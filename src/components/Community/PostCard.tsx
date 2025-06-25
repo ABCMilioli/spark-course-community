@@ -1,4 +1,4 @@
-import { MessageSquare, Heart, Share2, Bookmark, MoreHorizontal } from "lucide-react";
+import { MessageSquare, Heart, Share2, Bookmark, MoreHorizontal, Play } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Post } from "@/types";
+import { getVideoEmbedUrl } from "@/lib/utils";
 
 interface PostCardProps {
   post: Post & { isLiked?: boolean };
@@ -57,6 +58,31 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Mídia - Prioriza imagem sobre vídeo */}
+        {post.cover_image ? (
+          <div className="relative w-full h-48 rounded-lg overflow-hidden">
+            <img 
+              src={post.cover_image} 
+              alt="Capa do post" 
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        ) : post.video_url ? (
+          <div className="relative w-full h-48 rounded-lg overflow-hidden bg-muted">
+            <iframe
+              src={getVideoEmbedUrl(post.video_url)}
+              title="Vídeo do post"
+              className="w-full h-full"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        ) : null}
+
         <div>
           <h3 className="font-semibold text-lg mb-2 group-hover:text-primary transition-colors">
             {post.title}

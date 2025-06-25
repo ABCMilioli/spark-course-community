@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Heart, MessageSquare, Share2, Bookmark, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Share2, Bookmark, MoreHorizontal, Edit, Trash2, Play } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import axios from 'axios';
 import { Post } from '@/types';
@@ -15,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/contexts/AuthContext';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { getVideoEmbedUrl } from '@/lib/utils';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -368,6 +369,36 @@ export default function PostDetail() {
           )}
         </CardHeader>
         <CardContent>
+          {/* Imagem de capa */}
+          {post.cover_image && (
+            <div className="mb-6">
+              <img 
+                src={post.cover_image} 
+                alt="Capa do post" 
+                className="w-full h-64 object-cover rounded-lg"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+          )}
+
+          {/* Vídeo */}
+          {post.video_url && (
+            <div className="mb-6">
+              <div className="relative w-full h-96 bg-muted rounded-lg overflow-hidden">
+                <iframe
+                  src={getVideoEmbedUrl(post.video_url)}
+                  title="Vídeo do post"
+                  className="w-full h-full"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          )}
+
           <div className="prose prose-gray max-w-none">
             <p className="text-lg leading-relaxed whitespace-pre-wrap">
               {post.content}

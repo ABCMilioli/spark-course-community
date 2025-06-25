@@ -23,6 +23,8 @@ export interface Post {
   tags?: string[];
   author_name: string;
   author_avatar?: string;
+  cover_image?: string;
+  video_url?: string;
 }
 
 export interface PostWithAuthor extends Post {

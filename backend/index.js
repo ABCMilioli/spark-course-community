@@ -172,7 +172,7 @@ app.get('/api/posts', authenticateToken, async (req, res) => {
 // Endpoint para criar novo post
 app.post('/api/posts', authenticateToken, async (req, res) => {
   try {
-    const { title, content, category } = req.body;
+    const { title, content, category, cover_image, video_url } = req.body;
     console.log('[POST /api/posts] Dados recebidos:', req.body);
     console.log('[POST /api/posts] Usuário autenticado:', req.user);
 
@@ -183,11 +183,11 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
     const id = crypto.randomUUID();
     const created_at = new Date();
     await pool.query(
-      'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, title, content, req.user.id, category, created_at]
+      'INSERT INTO posts (id, title, content, author_id, category, cover_image, video_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, title, content, req.user.id, category, cover_image, video_url, created_at]
     );
-    console.log('[POST /api/posts] Post criado com sucesso:', { id, title, content, category, author_id: req.user.id, created_at });
-    res.status(201).json({ id, title, content, category, author_id: req.user.id, created_at });
+    console.log('[POST /api/posts] Post criado com sucesso:', { id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
+    res.status(201).json({ id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
   } catch (err) {
     console.error('[POST /api/posts] Erro ao criar post:', err);
     res.status(500).json({ error: 'Erro ao criar post.' });
@@ -659,13 +659,13 @@ app.get('/api/posts/:id', authenticateToken, async (req, res) => {
 app.put('/api/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, category } = req.body;
+    const { title, content, category, cover_image, video_url } = req.body;
     if (!title || !content) {
       return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
     }
     const result = await pool.query(
-      'UPDATE posts SET title = $1, content = $2, category = $3 WHERE id = $4 AND author_id = $5 RETURNING *',
-      [title, content, category, id, req.user.id]
+      'UPDATE posts SET title = $1, content = $2, category = $3, cover_image = $4, video_url = $5 WHERE id = $6 AND author_id = $7 RETURNING *',
+      [title, content, category, cover_image, video_url, id, req.user.id]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Post não encontrado ou sem permissão.' });
