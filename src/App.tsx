@@ -21,6 +21,7 @@ import NotFound from "./pages/NotFound";
 import CourseAdmin from "./pages/CourseAdmin";
 import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
+import ClassManagement from "./pages/ClassManagement";
 import Payment from "./pages/Payment";
 
 const queryClient = new QueryClient();
@@ -56,6 +57,7 @@ function AppContent() {
               <Route path="/courses" element={<Courses />} />
               <Route path="/classes" element={<Classes />} />
               <Route path="/classes/:classId" element={<ClassDetail />} />
+              <Route path="/classes/:classId/manage" element={<ClassManagement />} />
               <Route path="/course" element={<CourseDetail />} />
               <Route path="/course/:courseId" element={<CourseDetail />} />
               <Route path="/post/:postId" element={<PostDetail />} />

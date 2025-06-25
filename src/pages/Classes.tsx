@@ -9,10 +9,12 @@ import { Plus, Users, BookOpen, MessageSquare, Eye, Lock, Calendar, User } from 
 import { toast } from "sonner";
 import { Class } from "@/types";
 import { CreateClassModal } from "@/components/Admin/CreateClassModal";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 async function fetchClasses(userId: string) {
-  const response = await fetch(`/api/classes?user_id=${userId}`, {
+  const response = await fetch(`${API_URL}/classes?user_id=${userId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`
     }
@@ -28,6 +30,7 @@ async function fetchClasses(userId: string) {
 export default function Classes() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const { data: classes, isLoading, error } = useQuery({
@@ -38,7 +41,9 @@ export default function Classes() {
 
   const createClassMutation = useMutation({
     mutationFn: async (classData: { name: string; description?: string; is_public: boolean; max_students?: number }) => {
-      const response = await fetch('/api/classes', {
+      console.log('[Classes] Tentando criar turma com dados:', classData);
+      
+      const response = await fetch(`${API_URL}/classes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -47,25 +52,37 @@ export default function Classes() {
         body: JSON.stringify(classData)
       });
       
+      console.log('[Classes] Resposta do servidor:', response.status, response.statusText);
+      
       if (!response.ok) {
         const error = await response.json();
+        console.error('[Classes] Erro do servidor:', error);
         throw new Error(error.error || 'Erro ao criar turma');
       }
       
-      return response.json();
+      const result = await response.json();
+      console.log('[Classes] Turma criada com sucesso:', result);
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('[Classes] onSuccess executado, dados:', data);
       queryClient.invalidateQueries({ queryKey: ['classes'] });
       toast.success('Turma criada com sucesso!');
       setIsCreateModalOpen(false);
     },
     onError: (error: Error) => {
+      console.error('[Classes] Erro na mutação:', error);
       toast.error(error.message);
     }
   });
 
   const handleCreateClass = (classData: { name: string; description?: string; is_public: boolean; max_students?: number }) => {
+    console.log('[Classes] handleCreateClass chamado com:', classData);
     createClassMutation.mutate(classData);
+  };
+
+  const handleManageClass = (classId: string) => {
+    navigate(`/classes/${classId}/manage`);
   };
 
   if (error) {
@@ -241,7 +258,11 @@ export default function Classes() {
                     </Link>
                   </Button>
                   {cls.instructor_id === user?.id && (
-                    <Button variant="outline" size="sm">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleManageClass(cls.id)}
+                    >
                       Gerenciar
                     </Button>
                   )}

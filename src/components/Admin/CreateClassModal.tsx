@@ -26,6 +26,8 @@ export function CreateClassModal({ isOpen, onClose, onSubmit, isLoading }: Creat
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('[CreateClassModal] Formulário submetido com dados:', formData);
+    
     if (!formData.name.trim()) {
       toast.error("Nome da turma é obrigatório");
       return;
@@ -38,6 +40,7 @@ export function CreateClassModal({ isOpen, onClose, onSubmit, isLoading }: Creat
       max_students: formData.max_students ? parseInt(formData.max_students) : undefined
     };
 
+    console.log('[CreateClassModal] Dados processados para envio:', classData);
     onSubmit(classData);
   };
 

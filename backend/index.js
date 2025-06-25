@@ -1219,24 +1219,33 @@ app.get('/api/classes', authenticateToken, async (req, res) => {
 // Criar nova turma
 app.post('/api/classes', authenticateToken, async (req, res) => {
   try {
+    console.log('[POST /api/classes] Requisição recebida');
+    console.log('[POST /api/classes] Usuário autenticado:', req.user);
+    console.log('[POST /api/classes] Dados recebidos:', req.body);
+    
     const { name, description, is_public, max_students } = req.body;
     
     if (!name) {
+      console.log('[POST /api/classes] Erro: nome da turma não fornecido');
       return res.status(400).json({ error: 'Nome da turma é obrigatório.' });
     }
     
     // Verificar se o usuário é instructor ou admin
     if (!['instructor', 'admin'].includes(req.user.role)) {
+      console.log('[POST /api/classes] Erro: usuário não tem permissão, role:', req.user.role);
       return res.status(403).json({ error: 'Apenas instrutores podem criar turmas.' });
     }
     
     const id = crypto.randomUUID();
+    console.log('[POST /api/classes] Criando turma com ID:', id);
+    
     const { rows } = await pool.query(`
       INSERT INTO classes (id, name, description, instructor_id, is_public, max_students)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `, [id, name, description, req.user.id, is_public || false, max_students]);
     
+    console.log('[POST /api/classes] Turma criada com sucesso:', rows[0]);
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/classes] Erro:', err);
@@ -1248,18 +1257,11 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
 app.get('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('[GET /api/classes/:id] Buscando turma:', id);
+    console.log('[GET /api/classes/:id] Usuário:', req.user);
     
-    // Verificar acesso à turma
-    const accessCheck = await pool.query(`
-      SELECT * FROM user_class_access 
-      WHERE class_id = $1 AND user_id = $2
-    `, [id, req.user.id]);
-    
-    if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
-    }
-    
-    const { rows } = await pool.query(`
+    // Primeiro, buscar a turma
+    const classResult = await pool.query(`
       SELECT 
         c.*,
         p.name as instructor_name,
@@ -1269,11 +1271,41 @@ app.get('/api/classes/:id', authenticateToken, async (req, res) => {
       WHERE c.id = $1
     `, [id]);
     
-    if (rows.length === 0) {
+    if (classResult.rows.length === 0) {
+      console.log('[GET /api/classes/:id] Turma não encontrada');
       return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
-    res.json(rows[0]);
+    const classData = classResult.rows[0];
+    console.log('[GET /api/classes/:id] Turma encontrada:', classData.name);
+    
+    // Verificar se o usuário tem acesso à turma
+    // 1. Se é o instructor da turma
+    if (classData.instructor_id === req.user.id) {
+      console.log('[GET /api/classes/:id] Usuário é o instructor da turma');
+      return res.json(classData);
+    }
+    
+    // 2. Se a turma é pública
+    if (classData.is_public) {
+      console.log('[GET /api/classes/:id] Turma é pública, acesso permitido');
+      return res.json(classData);
+    }
+    
+    // 3. Se o usuário está matriculado na turma
+    const enrollmentCheck = await pool.query(`
+      SELECT * FROM class_enrollments 
+      WHERE class_id = $1 AND user_id = $2 AND status = 'active'
+    `, [id, req.user.id]);
+    
+    if (enrollmentCheck.rows.length > 0) {
+      console.log('[GET /api/classes/:id] Usuário está matriculado na turma');
+      return res.json(classData);
+    }
+    
+    console.log('[GET /api/classes/:id] Acesso negado - usuário não tem permissão');
+    return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    
   } catch (err) {
     console.error('[GET /api/classes/:id] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -1332,29 +1364,81 @@ app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
 app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('[GET /api/classes/:id/enrollments] Buscando matrículas da turma:', id);
+    console.log('[GET /api/classes/:id/enrollments] Usuário:', req.user);
     
-    // Verificar se o usuário tem acesso à turma
-    const accessCheck = await pool.query(`
-      SELECT * FROM user_class_access 
-      WHERE class_id = $1 AND user_id = $2
-    `, [id, req.user.id]);
-    
-    if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
-    }
-    
-    const { rows } = await pool.query(`
-      SELECT 
-        ce.*,
-        p.name as user_name,
-        p.email as user_email
-      FROM class_enrollments ce
-      JOIN profiles p ON ce.user_id = p.id
-      WHERE ce.class_id = $1
-      ORDER BY ce.enrolled_at DESC
+    // Primeiro, buscar a turma para verificar se o usuário é o instructor
+    const classResult = await pool.query(`
+      SELECT instructor_id, is_public FROM classes WHERE id = $1
     `, [id]);
     
-    res.json(rows);
+    if (classResult.rows.length === 0) {
+      console.log('[GET /api/classes/:id/enrollments] Turma não encontrada');
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    const classData = classResult.rows[0];
+    
+    // Verificar se o usuário tem acesso às matrículas
+    // 1. Se é o instructor da turma
+    if (classData.instructor_id === req.user.id) {
+      console.log('[GET /api/classes/:id/enrollments] Usuário é o instructor da turma');
+      const { rows } = await pool.query(`
+        SELECT 
+          ce.*,
+          p.name as student_name,
+          p.email as student_email
+        FROM class_enrollments ce
+        JOIN profiles p ON ce.user_id = p.id
+        WHERE ce.class_id = $1
+        ORDER BY ce.created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    // 2. Se a turma é pública, permitir visualizar matrículas
+    if (classData.is_public) {
+      console.log('[GET /api/classes/:id/enrollments] Turma é pública, acesso permitido');
+      const { rows } = await pool.query(`
+        SELECT 
+          ce.*,
+          p.name as student_name,
+          p.email as student_email
+        FROM class_enrollments ce
+        JOIN profiles p ON ce.user_id = p.id
+        WHERE ce.class_id = $1 AND ce.status = 'active'
+        ORDER BY ce.created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    // 3. Se o usuário está matriculado na turma
+    const enrollmentCheck = await pool.query(`
+      SELECT * FROM class_enrollments 
+      WHERE class_id = $1 AND user_id = $2 AND status = 'active'
+    `, [id, req.user.id]);
+    
+    if (enrollmentCheck.rows.length > 0) {
+      console.log('[GET /api/classes/:id/enrollments] Usuário está matriculado na turma');
+      const { rows } = await pool.query(`
+        SELECT 
+          ce.*,
+          p.name as student_name,
+          p.email as student_email
+        FROM class_enrollments ce
+        JOIN profiles p ON ce.user_id = p.id
+        WHERE ce.class_id = $1 AND ce.status = 'active'
+        ORDER BY ce.created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    console.log('[GET /api/classes/:id/enrollments] Acesso negado - usuário não tem permissão');
+    return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    
   } catch (err) {
     console.error('[GET /api/classes/:id/enrollments] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -1472,29 +1556,66 @@ app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
 app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('[GET /api/classes/:id/content] Buscando conteúdo da turma:', id);
+    console.log('[GET /api/classes/:id/content] Usuário:', req.user);
     
-    // Verificar acesso à turma
-    const accessCheck = await pool.query(`
-      SELECT * FROM user_class_access 
-      WHERE class_id = $1 AND user_id = $2
-    `, [id, req.user.id]);
-    
-    if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
-    }
-    
-    const { rows } = await pool.query(`
-      SELECT 
-        cc.*,
-        p.name as author_name,
-        p.avatar_url as author_avatar
-      FROM class_content cc
-      JOIN profiles p ON cc.author_id = p.id
-      WHERE cc.class_id = $1
-      ORDER BY cc.is_pinned DESC, cc.created_at DESC
+    // Primeiro, buscar a turma para verificar se o usuário é o instructor
+    const classResult = await pool.query(`
+      SELECT instructor_id, is_public FROM classes WHERE id = $1
     `, [id]);
     
-    res.json(rows);
+    if (classResult.rows.length === 0) {
+      console.log('[GET /api/classes/:id/content] Turma não encontrada');
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    const classData = classResult.rows[0];
+    
+    // Verificar se o usuário tem acesso ao conteúdo
+    // 1. Se é o instructor da turma
+    if (classData.instructor_id === req.user.id) {
+      console.log('[GET /api/classes/:id/content] Usuário é o instructor da turma');
+      const { rows } = await pool.query(`
+        SELECT * FROM class_content 
+        WHERE class_id = $1 
+        ORDER BY created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    // 2. Se a turma é pública, permitir visualizar conteúdo
+    if (classData.is_public) {
+      console.log('[GET /api/classes/:id/content] Turma é pública, acesso permitido');
+      const { rows } = await pool.query(`
+        SELECT * FROM class_content 
+        WHERE class_id = $1 AND is_public = true
+        ORDER BY created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    // 3. Se o usuário está matriculado na turma
+    const enrollmentCheck = await pool.query(`
+      SELECT * FROM class_enrollments 
+      WHERE class_id = $1 AND user_id = $2 AND status = 'active'
+    `, [id, req.user.id]);
+    
+    if (enrollmentCheck.rows.length > 0) {
+      console.log('[GET /api/classes/:id/content] Usuário está matriculado na turma');
+      const { rows } = await pool.query(`
+        SELECT * FROM class_content 
+        WHERE class_id = $1 
+        ORDER BY created_at DESC
+      `, [id]);
+      
+      return res.json(rows);
+    }
+    
+    console.log('[GET /api/classes/:id/content] Acesso negado - usuário não tem permissão');
+    return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    
   } catch (err) {
     console.error('[GET /api/classes/:id/content] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -1715,4 +1836,53 @@ app.listen(PORT, () => {
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Atualizar turma
+app.put('/api/classes/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, is_public, max_students } = req.body;
+    
+    console.log('[PUT /api/classes/:id] Atualizando turma:', id);
+    console.log('[PUT /api/classes/:id] Dados recebidos:', req.body);
+    console.log('[PUT /api/classes/:id] Usuário:', req.user);
+    
+    // Verificar se a turma existe
+    const classCheck = await pool.query(`
+      SELECT instructor_id FROM classes WHERE id = $1
+    `, [id]);
+    
+    if (classCheck.rows.length === 0) {
+      console.log('[PUT /api/classes/:id] Turma não encontrada');
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    // Verificar se o usuário é o instructor da turma ou admin
+    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      console.log('[PUT /api/classes/:id] Acesso negado - usuário não é instructor da turma');
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode editá-la.' });
+    }
+    
+    // Validar dados obrigatórios
+    if (!name || name.trim().length === 0) {
+      console.log('[PUT /api/classes/:id] Erro: nome da turma não fornecido');
+      return res.status(400).json({ error: 'Nome da turma é obrigatório.' });
+    }
+    
+    // Atualizar turma
+    const { rows } = await pool.query(`
+      UPDATE classes 
+      SET name = $1, description = $2, is_public = $3, max_students = $4, updated_at = now()
+      WHERE id = $5
+      RETURNING *
+    `, [name.trim(), description?.trim() || null, is_public, max_students || null, id]);
+    
+    console.log('[PUT /api/classes/:id] Turma atualizada com sucesso:', rows[0].name);
+    res.json(rows[0]);
+    
+  } catch (err) {
+    console.error('[PUT /api/classes/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
 });

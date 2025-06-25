@@ -98,6 +98,23 @@ WHERE ce.status = 'active' AND c.is_active = true
 
 UNION
 
+-- Incluir o instructor que criou a turma
+SELECT 
+    p.id as user_id,
+    p.name as user_name,
+    p.email as user_email,
+    c.id as class_id,
+    c.name as class_name,
+    c.is_public,
+    'instructor' as user_role,
+    'active' as enrollment_status,
+    p.name as instructor_name
+FROM public.classes c
+JOIN public.profiles p ON c.instructor_id = p.id
+WHERE c.is_active = true
+
+UNION
+
 -- Incluir turmas públicas para todos os usuários
 SELECT 
     u.id as user_id,
