@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
@@ -39,6 +39,12 @@ export function CustomVideoPlayer({
   const [isReady, setIsReady] = useState(false);
   const playerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout>();
+
+  // Custom controls para vídeo nativo
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showControls, setShowControls] = useState(true);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     // Load YouTube API
@@ -166,16 +172,121 @@ export function CustomVideoPlayer({
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  const handlePlayPause = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play();
+    } else {
+      video.pause();
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    setCurrentTime(video.currentTime);
+    if (onProgress && duration > 0) {
+      onProgress((video.currentTime / duration) * 100);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    setDuration(video.duration);
+    setCurrentTime(video.currentTime);
+  };
+
+  const handleFullscreen = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!isFullscreen) {
+      if (video.requestFullscreen) video.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  const handleRateChange = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const rates = [1, 1.25, 1.5, 2];
+    const idx = rates.indexOf(playbackRate);
+    const nextRate = rates[(idx + 1) % rates.length];
+    setPlaybackRate(nextRate);
+    video.playbackRate = nextRate;
+  };
+
+  const handleSkip = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.max(0, Math.min(duration, video.currentTime + seconds));
+    setCurrentTime(video.currentTime);
+  };
+
   if (videoUrl) {
-    // Renderiza vídeo nativo
+    // Renderiza vídeo nativo com controles customizados
     return (
       <Card className="overflow-hidden bg-black">
-        <video
-          src={videoUrl}
-          controls
-          className="w-full h-[400px] bg-black"
-          style={{ objectFit: 'contain' }}
-        />
+        <div className="relative group" onMouseMove={() => setShowControls(true)}>
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="w-full h-[400px] bg-black"
+            style={{ objectFit: 'contain' }}
+            onTimeUpdate={handleTimeUpdate}
+            onLoadedMetadata={handleLoadedMetadata}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onVolumeChange={() => setIsMuted(videoRef.current?.volume === 0)}
+            controls={false}
+            controlsList="nodownload"
+            preload="auto"
+            onContextMenu={e => e.preventDefault()}
+          />
+          {/* Controles customizados */}
+          {showControls && (
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 transition-opacity flex flex-col gap-2">
+              {/* Barra de progresso */}
+              <Slider
+                value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
+                onValueChange={handleSeek}
+                max={100}
+                step={0.1}
+                className="w-full"
+              />
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => handleSkip(-10)}><SkipBack className="w-5 h-5" /></Button>
+                  <Button variant="ghost" size="icon" onClick={handlePlayPause}>
+                    {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleSkip(10)}><SkipForward className="w-5 h-5" /></Button>
+                  <span className="text-xs text-white ml-2">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={toggleMute}>
+                    {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                  </Button>
+                  <Slider
+                    value={[volume * 100]}
+                    onValueChange={handleVolumeChange}
+                    max={100}
+                    step={1}
+                    className="w-20"
+                  />
+                  <Button variant="ghost" size="icon" onClick={handleRateChange} title="Velocidade">
+                    <span className="text-xs text-white">{playbackRate}x</span>
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleFullscreen}><Maximize className="w-5 h-5" /></Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </Card>
     );
   }

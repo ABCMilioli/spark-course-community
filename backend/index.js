@@ -9,7 +9,7 @@ import multer from 'multer';
 import { uploadFile, deleteFile } from './utils/upload.js';
 import { fileURLToPath } from 'url';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
-import { s3Client } from './config/minio.js';
+import { s3Client, getPresignedUrl } from './config/minio.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1951,6 +1951,26 @@ app.post('/api/upload/lesson-video', authenticateToken, upload.single('file'), a
   } catch (err) {
     console.error('[POST /api/upload/lesson-video] Erro:', err);
     res.status(500).json({ error: 'Erro ao fazer upload do vídeo.' });
+  }
+});
+
+// Endpoint para obter URL assinada do vídeo da aula
+app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) => {
+  const { lessonId } = req.params;
+  try {
+    // Buscar a aula no banco
+    const { rows } = await pool.query('SELECT video_url FROM lessons WHERE id = $1', [lessonId]);
+    if (!rows.length || !rows[0].video_url) {
+      return res.status(404).json({ error: 'Vídeo não encontrado para esta aula.' });
+    }
+    // Extrair o caminho do arquivo no bucket
+    const videoPath = rows[0].video_url.replace(/^https?:\/\/[^/]+\/[a-zA-Z0-9_-]+\//, '');
+    // Exemplo: https://meu-minio/bucket/pasta/video.mp4 => pasta/video.mp4
+    const signedUrl = await getPresignedUrl(process.env.MINIO_BUCKET, videoPath, 3600); // 1 hora
+    res.json({ url: signedUrl });
+  } catch (err) {
+    console.error('[GET /api/lessons/:lessonId/video-url]', err);
+    res.status(500).json({ error: 'Erro ao gerar URL assinada.' });
   }
 });
 
