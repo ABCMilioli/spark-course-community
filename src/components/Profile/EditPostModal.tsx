@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast as sonnerToast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Post } from '@/types';
 
@@ -35,19 +35,23 @@ interface EditPostModalProps {
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
-const categories = [
-  { value: 'geral', label: 'Geral' },
-  { value: 'programação', label: 'Programação' },
-  { value: 'design', label: 'Design' },
-  { value: 'tecnologia', label: 'Tecnologia' },
-  { value: 'dúvida', label: 'Dúvida' },
-  { value: 'dica', label: 'Dica' },
-  { value: 'tutorial', label: 'Tutorial' },
-  { value: 'discussão', label: 'Discussão' },
-];
-
 export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) {
   const queryClient = useQueryClient();
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
+  // Buscar categorias existentes
+  const { data: categories, isLoading: isCategoriesLoading } = useQuery({
+    queryKey: ['post-categories'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/posts/categories`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    },
+    enabled: open
+  });
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postSchema),
@@ -60,6 +64,8 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
 
   // Reset form when post changes
   useEffect(() => {
+    setCustomCategory('');
+    setShowCustomInput(false);
     if (post && open) {
       form.reset({
         title: post.title,
@@ -96,8 +102,15 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
   });
 
   const onSubmit = (data: PostFormValues) => {
-    updatePostMutation.mutate(data);
+    const category = showCustomInput ? customCategory.trim() : data.category;
+    updatePostMutation.mutate({ ...data, category });
   };
+
+  useEffect(() => {
+    if (categories) {
+      console.log('[EditPostModal] Categorias carregadas:', categories);
+    }
+  }, [categories]);
 
   if (!post) return null;
 
@@ -127,21 +140,47 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
 
             <div className="space-y-2">
               <label htmlFor="category" className="block text-sm font-medium">Categoria</label>
-              <Select 
-                value={form.watch('category')} 
-                onValueChange={(value) => form.setValue('category', value)}
+              <Select
+                value={showCustomInput ? 'outra' : form.watch('category') || ''}
+                onValueChange={(value) => {
+                  if (value === 'outra') {
+                    setShowCustomInput(true);
+                    setCustomCategory('');
+                    form.setValue('category', '');
+                  } else {
+                    setShowCustomInput(false);
+                    form.setValue('category', value);
+                  }
+                }}
+                disabled={isCategoriesLoading}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma categoria" />
+                  <SelectValue placeholder={isCategoriesLoading ? 'Carregando...' : 'Selecione uma categoria'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category.value} value={category.value}>
-                      {category.label}
-                    </SelectItem>
-                  ))}
+                  {categories && categories.length > 0 ? (
+                    categories
+                      .filter((cat: string) => !!cat && cat.trim() !== '')
+                      .map((cat: string) => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="no-categories" disabled>Nenhuma categoria encontrada</SelectItem>
+                  )}
+                  <SelectItem value="outra">Outra...</SelectItem>
                 </SelectContent>
               </Select>
+              {showCustomInput && (
+                <Input
+                  className="mt-2"
+                  placeholder="Digite uma nova categoria"
+                  value={customCategory}
+                  onChange={e => setCustomCategory(e.target.value)}
+                  maxLength={40}
+                  required
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="space-y-2">

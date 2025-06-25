@@ -393,6 +393,11 @@ export default function PostDetail() {
             <MessageSquare className="w-5 h-5" />
             <span>{post.comments_count || 0}</span>
           </Button>
+
+          <Button variant="ghost" className="gap-2">
+            <Bookmark className="w-5 h-5" />
+            <span>{post.favorites_count || 0}</span>
+          </Button>
         </div>
 
         <div className="flex items-center gap-2">

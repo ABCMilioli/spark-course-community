@@ -200,6 +200,11 @@ export function ProfilePostCard({ post, onEdit }: ProfilePostCardProps) {
                 <MessageSquare className="w-4 h-4" />
                 <span className="text-sm">{post.comments_count || 0}</span>
               </div>
+
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Bookmark className="w-4 h-4" />
+                <span className="text-sm">{post.favorites_count || 0}</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">

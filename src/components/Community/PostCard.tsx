@@ -90,6 +90,11 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
               <MessageSquare className="w-4 h-4" />
               <span className="text-sm">{post.comments_count || 0}</span>
             </Button>
+
+            <Button variant="ghost" size="sm" className="gap-2">
+              <Bookmark className="w-4 h-4" />
+              <span className="text-sm">{post.favorites_count || 0}</span>
+            </Button>
           </div>
 
           <div className="flex items-center gap-2">

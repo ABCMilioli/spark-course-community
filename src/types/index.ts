@@ -18,6 +18,7 @@ export interface Post {
   created_at: string;
   likes_count: number;
   comments_count: number;
+  favorites_count: number;
   category?: string;
   tags?: string[];
   author_name: string;

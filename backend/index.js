@@ -145,7 +145,10 @@ app.get('/api/posts', authenticateToken, async (req, res) => {
     let query = `
       SELECT p.*, 
              u.name as author_name, 
-             u.avatar_url as author_avatar
+             u.avatar_url as author_avatar,
+             (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count,
+             (SELECT COUNT(*) FROM post_favorites pf WHERE pf.post_id = p.id) as favorites_count
       FROM posts p 
       LEFT JOIN profiles u ON p.author_id = u.id 
     `;
@@ -597,6 +600,20 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
   }
 });
 
+// Listar categorias distintas dos posts
+app.get('/api/posts/categories', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT category FROM posts WHERE category IS NOT NULL AND category <> '' ORDER BY category ASC`
+    );
+    const categories = rows.map(r => r.category);
+    res.json(categories);
+  } catch (err) {
+    console.error('[GET /api/posts/categories] Erro:', err);
+    res.status(500).json({ error: 'Erro ao buscar categorias.' });
+  }
+});
+
 // Buscar post específico
 app.get('/api/posts/:id', authenticateToken, async (req, res) => {
   try {
@@ -607,7 +624,10 @@ app.get('/api/posts/:id', authenticateToken, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT p.*, 
              u.name as author_name, 
-             u.avatar_url as author_avatar
+             u.avatar_url as author_avatar,
+             (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count,
+             (SELECT COUNT(*) FROM post_favorites pf WHERE pf.post_id = p.id) as favorites_count
       FROM posts p 
       LEFT JOIN profiles u ON p.author_id = u.id 
       WHERE p.id = $1
@@ -1094,4 +1114,4 @@ app.listen(PORT, () => {
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-}); 
+});
