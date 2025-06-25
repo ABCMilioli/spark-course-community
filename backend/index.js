@@ -83,6 +83,43 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint para atualizar perfil
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, bio, avatar_url } = req.body;
+    
+    // Validações básicas
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Nome e email são obrigatórios.' });
+    }
+    
+    // Verificar se o email já existe (exceto para o usuário atual)
+    const emailCheck = await pool.query(
+      'SELECT id FROM profiles WHERE email = $1 AND id != $2',
+      [email, req.user.id]
+    );
+    
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({ error: 'Este email já está em uso.' });
+    }
+    
+    // Atualizar perfil
+    const { rows } = await pool.query(
+      'UPDATE profiles SET name = $1, email = $2, bio = $3, avatar_url = $4 WHERE id = $5 RETURNING id, name, email, role, bio, avatar_url, created_at',
+      [name, email, bio || null, avatar_url || null, req.user.id]
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/profile] Erro ao atualizar perfil:', err);
+    res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+  }
+});
+
 // Endpoint de cadastro de usuário
 app.post('/api/auth/signup', async (req, res) => {
   const { name, email, password } = req.body;
@@ -100,34 +137,31 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-// Endpoint para posts
+// Endpoint para listar posts
 app.get('/api/posts', authenticateToken, async (req, res) => {
   try {
-    const { author_id, sort, limit = 10 } = req.query;
+    const { author_id } = req.query;
+    
     let query = `
-      SELECT p.*, pr.name as author_name 
+      SELECT p.*, 
+             u.name as author_name, 
+             u.avatar_url as author_avatar
       FROM posts p 
-      JOIN profiles pr ON p.author_id = pr.id 
+      LEFT JOIN profiles u ON p.author_id = u.id 
     `;
     
     const params = [];
     if (author_id) {
+      query += ' WHERE p.author_id = $1';
       params.push(author_id);
-      query += ` WHERE p.author_id = $${params.length}`;
     }
     
-    if (sort === 'likes_count') {
-      query += ` ORDER BY p.likes_count DESC`;
-    } else {
-      query += ` ORDER BY p.created_at DESC`;
-    }
-    
-    query += ` LIMIT ${parseInt(limit)}`;
+    query += ' ORDER BY p.created_at DESC';
     
     const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
-    console.error(err);
+    console.error('[GET /api/posts] Erro ao buscar posts:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
@@ -435,24 +469,32 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para enrollments
+// Endpoint para buscar matrículas do usuário
 app.get('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { user_id } = req.query;
-    const targetUserId = user_id || req.user.id;
     
-    const { rows } = await pool.query(`
-      SELECT e.*, c.title as course_title, c.thumbnail_url, pr.name as instructor_name
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id é obrigatório.' });
+    }
+    
+    const query = `
+      SELECT e.*, 
+             c.title as course_title,
+             c.description as course_description,
+             c.thumbnail_url as course_thumbnail,
+             p.name as instructor_name
       FROM enrollments e
       JOIN courses c ON e.course_id = c.id
-      LEFT JOIN profiles pr ON c.instructor_id = pr.id
+      LEFT JOIN profiles p ON c.instructor_id = p.id
       WHERE e.user_id = $1
       ORDER BY e.enrolled_at DESC
-    `, [targetUserId]);
+    `;
     
+    const { rows } = await pool.query(query, [user_id]);
     res.json(rows);
   } catch (err) {
-    console.error(err);
+    console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
@@ -535,11 +577,6 @@ app.get('/health', (req, res) => {
 // Servir arquivos estáticos do React
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rota catch-all para SPA
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // Endpoint para criar novo curso
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
@@ -557,6 +594,44 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao criar curso.' });
+  }
+});
+
+// Buscar post específico
+app.get('/api/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('[GET /api/posts/:id] Buscando post:', id);
+    console.log('[GET /api/posts/:id] Usuário autenticado:', req.user);
+    
+    const { rows } = await pool.query(`
+      SELECT p.*, 
+             u.name as author_name, 
+             u.avatar_url as author_avatar
+      FROM posts p 
+      LEFT JOIN profiles u ON p.author_id = u.id 
+      WHERE p.id = $1
+    `, [id]);
+    
+    console.log('[GET /api/posts/:id] Resultado da query:', rows);
+    
+    if (rows.length === 0) {
+      console.log('[GET /api/posts/:id] Post não encontrado:', id);
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = rows[0];
+    console.log('[GET /api/posts/:id] Post encontrado:', {
+      id: post.id,
+      title: post.title,
+      author_name: post.author_name,
+      created_at: post.created_at
+    });
+    
+    res.json(post);
+  } catch (err) {
+    console.error('[GET /api/posts/:id] Erro ao buscar post:', err);
+    res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
@@ -704,7 +779,135 @@ app.get('/api/courses-debug', authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint de teste para verificar dados
+app.get('/api/test-data', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test-data] Verificando dados no banco...');
+    
+    // Verificar usuários
+    const usersResult = await pool.query('SELECT id, name, email FROM profiles LIMIT 5');
+    console.log('[GET /api/test-data] Usuários encontrados:', usersResult.rows);
+    
+    // Verificar posts
+    const postsResult = await pool.query('SELECT id, title, author_id FROM posts LIMIT 5');
+    console.log('[GET /api/test-data] Posts encontrados:', postsResult.rows);
+    
+    // Verificar cursos
+    const coursesResult = await pool.query('SELECT id, title, instructor_id FROM courses LIMIT 5');
+    console.log('[GET /api/test-data] Cursos encontrados:', coursesResult.rows);
+    
+    // Verificar matrículas
+    const enrollmentsResult = await pool.query('SELECT id, user_id, course_id FROM enrollments LIMIT 5');
+    console.log('[GET /api/test-data] Matrículas encontradas:', enrollmentsResult.rows);
+    
+    res.json({
+      users: usersResult.rows,
+      posts: postsResult.rows,
+      courses: coursesResult.rows,
+      enrollments: enrollmentsResult.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/test-data] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para criar dados de teste
+app.post('/api/test-data', authenticateToken, async (req, res) => {
+  try {
+    console.log('[POST /api/test-data] Criando dados de teste...');
+    
+    // Verificar se já existem posts
+    const postsCheck = await pool.query('SELECT COUNT(*) as count FROM posts');
+    if (parseInt(postsCheck.rows[0].count) === 0) {
+      console.log('[POST /api/test-data] Criando posts de teste...');
+      
+      // Criar alguns posts de teste
+      const post1Id = crypto.randomUUID();
+      const post2Id = crypto.randomUUID();
+      
+      await pool.query(
+        'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [post1Id, 'Meu primeiro post', 'Este é o conteúdo do meu primeiro post na comunidade!', req.user.id, 'geral', new Date()]
+      );
+      
+      await pool.query(
+        'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [post2Id, 'Dúvida sobre React', 'Alguém pode me ajudar com hooks no React?', req.user.id, 'programação', new Date()]
+      );
+      
+      console.log('[POST /api/test-data] Posts criados com sucesso');
+    }
+    
+    // Verificar se já existem cursos
+    const coursesCheck = await pool.query('SELECT COUNT(*) as count FROM courses');
+    if (parseInt(coursesCheck.rows[0].count) === 0) {
+      console.log('[POST /api/test-data] Criando cursos de teste...');
+      
+      // Criar um curso de teste
+      const courseId = crypto.randomUUID();
+      await pool.query(
+        'INSERT INTO courses (id, title, description, level, price, instructor_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [courseId, 'Curso de React Básico', 'Aprenda os fundamentos do React', 'Iniciante', 99.99, req.user.id, new Date()]
+      );
+      
+      console.log('[POST /api/test-data] Curso criado com sucesso');
+    }
+    
+    // Verificar se já existem matrículas
+    const enrollmentsCheck = await pool.query('SELECT COUNT(*) as count FROM enrollments');
+    if (parseInt(enrollmentsCheck.rows[0].count) === 0) {
+      console.log('[POST /api/test-data] Criando matrículas de teste...');
+      
+      // Buscar um curso para matricular
+      const courseResult = await pool.query('SELECT id FROM courses LIMIT 1');
+      if (courseResult.rows.length > 0) {
+        const enrollmentId = crypto.randomUUID();
+        await pool.query(
+          'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+          [enrollmentId, req.user.id, courseResult.rows[0].id, new Date(), 25]
+        );
+        
+        console.log('[POST /api/test-data] Matrícula criada com sucesso');
+      }
+    }
+    
+    res.json({ message: 'Dados de teste criados com sucesso!' });
+  } catch (err) {
+    console.error('[POST /api/test-data] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint simples para verificar posts
+app.get('/api/posts-check', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT COUNT(*) as count FROM posts');
+    const postsCount = parseInt(rows[0].count);
+    
+    if (postsCount === 0) {
+      // Criar um post de teste
+      const postId = crypto.randomUUID();
+      await pool.query(
+        'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [postId, 'Post de Teste', 'Este é um post de teste criado automaticamente.', req.user.id, 'teste', new Date()]
+      );
+      res.json({ message: 'Post de teste criado', count: 1 });
+    } else {
+      res.json({ message: 'Posts encontrados', count: postsCount });
+    }
+  } catch (err) {
+    console.error('[GET /api/posts-check] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);
+});
+
+// Rota catch-all para SPA (deve ser a última rota)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 }); 

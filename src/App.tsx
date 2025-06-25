@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +16,7 @@ import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Explore from "./pages/Explore";
 import CourseDetail from "./pages/CourseDetail";
+import PostDetail from "./pages/PostDetail";
 import NotFound from "./pages/NotFound";
 import CourseAdmin from "./pages/CourseAdmin";
 
@@ -52,6 +52,7 @@ function AppContent() {
               <Route path="/community" element={<Community />} />
               <Route path="/courses" element={<Courses />} />
               <Route path="/course" element={<CourseDetail />} />
+              <Route path="/post/:postId" element={<PostDetail />} />
               <Route path="/player" element={<VideoPlayer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/explore" element={<Explore />} />

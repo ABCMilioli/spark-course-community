@@ -1,4 +1,3 @@
-
 import { MessageSquare, Heart, Share2, Bookmark, MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { PostWithAuthor } from "@/types";
+import { Post } from "@/types";
 
 interface PostCardProps {
-  post: PostWithAuthor & { isLiked?: boolean }; // isLiked is not in DB yet
+  post: Post & { isLiked?: boolean };
   onLike?: (postId: string) => void;
   onClick?: (postId: string) => void;
 }
@@ -22,16 +21,12 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onLike?.(post.id);
+    onLike?.(post.id.toString());
   };
 
   const handleCardClick = () => {
-    onClick?.(post.id);
+    onClick?.(post.id.toString());
   };
-  
-  const author = post.profiles;
-
-  if (!author) return null;
 
   return (
     <Card 
@@ -42,19 +37,14 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10">
-              <AvatarImage src={author.avatar_url ?? undefined} />
-              <AvatarFallback>{author.name[0]}</AvatarFallback>
+              <AvatarImage src={post.author_avatar ?? undefined} />
+              <AvatarFallback>{post.author_name?.[0] || 'U'}</AvatarFallback>
             </Avatar>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-medium text-sm">{author.name}</p>
-                <Badge 
-                  variant={author.role === 'instructor' ? 'default' : 'secondary'}
-                  className="text-xs"
-                >
-                  {author.role === 'instructor' ? 'Instrutor' : 
-                   author.role === 'admin' ? 'Admin' : 
-                   author.role === 'premium' ? 'Premium' : 'Membro'}
+                <p className="font-medium text-sm">{post.author_name}</p>
+                <Badge variant="secondary" className="text-xs">
+                  Membro
                 </Badge>
               </div>
               <p className="text-xs text-muted-foreground">{timeAgo}</p>
@@ -76,31 +66,29 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
           </p>
         </div>
 
-        {/* Tags */}
-        <div className="flex flex-wrap gap-1">
-          {post.tags?.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              #{tag}
+        {post.category && (
+          <div className="flex flex-wrap gap-1">
+            <Badge variant="outline" className="text-xs">
+              #{post.category}
             </Badge>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* Actions */}
         <div className="flex items-center justify-between pt-2 border-t border-border/50">
           <div className="flex items-center gap-4">
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={handleLike}
-              className={`gap-2 text-muted-foreground`} // Removed like state color
+              className="gap-2 text-muted-foreground"
             >
-              <Heart className={`w-4 h-4`} />
-              <span className="text-sm">{post.likes_count}</span>
+              <Heart className="w-4 h-4" />
+              <span className="text-sm">{post.likes_count || 0}</span>
             </Button>
             
             <Button variant="ghost" size="sm" className="gap-2">
               <MessageSquare className="w-4 h-4" />
-              <span className="text-sm">{post.comments_count}</span>
+              <span className="text-sm">{post.comments_count || 0}</span>
             </Button>
           </div>
 
