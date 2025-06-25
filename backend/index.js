@@ -958,6 +958,86 @@ app.get('/api/posts/:id/likes', authenticateToken, async (req, res) => {
   }
 });
 
+// Listar comentários de um post
+app.get('/api/posts/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const { rows } = await pool.query(`
+      SELECT c.*, p.name as author_name, p.avatar_url as author_avatar
+      FROM comments c
+      LEFT JOIN profiles p ON c.user_id = p.id
+      WHERE c.post_id = $1
+      ORDER BY c.created_at ASC
+    `, [postId]);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/posts/:id/comments] Erro:', err);
+    res.status(500).json({ error: 'Erro ao buscar comentários.' });
+  }
+});
+
+// Adicionar comentário a um post
+app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    const { content } = req.body;
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Comentário não pode ser vazio.' });
+    }
+    const result = await pool.query(
+      'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING *',
+      [postId, userId, content.trim()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/posts/:id/comments] Erro:', err);
+    res.status(500).json({ error: 'Erro ao adicionar comentário.' });
+  }
+});
+
+// Editar comentário
+app.put('/api/comments/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { content } = req.body;
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Comentário não pode ser vazio.' });
+    }
+    const result = await pool.query(
+      'UPDATE comments SET content = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
+      [content.trim(), id, userId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Comentário não encontrado ou sem permissão.' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/comments/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro ao editar comentário.' });
+  }
+});
+
+// Deletar comentário
+app.delete('/api/comments/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const result = await pool.query(
+      'DELETE FROM comments WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, userId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Comentário não encontrado ou sem permissão.' });
+    }
+    res.json({ message: 'Comentário deletado com sucesso.' });
+  } catch (err) {
+    console.error('[DELETE /api/comments/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro ao deletar comentário.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);
