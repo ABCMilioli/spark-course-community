@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,13 +8,16 @@ import { ArrowLeft, Heart, MessageSquare, Share2, Bookmark } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton';
 import axios from 'axios';
 import { Post } from '@/types';
+import { toast as sonnerToast } from '@/components/ui/sonner';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 export default function PostDetail() {
   const { postId } = useParams<{ postId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
+  // Buscar dados do post
   const { data: post, isLoading, error } = useQuery({
     queryKey: ['post', postId],
     queryFn: async () => {
@@ -30,6 +33,80 @@ export default function PostDetail() {
     enabled: !!postId,
     retry: 1
   });
+
+  // Buscar estado de curtida
+  const { data: likeData, isLoading: isLikeLoading } = useQuery({
+    queryKey: ['post-likes', postId],
+    queryFn: async () => {
+      if (!postId) return { count: 0, likedByUser: false };
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/posts/${postId}/likes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    },
+    enabled: !!postId
+  });
+
+  // Mutations para curtir/descurtir
+  const likeMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      await axios.post(`${API_URL}/posts/${postId}/like`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-likes', postId] });
+    },
+    onError: () => {
+      sonnerToast.error('Erro ao curtir post.');
+    }
+  });
+
+  const unlikeMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/posts/${postId}/like`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-likes', postId] });
+    },
+    onError: () => {
+      sonnerToast.error('Erro ao remover curtida.');
+    }
+  });
+
+  // Handler do botão de curtir
+  const handleLike = () => {
+    if (likeData?.likedByUser) {
+      unlikeMutation.mutate();
+    } else {
+      likeMutation.mutate();
+    }
+  };
+
+  const handleComment = () => {
+    sonnerToast.info('Funcionalidade de comentários em breve!');
+  };
+  const handleShare = () => {
+    const postUrl = window.location.href;
+    if (navigator.share) {
+      navigator.share({
+        title: post?.title,
+        text: post?.content,
+        url: postUrl,
+      });
+    } else {
+      navigator.clipboard.writeText(postUrl);
+      sonnerToast.success('Link do post copiado para a área de transferência!');
+    }
+  };
+  const handleSave = () => {
+    sonnerToast.info('Funcionalidade de salvar post em breve!');
+  };
 
   // Log de erro se houver
   if (error) {
@@ -140,22 +217,28 @@ export default function PostDetail() {
 
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
         <div className="flex items-center gap-6">
-          <Button variant="ghost" className="gap-2">
-            <Heart className="w-5 h-5" />
-            <span>{post.likes_count || 0}</span>
+          <Button
+            variant={likeData?.likedByUser ? 'default' : 'ghost'}
+            className={`gap-2 ${likeMutation.isPending || unlikeMutation.isPending ? 'opacity-50 pointer-events-none' : ''}`}
+            onClick={handleLike}
+            disabled={isLikeLoading}
+            aria-label={likeData?.likedByUser ? 'Descurtir' : 'Curtir'}
+          >
+            <Heart className={`w-5 h-5 ${likeData?.likedByUser ? 'fill-primary text-primary' : ''}`} />
+            <span>{likeData?.count ?? post.likes_count ?? 0}</span>
           </Button>
           
-          <Button variant="ghost" className="gap-2">
+          <Button variant="ghost" className="gap-2" onClick={handleComment}>
             <MessageSquare className="w-5 h-5" />
             <span>{post.comments_count || 0}</span>
           </Button>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={handleShare}>
             <Share2 className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={handleSave}>
             <Bookmark className="w-4 h-4" />
           </Button>
         </div>

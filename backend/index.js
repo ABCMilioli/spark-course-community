@@ -902,6 +902,62 @@ app.get('/api/posts-check', authenticateToken, async (req, res) => {
   }
 });
 
+// Curtir post
+app.post('/api/posts/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    // Tenta inserir, ignora se já existe
+    await pool.query(
+      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [postId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/posts/:id/like] Erro:', err);
+    res.status(500).json({ error: 'Erro ao curtir post.' });
+  }
+});
+
+// Descurtir post
+app.delete('/api/posts/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    await pool.query(
+      'DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/posts/:id/like] Erro:', err);
+    res.status(500).json({ error: 'Erro ao remover curtida.' });
+  }
+});
+
+// Verificar curtidas
+app.get('/api/posts/:id/likes', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    const countResult = await pool.query(
+      'SELECT COUNT(*)::int as count FROM post_likes WHERE post_id = $1',
+      [postId]
+    );
+    const userResult = await pool.query(
+      'SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+    res.json({
+      count: countResult.rows[0].count,
+      likedByUser: userResult.rows.length > 0
+    });
+  } catch (err) {
+    console.error('[GET /api/posts/:id/likes] Erro:', err);
+    res.status(500).json({ error: 'Erro ao buscar curtidas.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);
