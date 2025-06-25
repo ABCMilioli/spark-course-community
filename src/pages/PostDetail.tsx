@@ -60,6 +60,20 @@ export default function PostDetail() {
     enabled: !!postId
   });
 
+  // Buscar estado de favorito
+  const { data: favoriteData, isLoading: isFavoriteLoading } = useQuery({
+    queryKey: ['post-favorite', postId],
+    queryFn: async () => {
+      if (!postId) return { favorited: false };
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/posts/${postId}/favorite`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    },
+    enabled: !!postId
+  });
+
   // Buscar comentários
   const { data: comments, isLoading: isCommentsLoading, error: commentsError } = useQuery({
     queryKey: ['post-comments', postId],
@@ -102,6 +116,39 @@ export default function PostDetail() {
     },
     onError: () => {
       sonnerToast.error('Erro ao remover curtida.');
+    }
+  });
+
+  // Mutations para favoritar/desfavoritar
+  const favoriteMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      await axios.post(`${API_URL}/posts/${postId}/favorite`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-favorite', postId] });
+      sonnerToast.success('Post salvo nos favoritos!');
+    },
+    onError: () => {
+      sonnerToast.error('Erro ao favoritar post.');
+    }
+  });
+
+  const unfavoriteMutation = useMutation({
+    mutationFn: async () => {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/posts/${postId}/favorite`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['post-favorite', postId] });
+      sonnerToast.success('Post removido dos favoritos!');
+    },
+    onError: () => {
+      sonnerToast.error('Erro ao remover dos favoritos.');
     }
   });
 
@@ -179,6 +226,15 @@ export default function PostDetail() {
     }
   };
 
+  // Handler do botão de favoritar
+  const handleFavorite = () => {
+    if (favoriteData?.favorited) {
+      unfavoriteMutation.mutate();
+    } else {
+      favoriteMutation.mutate();
+    }
+  };
+
   const handleComment = () => {
     sonnerToast.info('Funcionalidade de comentários em breve!');
   };
@@ -203,6 +259,14 @@ export default function PostDetail() {
     e.preventDefault();
     if (!comment.trim()) return;
     addCommentMutation.mutate(comment.trim());
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 2) {
+      navigate(-1);
+    } else {
+      navigate('/community');
+    }
   };
 
   // Log de erro se houver
@@ -270,7 +334,7 @@ export default function PostDetail() {
       <div className="mb-6">
         <Button
           variant="ghost"
-          onClick={() => navigate(-1)}
+          onClick={handleBack}
           className="mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -321,7 +385,7 @@ export default function PostDetail() {
             disabled={isLikeLoading}
             aria-label={likeData?.likedByUser ? 'Descurtir' : 'Curtir'}
           >
-            <Heart className={`w-5 h-5 ${likeData?.likedByUser ? 'fill-primary text-primary' : ''}`} />
+            <Heart className={`w-5 h-5 ${likeData?.likedByUser ? 'fill-white text-white' : ''}`} />
             <span>{likeData?.count ?? post.likes_count ?? 0}</span>
           </Button>
           
@@ -335,8 +399,17 @@ export default function PostDetail() {
           <Button variant="ghost" size="sm" onClick={handleShare}>
             <Share2 className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleSave}>
-            <Bookmark className="w-4 h-4" />
+          <Button
+            variant={favoriteData?.favorited ? 'default' : 'ghost'}
+            size="sm"
+            onClick={handleFavorite}
+            disabled={isFavoriteLoading || favoriteMutation.isPending || unfavoriteMutation.isPending}
+            aria-label={favoriteData?.favorited ? 'Remover dos favoritos' : 'Salvar nos favoritos'}
+            className={
+              (favoriteMutation.isPending || unfavoriteMutation.isPending ? 'opacity-50 pointer-events-none' : '')
+            }
+          >
+            <Bookmark className={`w-4 h-4 ${favoriteData?.favorited ? 'fill-white text-white' : ''}`} />
           </Button>
         </div>
       </div>

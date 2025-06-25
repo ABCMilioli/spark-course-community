@@ -1038,6 +1038,54 @@ app.delete('/api/comments/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Favoritar post
+app.post('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    await pool.query(
+      'INSERT INTO post_favorites (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [postId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/posts/:id/favorite] Erro:', err);
+    res.status(500).json({ error: 'Erro ao favoritar post.' });
+  }
+});
+
+// Remover dos favoritos
+app.delete('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    await pool.query(
+      'DELETE FROM post_favorites WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/posts/:id/favorite] Erro:', err);
+    res.status(500).json({ error: 'Erro ao remover dos favoritos.' });
+  }
+});
+
+// Verificar se o usuário favoritou
+app.get('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    const result = await pool.query(
+      'SELECT 1 FROM post_favorites WHERE post_id = $1 AND user_id = $2',
+      [postId, userId]
+    );
+    res.json({ favorited: result.rows.length > 0 });
+  } catch (err) {
+    console.error('[GET /api/posts/:id/favorite] Erro:', err);
+    res.status(500).json({ error: 'Erro ao verificar favorito.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);
