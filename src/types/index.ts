@@ -37,6 +37,7 @@ export interface Course {
   description: string;
   instructor_id: number;
   thumbnail_url?: string;
+  thumbnail?: string;
   price: number;
   created_at: string;
   updated_at: string;
@@ -45,6 +46,8 @@ export interface Course {
   enrollment_count: number;
   rating: number;
   rating_count: number;
+  category?: string;
+  level?: string;
 }
 
 export interface CourseWithInstructor extends Course {
@@ -70,6 +73,7 @@ export interface Module {
   title: string;
   description?: string;
   order_index: number;
+  is_visible: boolean;
   lessons: Lesson[];
 }
 
@@ -82,6 +86,8 @@ export interface Lesson {
   duration?: number;
   order_index: number;
   is_free: boolean;
+  is_visible: boolean;
+  release_days: number;
 }
 
 export interface Comment {

@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { toast as sonnerToast } from 'sonner';
 import axios from 'axios';
 
@@ -21,8 +23,11 @@ const courseSchema = z.object({
   description: z.string().min(10, { message: 'A descrição deve ter pelo menos 10 caracteres.' }),
   category: z.string().min(3, { message: 'A categoria deve ter pelo menos 3 caracteres.' }),
   level: z.string().min(3, { message: 'O nível é obrigatório.' }),
-  price: z.string().min(1, { message: 'O preço é obrigatório.' }),
-  thumbnail: z.string().url({ message: 'URL da imagem inválida.' }),
+  isPaid: z.boolean(),
+  price: z.string(),
+  thumbnail: z.string().refine((val) => !val || val === '' || /^https?:\/\/.+/.test(val), {
+    message: 'URL da imagem inválida.'
+  }).optional(),
 });
 
 type CourseFormValues = z.infer<typeof courseSchema>;
@@ -43,23 +48,37 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
       description: '',
       category: '',
       level: '',
-      price: '',
+      isPaid: false,
+      price: '0',
       thumbnail: ''
     },
   });
 
+  const isPaid = form.watch('isPaid');
+
   useEffect(() => {
     if (open && initialData) {
+      const price = initialData.price || '0';
+      const isPaid = parseFloat(price) > 0;
       form.reset({
         title: initialData.title || '',
         description: initialData.description || '',
         category: initialData.category || '',
         level: initialData.level || '',
-        price: initialData.price || '',
+        isPaid: isPaid,
+        price: price,
         thumbnail: initialData.thumbnail || ''
       });
     } else if (open && !initialData) {
-      form.reset({ title: '', description: '', category: '', level: '', price: '', thumbnail: '' });
+      form.reset({ 
+        title: '', 
+        description: '', 
+        category: '', 
+        level: '', 
+        isPaid: false, 
+        price: '0', 
+        thumbnail: '' 
+      });
     }
     // eslint-disable-next-line
   }, [open, initialData]);
@@ -68,14 +87,28 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
 
   const onSubmit = async (data: CourseFormValues) => {
     try {
+      // Validação adicional do preço
+      if (data.isPaid && (!data.price || parseFloat(data.price) <= 0)) {
+        sonnerToast.error('Para cursos pagos, o preço deve ser maior que zero.');
+        return;
+      }
+
+      // Se não é pago, definir preço como 0
+      const finalPrice = data.isPaid ? parseFloat(data.price) : 0;
+
+      const courseData = {
+        ...data,
+        price: finalPrice
+      };
+
       const token = localStorage.getItem('token');
       if (isEdit && initialData?.id) {
-        await axios.put(`${API_URL}/courses/${initialData.id}`, data, {
+        await axios.put(`${API_URL}/courses/${initialData.id}`, courseData, {
           headers: { Authorization: `Bearer ${token}` }
         });
         sonnerToast.success('Curso editado com sucesso!');
       } else {
-        await axios.post(`${API_URL}/courses`, data, {
+        await axios.post(`${API_URL}/courses`, courseData, {
           headers: { Authorization: `Bearer ${token}` }
         });
         sonnerToast.success('Curso criado com sucesso!');
@@ -120,13 +153,48 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
             <Input id="level" {...form.register('level')} placeholder="Iniciante, Intermediário, Avançado" />
             <span className="text-xs text-destructive">{form.formState.errors.level?.message}</span>
           </div>
-          <div className="space-y-2">
-            <label htmlFor="price" className="block text-sm font-medium">Preço (R$)</label>
-            <Input id="price" type="number" {...form.register('price')} placeholder="197" min="0" step="0.01" />
-            <span className="text-xs text-destructive">{form.formState.errors.price?.message}</span>
+          
+          {/* Toggle para curso pago/gratuito */}
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="isPaid"
+              checked={isPaid}
+              onCheckedChange={(checked) => {
+                form.setValue('isPaid', checked);
+                if (!checked) {
+                  form.setValue('price', '0');
+                }
+              }}
+            />
+            <Label htmlFor="isPaid" className="text-sm font-medium">
+              Curso Pago
+            </Label>
           </div>
+          
           <div className="space-y-2">
-            <label htmlFor="thumbnail" className="block text-sm font-medium">URL da Imagem</label>
+            <label htmlFor="price" className="block text-sm font-medium">
+              Preço (R$) {!isPaid && <span className="text-muted-foreground">- Gratuito</span>}
+            </label>
+            <Input 
+              id="price" 
+              type="number" 
+              {...form.register('price')} 
+              placeholder={isPaid ? "197.00" : "0.00"} 
+              min="0" 
+              step="0.01"
+              disabled={!isPaid}
+              className={!isPaid ? "opacity-50" : ""}
+            />
+            <span className="text-xs text-destructive">{form.formState.errors.price?.message}</span>
+            {isPaid && (
+              <p className="text-xs text-muted-foreground">
+                Defina um preço maior que zero para cursos pagos.
+              </p>
+            )}
+          </div>
+          
+          <div className="space-y-2">
+            <label htmlFor="thumbnail" className="block text-sm font-medium">URL da Imagem (opcional)</label>
             <Input id="thumbnail" {...form.register('thumbnail')} placeholder="https://exemplo.com/imagem.jpg" />
             <span className="text-xs text-destructive">{form.formState.errors.thumbnail?.message}</span>
           </div>

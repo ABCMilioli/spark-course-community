@@ -101,7 +101,7 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
           
           {!showProgress && (
             <div className="flex items-center gap-1 font-semibold text-primary">
-              <span>R$ {course.price}</span>
+              <span>R$ {Number(course.price).toFixed(2)}</span>
             </div>
           )}
         </div>

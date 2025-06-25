@@ -10,7 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Plus, Trash2, ArrowLeft } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Plus, Trash2, ArrowLeft, Eye, EyeOff, Calendar } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { CourseForAdmin, Profile } from '@/types';
@@ -34,11 +36,14 @@ const lessonSchema = z.object({
   duration: z.string().min(4, "A duração deve ser no formato (ex: 10 min)."),
   youtube_id: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
+  is_visible: z.boolean().default(true),
+  release_days: z.number().min(0, "Dias de liberação deve ser 0 ou maior.").default(0),
 });
 
 const moduleSchema = z.object({
   id: z.string(),
   title: z.string().min(3, "O título do módulo deve ter pelo menos 3 caracteres."),
+  is_visible: z.boolean().default(true),
   lessons: z.array(lessonSchema),
 });
 
@@ -188,12 +193,15 @@ export default function CourseAdmin() {
         modules: course.modules?.map(module => ({
           ...module,
           title: module.title || '',
+          is_visible: module.is_visible !== undefined ? module.is_visible : true,
           lessons: module.lessons?.map(lesson => ({
             ...lesson,
             title: lesson.title || '',
             duration: lesson.duration || '',
             youtube_id: lesson.youtube_id || '',
             description: lesson.description || '',
+            is_visible: lesson.is_visible !== undefined ? lesson.is_visible : true,
+            release_days: lesson.release_days !== undefined ? lesson.release_days : 0,
           })) || []
         })) || []
       });
@@ -297,7 +305,12 @@ export default function CourseAdmin() {
                           saveCourseMutation={saveCourseMutation}
                         />
                     ))}
-                    <Button type="button" variant="outline" className="mt-4" onClick={() => appendModule({ id: `new-module-${Date.now()}`, title: '', lessons: [] })}>
+                    <Button type="button" variant="outline" className="mt-4" onClick={() => appendModule({ 
+                      id: `new-module-${Date.now()}`, 
+                      title: '', 
+                      is_visible: true,
+                      lessons: [] 
+                    })}>
                         <Plus className="mr-2 h-4 w-4" /> Adicionar Módulo
                     </Button>
                 </CardContent>
@@ -397,12 +410,28 @@ function ModuleField({
             <AccordionItem value={`item-${moduleIndex}`} className="border-none">
                 <div className="flex items-center justify-between">
                     <AccordionTrigger className="flex-1">
-                        <FormField control={form.control} name={`modules.${moduleIndex}.title`} render={({ field }) => (
-                            <FormItem className="w-full pr-4">
-                                <FormControl><Input placeholder="Título do Módulo" {...field} className="text-base font-semibold" /></FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
+                        <div className="flex items-center gap-3 w-full pr-4">
+                            <FormField control={form.control} name={`modules.${moduleIndex}.title`} render={({ field }) => (
+                                <FormItem className="flex-1">
+                                    <FormControl><Input placeholder="Título do Módulo" {...field} className="text-base font-semibold" /></FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                            <FormField control={form.control} name={`modules.${moduleIndex}.is_visible`} render={({ field }) => (
+                                <FormItem className="flex items-center space-x-2">
+                                    <FormControl>
+                                        <Switch
+                                            checked={field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                    <Label className="text-sm flex items-center gap-1">
+                                        {field.value ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                        {field.value ? 'Visível' : 'Oculto'}
+                                    </Label>
+                                </FormItem>
+                            )} />
+                        </div>
                     </AccordionTrigger>
                     <Button type="button" variant="ghost" size="icon" onClick={() => confirmDeleteModule(moduleIndex)} disabled={saveCourseMutation.isPending}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -411,7 +440,7 @@ function ModuleField({
                 <AccordionContent className="space-y-4 pt-4">
                     {lessonFields.map((lesson, lessonIndex) => (
                         <div key={lesson.id} className="flex items-end gap-2 p-3 border rounded-md bg-background">
-                             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 flex-1">
+                             <div className="grid grid-cols-1 md:grid-cols-6 gap-2 flex-1">
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.title`} render={({ field }) => (
                                     <FormItem><FormLabel>Aula</FormLabel><FormControl><Input placeholder="Título da Aula" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
@@ -419,10 +448,45 @@ function ModuleField({
                                     <FormItem><FormLabel>Duração</FormLabel><FormControl><Input placeholder="Ex: 15 min" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.youtube_id`} render={({ field }) => (
-                                    <FormItem><FormLabel>ID do Vídeo do YouTube</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel>ID do Vídeo</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.description`} render={({ field }) => (
                                     <FormItem><FormLabel>Descrição</FormLabel><FormControl><Input placeholder="Descrição da aula" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.is_visible`} render={({ field }) => (
+                                    <FormItem className="flex flex-col space-y-2">
+                                        <FormLabel className="text-sm">Visível</FormLabel>
+                                        <div className="flex items-center space-x-2">
+                                            <FormControl>
+                                                <Switch
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            </FormControl>
+                                            <Label className="text-xs">
+                                                {field.value ? 'Sim' : 'Não'}
+                                            </Label>
+                                        </div>
+                                    </FormItem>
+                                )} />
+                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.release_days`} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel className="text-sm flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" />
+                                            Liberação (dias)
+                                        </FormLabel>
+                                        <FormControl>
+                                            <Input 
+                                                type="number" 
+                                                placeholder="0" 
+                                                min="0"
+                                                {...field} 
+                                                value={field.value ?? 0}
+                                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
                                 )} />
                              </div>
                              <Button type="button" variant="ghost" size="icon" onClick={() => confirmDeleteLesson(moduleIndex, lessonIndex)} disabled={saveCourseMutation.isPending}>
@@ -430,7 +494,15 @@ function ModuleField({
                              </Button>
                         </div>
                     ))}
-                    <Button type="button" variant="outline" size="sm" onClick={() => appendLesson({ id: `new-lesson-${Date.now()}`, title: '', duration: '', youtube_id: '', description: '' })}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => appendLesson({ 
+                      id: `new-lesson-${Date.now()}`, 
+                      title: '', 
+                      duration: '', 
+                      youtube_id: '', 
+                      description: '',
+                      is_visible: true,
+                      release_days: 0
+                    })}>
                         <Plus className="mr-2 h-4 w-4" /> Adicionar Aula
                     </Button>
                 </AccordionContent>

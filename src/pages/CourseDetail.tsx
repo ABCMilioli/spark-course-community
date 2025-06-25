@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Clock, BarChart, User, Star, Users, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ import { CourseWithInstructor, PostWithAuthor } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -23,7 +25,17 @@ async function fetchCourseDetail(courseId: string) {
   return data;
 }
 
+async function checkEnrollment(courseId: string) {
+  const token = localStorage.getItem('token');
+  const { data } = await axios.get(`${API_URL}/enrollments?course_id=${courseId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return data;
+}
+
 export default function CourseDetail() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { courseId } = useParams<{ courseId: string }>();
 
   const { data: course, isLoading: isLoadingCourse, error } = useQuery({
@@ -32,15 +44,56 @@ export default function CourseDetail() {
     enabled: !!courseId,
   });
 
+  const { data: enrollment, isLoading: isLoadingEnrollment } = useQuery({
+    queryKey: ['course-enrollment', courseId],
+    queryFn: () => checkEnrollment(courseId),
+    enabled: !!courseId,
+  });
+
+  // Verificar se o usuário está matriculado neste curso
+  const userEnrollment = enrollment?.find((e: any) => e.user_id === user?.id);
+  const isEnrolled = !!userEnrollment;
+
+  const handleEnrollClick = async () => {
+    if (!course) return;
+
+    if (isEnrolled) {
+      // Se já está matriculado, ir para o player
+      navigate(`/player?courseId=${courseId}`);
+      return;
+    }
+
+    if (Number(course.price) === 0) {
+      // Curso gratuito - matricular direto
+      try {
+        const token = localStorage.getItem('token');
+        await axios.post(`${API_URL}/enrollments`, {
+          course_id: courseId,
+          user_id: user?.id
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        toast.success('Matrícula realizada com sucesso!');
+        navigate(`/player?courseId=${courseId}`);
+      } catch (error) {
+        console.error('Erro ao matricular:', error);
+        toast.error('Erro ao realizar matrícula');
+      }
+    } else {
+      // Curso pago - ir para página de pagamento
+      navigate(`/payment?courseId=${courseId}`);
+    }
+  };
+
   // Example: fetch related posts
   const { data: posts, isLoading: isLoadingPosts } = useQuery<PostWithAuthor[]>({
     queryKey: ['course-posts', courseId],
     queryFn: async () => {
       // This logic is a placeholder. You'd likely filter posts by a course tag or category.
-      const { data, error } = await axios.get(`${API_URL}/posts`, {
+      const { data } = await axios.get(`${API_URL}/posts`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      if (error) throw error;
       return data;
     },
     enabled: !!courseId,
@@ -134,7 +187,17 @@ export default function CourseDetail() {
           <div className="space-y-6">
             <Card className="overflow-hidden">
               <CardContent className="p-6">
-                <Button className="w-full mb-4">Inscreva-se Agora - R${course.price}</Button>
+                <Button 
+                  onClick={handleEnrollClick}
+                  className="w-full mb-4"
+                  disabled={isLoadingEnrollment}
+                >
+                  {isLoadingEnrollment ? 'Carregando...' : 
+                   isEnrolled ? 'Continuar Curso' : 
+                   Number(course.price) === 0 ? 'Matricular Gratuitamente' : 
+                   `Inscrever Agora - R$${Number(course.price).toFixed(2)}`
+                  }
+                </Button>
                 <div className="text-center text-sm mb-4">
                   <p>Garantia de 30 dias</p>
                 </div>

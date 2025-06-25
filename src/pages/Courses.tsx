@@ -231,7 +231,7 @@ export default function Courses() {
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold text-primary">R$ {course.price}</span>
+                        <span className="text-lg font-bold text-primary">R$ {Number(course.price).toFixed(2)}</span>
                         <Button size="sm">
                           Ver Curso
                         </Button>

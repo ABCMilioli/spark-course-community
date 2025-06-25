@@ -1,5 +1,5 @@
 # 1. Build do frontend (React)
-FROM node:18-alpine AS frontend
+FROM node:18 AS frontend
 WORKDIR /app/frontend
 COPY ./src ./src
 COPY ./public ./public
@@ -10,6 +10,7 @@ COPY ./tailwind.config.ts ./
 COPY ./postcss.config.js ./
 COPY ./components.json ./
 COPY package*.json ./
+# Instalar dependências
 RUN npm install
 RUN npm run build
 

@@ -199,7 +199,9 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
   try {
     const { limit = 10 } = req.query;
     const { rows } = await pool.query(`
-      SELECT c.*, pr.name as instructor_name 
+      SELECT c.*, pr.name as instructor_name,
+             CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+             c.thumbnail_url as thumbnail
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       ORDER BY c.created_at DESC 
@@ -217,7 +219,9 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(`
-      SELECT c.*, pr.name as instructor_name 
+      SELECT c.*, pr.name as instructor_name,
+             CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+             c.thumbnail_url as thumbnail
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       WHERE c.id = $1
@@ -250,7 +254,9 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
     // Buscar dados básicos do curso
     const courseResult = await pool.query(`
       SELECT c.*, pr.name as instructor_name,
-             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students
+             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students,
+             CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+             c.thumbnail_url as thumbnail
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       WHERE c.id = $1
@@ -268,9 +274,9 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
     
     // Buscar módulos e aulas
     const modulesResult = await pool.query(`
-      SELECT m.id, m.title, m.module_order,
+      SELECT m.id, m.title, m.module_order, m.is_visible,
              l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
-             l.youtube_id, l.duration, l.lesson_order
+             l.youtube_id, l.duration, l.lesson_order, l.is_visible as lesson_is_visible, l.release_days
       FROM modules m
       LEFT JOIN lessons l ON l.module_id = m.id
       WHERE m.course_id = $1
@@ -289,6 +295,7 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
           id: row.id,
           title: row.title,
           module_order: row.module_order,
+          is_visible: row.is_visible,
           lessons: []
         };
         modules.push(currentModule);
@@ -301,7 +308,9 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
           description: row.lesson_description,
           youtube_id: row.youtube_id,
           duration: row.duration,
-          lesson_order: row.lesson_order
+          lesson_order: row.lesson_order,
+          is_visible: row.lesson_is_visible,
+          release_days: row.release_days
         });
       }
     });
@@ -358,8 +367,8 @@ app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
           
           // Inserir módulo
           await client.query(
-            'INSERT INTO modules (id, course_id, title, module_order) VALUES ($1, $2, $3, $4)',
-            [moduleId, id, module.title, i + 1]
+            'INSERT INTO modules (id, course_id, title, module_order, is_visible) VALUES ($1, $2, $3, $4, $5)',
+            [moduleId, id, module.title, i + 1, module.is_visible]
           );
           
           // Inserir aulas do módulo
@@ -369,8 +378,8 @@ app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
               const lessonId = crypto.randomUUID();
               
               await client.query(
-                'INSERT INTO lessons (id, module_id, title, description, youtube_id, duration, lesson_order) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-                [lessonId, moduleId, lesson.title, lesson.description || null, lesson.youtube_id || null, lesson.duration, j + 1]
+                'INSERT INTO lessons (id, module_id, title, description, youtube_id, duration, lesson_order, is_visible, release_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+                [lessonId, moduleId, lesson.title, lesson.description || null, lesson.youtube_id || null, lesson.duration, j + 1, lesson.is_visible, lesson.release_days]
               );
             }
           }
@@ -381,7 +390,9 @@ app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
       
       // Retornar dados atualizados
       const updatedCourse = await pool.query(`
-        SELECT c.*, pr.name as instructor_name
+        SELECT c.*, pr.name as instructor_name,
+               CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+               c.thumbnail_url as thumbnail
         FROM courses c 
         LEFT JOIN profiles pr ON c.instructor_id = pr.id 
         WHERE c.id = $1
@@ -419,8 +430,9 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
     
     const { rows } = await pool.query(`
       SELECT c.*, pr.name as instructor_name,
-             m.id as module_id, m.title as module_title, m.module_order,
-             l.id as lesson_id, l.title as lesson_title, l.youtube_id, l.duration, l.lesson_order
+             m.id as module_id, m.title as module_title, m.module_order, m.is_visible as module_is_visible,
+             l.id as lesson_id, l.title as lesson_title, l.youtube_id, l.duration, l.lesson_order, 
+             l.is_visible as lesson_is_visible, l.release_days
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       LEFT JOIN modules m ON m.course_id = c.id
@@ -444,24 +456,42 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
     
     let currentModule = null;
     rows.forEach(row => {
-      if (row.module_id && (!currentModule || currentModule.id !== row.module_id)) {
+      // Só incluir módulos visíveis
+      if (row.module_id && row.module_is_visible && (!currentModule || currentModule.id !== row.module_id)) {
         currentModule = {
           id: row.module_id,
           title: row.module_title,
           module_order: row.module_order,
+          is_visible: row.module_is_visible,
           lessons: []
         };
         course.modules.push(currentModule);
       }
       
-      if (row.lesson_id && currentModule) {
-        currentModule.lessons.push({
-          id: row.lesson_id,
-          title: row.lesson_title,
-          youtube_id: row.youtube_id,
-          duration: row.duration,
-          lesson_order: row.lesson_order
-        });
+      // Só incluir aulas visíveis
+      if (row.lesson_id && row.lesson_is_visible && currentModule) {
+        // Verificar se a aula deve ser liberada baseado na data de matrícula
+        let shouldShowLesson = true;
+        
+        if (row.release_days > 0 && enrollmentCheck.rows.length > 0) {
+          const enrollmentDate = new Date(enrollmentCheck.rows[0].enrolled_at);
+          const releaseDate = new Date(enrollmentDate.getTime() + (row.release_days * 24 * 60 * 60 * 1000));
+          const now = new Date();
+          
+          shouldShowLesson = now >= releaseDate;
+        }
+        
+        if (shouldShowLesson) {
+          currentModule.lessons.push({
+            id: row.lesson_id,
+            title: row.lesson_title,
+            youtube_id: row.youtube_id,
+            duration: row.duration,
+            lesson_order: row.lesson_order,
+            is_visible: row.lesson_is_visible,
+            release_days: row.release_days
+          });
+        }
       }
     });
     
@@ -475,13 +505,13 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
 // Endpoint para buscar matrículas do usuário
 app.get('/api/enrollments', authenticateToken, async (req, res) => {
   try {
-    const { user_id } = req.query;
+    const { user_id, course_id } = req.query;
     
-    if (!user_id) {
-      return res.status(400).json({ error: 'user_id é obrigatório.' });
+    if (!user_id && !course_id) {
+      return res.status(400).json({ error: 'user_id ou course_id é obrigatório.' });
     }
     
-    const query = `
+    let query = `
       SELECT e.*, 
              c.title as course_title,
              c.description as course_description,
@@ -490,11 +520,26 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
       FROM enrollments e
       JOIN courses c ON e.course_id = c.id
       LEFT JOIN profiles p ON c.instructor_id = p.id
-      WHERE e.user_id = $1
-      ORDER BY e.enrolled_at DESC
+      WHERE 1=1
     `;
+    const params = [];
+    let paramIndex = 1;
     
-    const { rows } = await pool.query(query, [user_id]);
+    if (user_id) {
+      query += ` AND e.user_id = $${paramIndex}`;
+      params.push(user_id);
+      paramIndex++;
+    }
+    
+    if (course_id) {
+      query += ` AND e.course_id = $${paramIndex}`;
+      params.push(course_id);
+      paramIndex++;
+    }
+    
+    query += ` ORDER BY e.enrolled_at DESC`;
+    
+    const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
@@ -583,17 +628,39 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Endpoint para criar novo curso
 app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
-    const { title, description, category, level, price, thumbnail } = req.body;
-    if (!title || !description || !level || !price) {
+    const { title, description, category, level, price, thumbnail, isPaid } = req.body;
+    if (!title || !description || !level) {
       return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
     }
+
+    // Validação do preço baseada no tipo de curso
+    let finalPrice = 0;
+    if (isPaid) {
+      if (!price || parseFloat(price) <= 0) {
+        return res.status(400).json({ error: 'Para cursos pagos, o preço deve ser maior que zero.' });
+      }
+      finalPrice = parseFloat(price);
+    }
+
     const id = crypto.randomUUID();
     const created_at = new Date();
+    const thumbnailUrl = thumbnail && thumbnail.trim() !== '' ? thumbnail : null;
+    
     await pool.query(
       'INSERT INTO courses (id, title, description, level, price, thumbnail_url, tags, instructor_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [id, title, description, level, price, thumbnail, category ? [category] : [], req.user.id, created_at]
+      [id, title, description, level, finalPrice, thumbnailUrl, category ? [category] : [], req.user.id, created_at]
     );
-    res.status(201).json({ id, title, description, level, price, thumbnail_url: thumbnail, tags: category ? [category] : [], instructor_id: req.user.id, created_at });
+    res.status(201).json({ 
+      id, 
+      title, 
+      description, 
+      level, 
+      price: finalPrice, 
+      thumbnail_url: thumbnailUrl, 
+      tags: category ? [category] : [], 
+      instructor_id: req.user.id, 
+      created_at 
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao criar curso.' });
@@ -699,13 +766,25 @@ app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
 app.put('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, category, level, price, thumbnail } = req.body;
-    if (!title || !description || !level || !price) {
+    const { title, description, category, level, price, thumbnail, isPaid } = req.body;
+    if (!title || !description || !level) {
       return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
     }
+
+    // Validação do preço baseada no tipo de curso
+    let finalPrice = 0;
+    if (isPaid) {
+      if (!price || parseFloat(price) <= 0) {
+        return res.status(400).json({ error: 'Para cursos pagos, o preço deve ser maior que zero.' });
+      }
+      finalPrice = parseFloat(price);
+    }
+
+    const thumbnailUrl = thumbnail && thumbnail.trim() !== '' ? thumbnail : null;
+
     const result = await pool.query(
       'UPDATE courses SET title = $1, description = $2, level = $3, price = $4, thumbnail_url = $5, tags = $6, instructor_id = $7 WHERE id = $8 RETURNING *',
-      [title, description, level, price, thumbnail, category ? [category] : [], req.user.id, id]
+      [title, description, level, finalPrice, thumbnailUrl, category ? [category] : [], req.user.id, id]
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Curso não encontrado ou sem permissão.' });
@@ -1418,6 +1497,212 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/classes/:id/content] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para busca na página explore
+app.get('/api/explore/search', authenticateToken, async (req, res) => {
+  try {
+    const { q, type, category, level, price } = req.query;
+    
+    let results = {};
+    
+    // Buscar cursos
+    if (!type || type === 'courses') {
+      let courseQuery = `
+        SELECT c.*, pr.name as instructor_name,
+               CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+               c.thumbnail_url as thumbnail
+        FROM courses c 
+        LEFT JOIN profiles pr ON c.instructor_id = pr.id 
+        WHERE 1=1
+      `;
+      const courseParams = [];
+      let paramIndex = 1;
+      
+      if (q) {
+        courseQuery += ` AND (c.title ILIKE $${paramIndex} OR c.description ILIKE $${paramIndex} OR pr.name ILIKE $${paramIndex})`;
+        courseParams.push(`%${q}%`);
+        paramIndex++;
+      }
+      
+      if (category) {
+        courseQuery += ` AND c.tags @> $${paramIndex}`;
+        courseParams.push(`{${category}}`);
+        paramIndex++;
+      }
+      
+      if (level) {
+        courseQuery += ` AND c.level = $${paramIndex}`;
+        courseParams.push(level);
+        paramIndex++;
+      }
+      
+      if (price === 'free') {
+        courseQuery += ` AND c.price = 0`;
+      } else if (price === 'paid') {
+        courseQuery += ` AND c.price > 0`;
+      }
+      
+      courseQuery += ` ORDER BY c.created_at DESC LIMIT 10`;
+      
+      const courseResult = await pool.query(courseQuery, courseParams);
+      results.courses = courseResult.rows;
+    }
+    
+    // Buscar posts
+    if (!type || type === 'posts') {
+      let postQuery = `
+        SELECT p.*, u.name as author_name, u.avatar_url as author_avatar,
+               (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count,
+               (SELECT COUNT(*) FROM post_favorites pf WHERE pf.post_id = p.id) as favorites_count
+        FROM posts p 
+        LEFT JOIN profiles u ON p.author_id = u.id 
+        WHERE 1=1
+      `;
+      const postParams = [];
+      let paramIndex = 1;
+      
+      if (q) {
+        postQuery += ` AND (p.title ILIKE $${paramIndex} OR p.content ILIKE $${paramIndex} OR p.category ILIKE $${paramIndex})`;
+        postParams.push(`%${q}%`);
+        paramIndex++;
+      }
+      
+      if (category) {
+        postQuery += ` AND p.category = $${paramIndex}`;
+        postParams.push(category);
+        paramIndex++;
+      }
+      
+      postQuery += ` ORDER BY p.created_at DESC LIMIT 10`;
+      
+      const postResult = await pool.query(postQuery, postParams);
+      results.posts = postResult.rows;
+    }
+    
+    // Buscar instrutores
+    if (!type || type === 'instructors') {
+      let instructorQuery = `
+        SELECT id, name, email, avatar_url, bio, created_at
+        FROM profiles 
+        WHERE role IN ('instructor', 'admin')
+      `;
+      const instructorParams = [];
+      let paramIndex = 1;
+      
+      if (q) {
+        instructorQuery += ` AND (name ILIKE $${paramIndex} OR bio ILIKE $${paramIndex})`;
+        instructorParams.push(`%${q}%`);
+        paramIndex++;
+      }
+      
+      instructorQuery += ` ORDER BY created_at DESC LIMIT 10`;
+      
+      const instructorResult = await pool.query(instructorQuery, instructorParams);
+      results.instructors = instructorResult.rows;
+    }
+    
+    res.json(results);
+  } catch (err) {
+    console.error('[GET /api/explore/search] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para categorias populares
+app.get('/api/explore/categories', authenticateToken, async (req, res) => {
+  try {
+    // Buscar categorias de cursos
+    const courseCategories = await pool.query(`
+      SELECT DISTINCT unnest(tags) as category, COUNT(*) as count
+      FROM courses 
+      WHERE array_length(tags, 1) > 0
+      GROUP BY unnest(tags)
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+    
+    // Buscar categorias de posts
+    const postCategories = await pool.query(`
+      SELECT category, COUNT(*) as count
+      FROM posts 
+      WHERE category IS NOT NULL AND category <> ''
+      GROUP BY category
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+    
+    res.json({
+      courseCategories: courseCategories.rows,
+      postCategories: postCategories.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/explore/categories] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para criar matrícula
+app.post('/api/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { course_id, user_id } = req.body;
+    
+    if (!course_id || !user_id) {
+      return res.status(400).json({ error: 'course_id e user_id são obrigatórios.' });
+    }
+
+    // Verificar se o curso existe
+    const courseCheck = await pool.query('SELECT id, price FROM courses WHERE id = $1', [course_id]);
+    if (courseCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado.' });
+    }
+
+    const course = courseCheck.rows[0];
+
+    // Verificar se o usuário já está matriculado
+    const existingEnrollment = await pool.query(
+      'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+      [user_id, course_id]
+    );
+
+    if (existingEnrollment.rows.length > 0) {
+      return res.status(400).json({ error: 'Usuário já está matriculado neste curso.' });
+    }
+
+    // Para cursos pagos, verificar se o pagamento foi realizado
+    // Por enquanto, vamos permitir matrícula direta (você pode implementar verificação de pagamento depois)
+    if (course.price > 0) {
+      // Aqui você pode adicionar verificação de pagamento
+      // Por exemplo, verificar se existe um registro de pagamento aprovado
+    }
+
+    // Criar matrícula
+    const enrollmentId = crypto.randomUUID();
+    const enrolledAt = new Date();
+    
+    await pool.query(
+      'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+      [enrollmentId, user_id, course_id, enrolledAt, 0]
+    );
+
+    // Atualizar contador de estudantes no curso
+    await pool.query(
+      'UPDATE courses SET students_count = students_count + 1 WHERE id = $1',
+      [course_id]
+    );
+
+    res.status(201).json({ 
+      id: enrollmentId,
+      user_id,
+      course_id,
+      enrolled_at: enrolledAt,
+      progress: 0
+    });
+  } catch (err) {
+    console.error('[POST /api/enrollments] Erro ao criar matrícula:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
