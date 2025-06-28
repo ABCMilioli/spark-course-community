@@ -650,53 +650,83 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { user_id, course_id } = req.query;
     
-    console.log('[GET /api/enrollments] Buscando matrículas');
-    console.log('[GET /api/enrollments] user_id:', user_id);
-    console.log('[GET /api/enrollments] course_id:', course_id);
-    console.log('[GET /api/enrollments] req.user:', req.user);
-    
     if (!user_id && !course_id) {
       return res.status(400).json({ error: 'user_id ou course_id é obrigatório.' });
     }
     
+    // Buscar as matrículas e dados básicos do curso
     let query = `
       SELECT e.*, 
              c.title as course_title,
              c.description as course_description,
              c.thumbnail_url as course_thumbnail,
              c.instructor_id,
-             p.name as instructor_name
+             c.level,
+             c.price,
+             c.tags
       FROM enrollments e
       JOIN courses c ON e.course_id = c.id
-      LEFT JOIN profiles p ON c.instructor_id = p.id
       WHERE 1=1
     `;
     const params = [];
     let paramIndex = 1;
-    
     if (user_id) {
       query += ` AND e.user_id = $${paramIndex}`;
       params.push(user_id);
       paramIndex++;
     }
-    
     if (course_id) {
       query += ` AND e.course_id = $${paramIndex}`;
       params.push(course_id);
       paramIndex++;
     }
-    
     query += ` ORDER BY e.enrolled_at DESC`;
-    
-    console.log('[GET /api/enrollments] Query:', query);
-    console.log('[GET /api/enrollments] Params:', params);
-    
     const { rows } = await pool.query(query, params);
-    
-    console.log('[GET /api/enrollments] Resultados encontrados:', rows.length);
-    console.log('[GET /api/enrollments] Dados:', rows);
-    
-    res.json(rows);
+
+    // Para cada curso, buscar módulos e aulas e calcular total_lessons e total_duration
+    const results = await Promise.all(rows.map(async (enrollment) => {
+      // Buscar módulos e aulas do curso
+      const modulesQuery = `
+        SELECT m.id as module_id, m.title as module_title, m.module_order,
+               l.id as lesson_id, l.title as lesson_title, l.duration
+        FROM modules m
+        LEFT JOIN lessons l ON l.module_id = m.id
+        WHERE m.course_id = $1
+        ORDER BY m.module_order, l.lesson_order
+      `;
+      const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
+      // Montar estrutura de módulos e aulas
+      const modulesMap = {};
+      moduleRows.forEach(row => {
+        if (!row.module_id) return;
+        if (!modulesMap[row.module_id]) {
+          modulesMap[row.module_id] = { lessons: [] };
+        }
+        if (row.lesson_id) {
+          modulesMap[row.module_id].lessons.push({
+            id: row.lesson_id,
+            title: row.lesson_title,
+            duration: row.duration
+          });
+        }
+      });
+      const modules = Object.values(modulesMap);
+      // Calcular total de aulas e duração
+      const total_lessons = modules.reduce((total, m) => total + m.lessons.length, 0);
+      const total_duration = modules.reduce((total, m) => {
+        return total + m.lessons.reduce((sum, lesson) => {
+          const duration = lesson.duration ? parseInt(lesson.duration) || 0 : 0;
+          return sum + duration;
+        }, 0);
+      }, 0);
+      return {
+        ...enrollment,
+        total_lessons,
+        total_duration
+      };
+    }));
+
+    res.json(results);
   } catch (err) {
     console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -2601,4 +2631,172 @@ app.listen(PORT, () => {
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Endpoint para buscar estatísticas de um curso
+app.get('/api/courses/:courseId/stats', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    
+    console.log('[GET /api/courses/:courseId/stats] Buscando estatísticas do curso:', courseId);
+    
+    const query = `
+      SELECT 
+        (SELECT COUNT(*) FROM lessons l JOIN modules m ON l.module_id = m.id WHERE m.course_id = $1) as total_lessons,
+        (SELECT COALESCE(SUM(CASE WHEN l.duration ~ '^[0-9]+' THEN CAST(l.duration AS INTEGER) ELSE 0 END), 0)
+         FROM lessons l JOIN modules m ON l.module_id = m.id WHERE m.course_id = $1) as total_duration,
+        (SELECT COUNT(*) FROM enrollments WHERE course_id = $1) as enrolled_students_count
+    `;
+    
+    const { rows } = await pool.query(query, [courseId]);
+    
+    console.log('[GET /api/courses/:courseId/stats] Resultado:', rows[0]);
+    
+    res.json(rows[0] || { total_lessons: 0, total_duration: 0, enrolled_students_count: 0 });
+  } catch (err) {
+    console.error('[GET /api/courses/:courseId/stats] Erro ao buscar estatísticas:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para buscar matrículas do usuário
+app.get('/api/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, course_id } = req.query;
+    
+    if (!user_id && !course_id) {
+      return res.status(400).json({ error: 'user_id ou course_id é obrigatório.' });
+    }
+    
+    // Buscar as matrículas e dados básicos do curso
+    let query = `
+      SELECT e.*, 
+             c.title as course_title,
+             c.description as course_description,
+             c.thumbnail_url as course_thumbnail,
+             c.instructor_id,
+             c.level,
+             c.price,
+             c.tags
+      FROM enrollments e
+      JOIN courses c ON e.course_id = c.id
+      WHERE 1=1
+    `;
+    const params = [];
+    let paramIndex = 1;
+    if (user_id) {
+      query += ` AND e.user_id = $${paramIndex}`;
+      params.push(user_id);
+      paramIndex++;
+    }
+    if (course_id) {
+      query += ` AND e.course_id = $${paramIndex}`;
+      params.push(course_id);
+      paramIndex++;
+    }
+    query += ` ORDER BY e.enrolled_at DESC`;
+    const { rows } = await pool.query(query, params);
+
+    // Para cada curso, buscar módulos e aulas e calcular total_lessons e total_duration
+    const results = await Promise.all(rows.map(async (enrollment) => {
+      // Buscar módulos e aulas do curso
+      const modulesQuery = `
+        SELECT m.id as module_id, m.title as module_title, m.module_order,
+               l.id as lesson_id, l.title as lesson_title, l.duration
+        FROM modules m
+        LEFT JOIN lessons l ON l.module_id = m.id
+        WHERE m.course_id = $1
+        ORDER BY m.module_order, l.lesson_order
+      `;
+      const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
+      // Montar estrutura de módulos e aulas
+      const modulesMap = {};
+      moduleRows.forEach(row => {
+        if (!row.module_id) return;
+        if (!modulesMap[row.module_id]) {
+          modulesMap[row.module_id] = { lessons: [] };
+        }
+        if (row.lesson_id) {
+          modulesMap[row.module_id].lessons.push({
+            id: row.lesson_id,
+            title: row.lesson_title,
+            duration: row.duration
+          });
+        }
+      });
+      const modules = Object.values(modulesMap);
+      // Calcular total de aulas e duração
+      const total_lessons = modules.reduce((total, m) => total + m.lessons.length, 0);
+      const total_duration = modules.reduce((total, m) => {
+        return total + m.lessons.reduce((sum, lesson) => {
+          const duration = lesson.duration ? parseInt(lesson.duration) || 0 : 0;
+          return sum + duration;
+        }, 0);
+      }, 0);
+      return {
+        ...enrollment,
+        total_lessons,
+        total_duration
+      };
+    }));
+
+    res.json(results);
+  } catch (err) {
+    console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint de debug para verificar estrutura das tabelas
+app.get('/api/debug/tables', authenticateToken, async (req, res) => {
+  try {
+    console.log('[DEBUG] Verificando estrutura das tabelas...');
+    
+    // Verificar se a tabela enrollments existe
+    const enrollmentsCheck = await pool.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'enrollments'
+      ORDER BY ordinal_position
+    `);
+    
+    // Verificar se a tabela courses existe
+    const coursesCheck = await pool.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'courses'
+      ORDER BY ordinal_position
+    `);
+    
+    // Verificar se a tabela profiles existe
+    const profilesCheck = await pool.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'profiles'
+      ORDER BY ordinal_position
+    `);
+    
+    // Verificar se há dados nas tabelas
+    const enrollmentsCount = await pool.query('SELECT COUNT(*) as count FROM enrollments');
+    const coursesCount = await pool.query('SELECT COUNT(*) as count FROM courses');
+    const profilesCount = await pool.query('SELECT COUNT(*) as count FROM profiles');
+    
+    res.json({
+      enrollments: {
+        columns: enrollmentsCheck.rows,
+        count: enrollmentsCount.rows[0].count
+      },
+      courses: {
+        columns: coursesCheck.rows,
+        count: coursesCount.rows[0].count
+      },
+      profiles: {
+        columns: profilesCheck.rows,
+        count: profilesCount.rows[0].count
+      }
+    });
+  } catch (err) {
+    console.error('[DEBUG] Erro ao verificar tabelas:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
 });

@@ -110,30 +110,39 @@ export default function Courses() {
       const { data } = await axios.get(`${API_URL}/enrollments?user_id=${user.id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
+      console.log('API DATA:', data);
       
       return data.map((e: any) => ({ 
         id: e.course_id,
         title: e.course_title,
         description: e.course_description,
         thumbnail_url: e.course_thumbnail,
-        instructor_name: e.instructor_name,
+        instructor_name: 'Instrutor', // Será adicionado depois
         instructor_id: e.instructor_id || '',
-        price: 0,
+        price: e.price || 0,
         created_at: e.enrolled_at,
         updated_at: e.enrolled_at,
         instructor_avatar: undefined,
         enrollment_count: 0,
         rating: 0,
         category: undefined,
-        level: undefined,
+        level: e.level,
+        duration: undefined,
+        students_count: 0,
+        tags: e.tags || [],
+        total_lessons: e.total_lessons,
+        total_duration: e.total_duration,
+        enrolled_students_count: 0,
+        user_rating: undefined,
+        rating_stats: undefined,
         instructor: {
           id: e.instructor_id || '',
-          name: e.instructor_name || '',
+          name: 'Instrutor',
           email: '',
           role: 'instructor' as const,
           created_at: e.enrolled_at
         },
-        progress: e.progress 
+        progress: e.progress || 0
       })) as EnrolledCourse[];
     },
     enabled: !!user,
@@ -209,64 +218,67 @@ export default function Courses() {
               </div>
             ) : filteredEnrolledCourses && filteredEnrolledCourses.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredEnrolledCourses.map((course) => (
-                  <Card key={course.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-                    <div onClick={() => handleContinueCourse(course.id)}>
-                      <CardHeader className="p-0">
-                        <img 
-                          src={course.thumbnail_url || '/placeholder.svg'}
-                          alt={course.title}
-                          className="w-full h-48 object-cover rounded-t-lg"
-                        />
-                      </CardHeader>
-                      
-                      <CardContent className="p-6">
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">{course.level}</Badge>
-                          </div>
-                          
-                          <CardTitle className="text-lg line-clamp-2">{course.title}</CardTitle>
-                          <CardDescription className="line-clamp-2">
-                            {course.description}
-                          </CardDescription>
-                          
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
-                              {course.total_duration ? formatDuration(course.total_duration) : 'Duração não informada'}
+                {filteredEnrolledCourses.map((course) => {
+                  console.log('Card curso:', course);
+                  return (
+                    <Card key={course.id} className="cursor-pointer hover:shadow-lg transition-shadow">
+                      <div onClick={() => handleContinueCourse(course.id)}>
+                        <CardHeader className="p-0">
+                          <img 
+                            src={course.thumbnail_url || '/placeholder.svg'}
+                            alt={course.title}
+                            className="w-full h-48 object-cover rounded-t-lg"
+                          />
+                        </CardHeader>
+                        
+                        <CardContent className="p-6">
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">{course.level}</Badge>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <BookOpen className="w-4 h-4" />
-                              {course.total_lessons || 0} aulas
+                            
+                            <CardTitle className="text-lg line-clamp-2">{course.title}</CardTitle>
+                            <CardDescription className="line-clamp-2">
+                              {course.description}
+                            </CardDescription>
+                            
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-4 h-4" />
+                                {course.total_duration ? formatDuration(course.total_duration) : 'Duração não informada'}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <BookOpen className="w-4 h-4" />
+                                {course.total_lessons || 0} aulas
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center text-sm">
-                              <span>Progresso</span>
-                              <span>{course.progress || 0}%</span>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center text-sm">
+                                <span>Progresso</span>
+                                <span>{course.progress || 0}%</span>
+                              </div>
+                              <Progress value={course.progress || 0} />
                             </div>
-                            <Progress value={course.progress || 0} />
                           </div>
-                        </div>
-                      </CardContent>
-                    </div>
-                    
-                    <div className="px-6 pb-6">
-                      <Button 
-                        className="w-full" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleContinueCourse(course.id);
-                        }}
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        Continuar Curso
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
+                        </CardContent>
+                      </div>
+                      
+                      <div className="px-6 pb-6">
+                        <Button 
+                          className="w-full" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleContinueCourse(course.id);
+                          }}
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Continuar Curso
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             ) : (
               <Card>
