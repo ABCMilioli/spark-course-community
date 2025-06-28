@@ -18,8 +18,25 @@ declare global {
   interface Window {
     YT: any;
     onYouTubeIframeAPIReady: () => void;
+    Vimeo: any;
   }
 }
+
+// Função para detectar se é uma URL do Vimeo
+const isVimeoUrl = (url: string): boolean => {
+  return url.includes('vimeo.com/') || url.includes('player.vimeo.com/');
+};
+
+// Função para extrair o ID do Vimeo
+const getVimeoId = (url: string): string | null => {
+  if (url.includes('vimeo.com/')) {
+    return url.split('vimeo.com/')[1]?.split('?')[0] || null;
+  }
+  if (url.includes('player.vimeo.com/video/')) {
+    return url.split('player.vimeo.com/video/')[1]?.split('?')[0] || null;
+  }
+  return null;
+};
 
 export function CustomVideoPlayer({ 
   youtubeId, 
@@ -37,6 +54,7 @@ export function CustomVideoPlayer({
   const [volume, setVolume] = useState(50);
   const [isMuted, setIsMuted] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [playerType, setPlayerType] = useState<'youtube' | 'vimeo' | 'native' | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout>();
 
@@ -46,19 +64,48 @@ export function CustomVideoPlayer({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Determinar tipo de player
   useEffect(() => {
-    // Load YouTube API
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-      window.onYouTubeIframeAPIReady = () => {
-        initializePlayer();
-      };
+    if (youtubeId) {
+      setPlayerType('youtube');
+    } else if (videoUrl && isVimeoUrl(videoUrl)) {
+      setPlayerType('vimeo');
+    } else if (videoUrl) {
+      setPlayerType('native');
     } else {
-      initializePlayer();
+      setPlayerType(null);
+    }
+  }, [youtubeId, videoUrl]);
+
+  useEffect(() => {
+    if (playerType === 'youtube') {
+      // Load YouTube API
+      if (!window.YT) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+        window.onYouTubeIframeAPIReady = () => {
+          initializeYouTubePlayer();
+        };
+      } else {
+        initializeYouTubePlayer();
+      }
+    } else if (playerType === 'vimeo') {
+      // Load Vimeo API
+      if (!window.Vimeo) {
+        const tag = document.createElement('script');
+        tag.src = 'https://player.vimeo.com/api/player.js';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+        
+        tag.onload = () => {
+          initializeVimeoPlayer();
+        };
+      } else {
+        initializeVimeoPlayer();
+      }
     }
 
     return () => {
@@ -66,10 +113,10 @@ export function CustomVideoPlayer({
         clearInterval(intervalRef.current);
       }
     };
-  }, [youtubeId]);
+  }, [playerType, youtubeId, videoUrl]);
 
-  const initializePlayer = () => {
-    if (playerRef.current && window.YT) {
+  const initializeYouTubePlayer = () => {
+    if (playerRef.current && window.YT && youtubeId) {
       const newPlayer = new window.YT.Player(playerRef.current, {
         height: '400',
         width: '100%',
@@ -105,18 +152,74 @@ export function CustomVideoPlayer({
     }
   };
 
-  const startProgressTracking = () => {
-    intervalRef.current = setInterval(() => {
-      if (player) {
-        const current = player.getCurrentTime();
-        setCurrentTime(current);
-        
-        if (duration > 0) {
-          const percentage = (current / duration) * 100;
-          onProgress?.(percentage);
-        }
+  const initializeVimeoPlayer = () => {
+    if (playerRef.current && window.Vimeo && videoUrl) {
+      const vimeoId = getVimeoId(videoUrl);
+      if (!vimeoId) return;
+
+      const iframe = document.createElement('iframe');
+      iframe.src = `https://player.vimeo.com/video/${vimeoId}?h=400&w=100%&controls=0&autopause=0&muted=0`;
+      iframe.width = '100%';
+      iframe.height = '400';
+      iframe.frameBorder = '0';
+      iframe.allow = 'autoplay; fullscreen; picture-in-picture';
+      
+      // Limpar o container
+      if (playerRef.current) {
+        playerRef.current.innerHTML = '';
+        playerRef.current.appendChild(iframe);
       }
-    }, 1000);
+
+      const newPlayer = new window.Vimeo.Player(iframe);
+      
+      newPlayer.ready().then(() => {
+        setPlayer(newPlayer);
+        setIsReady(true);
+        
+        // Obter duração
+        newPlayer.getDuration().then((dur: number) => {
+          setDuration(dur);
+        });
+        
+        // Configurar volume
+        newPlayer.setVolume(volume / 100);
+      });
+
+      // Event listeners do Vimeo
+      newPlayer.on('play', () => {
+        setIsPlaying(true);
+        startProgressTracking();
+      });
+
+      newPlayer.on('pause', () => {
+        setIsPlaying(false);
+        stopProgressTracking();
+      });
+
+      newPlayer.on('timeupdate', (data: { percent: number, seconds: number }) => {
+        setCurrentTime(data.seconds);
+        if (onProgress && duration > 0) {
+          onProgress(data.percent * 100);
+        }
+      });
+    }
+  };
+
+  const startProgressTracking = () => {
+    if (playerType === 'youtube') {
+      intervalRef.current = setInterval(() => {
+        if (player) {
+          const current = player.getCurrentTime();
+          setCurrentTime(current);
+          
+          if (duration > 0) {
+            const percentage = (current / duration) * 100;
+            onProgress?.(percentage);
+          }
+        }
+      }, 1000);
+    }
+    // Para Vimeo, o tracking é feito via event listeners
   };
 
   const stopProgressTracking = () => {
@@ -126,36 +229,65 @@ export function CustomVideoPlayer({
   };
 
   const togglePlay = () => {
-    if (player) {
+    if (!player) return;
+    
+    if (playerType === 'youtube') {
       if (isPlaying) {
         player.pauseVideo();
       } else {
         player.playVideo();
       }
+    } else if (playerType === 'vimeo') {
+      if (isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
     }
   };
 
   const handleSeek = (value: number[]) => {
-    if (player && duration > 0) {
-      const newTime = (value[0] / 100) * duration;
+    if (!player || duration <= 0) return;
+    
+    const newTime = (value[0] / 100) * duration;
+    setCurrentTime(newTime);
+    
+    if (playerType === 'youtube') {
       player.seekTo(newTime);
-      setCurrentTime(newTime);
+    } else if (playerType === 'vimeo') {
+      player.setCurrentTime(newTime);
     }
   };
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
     setVolume(newVolume);
-    if (player) {
+    
+    if (!player) return;
+    
+    if (playerType === 'youtube') {
       player.setVolume(newVolume);
+      setIsMuted(newVolume === 0);
+    } else if (playerType === 'vimeo') {
+      player.setVolume(newVolume / 100);
       setIsMuted(newVolume === 0);
     }
   };
 
   const toggleMute = () => {
-    if (player) {
+    if (!player) return;
+    
+    if (playerType === 'youtube') {
       if (isMuted) {
         player.setVolume(volume);
+        setIsMuted(false);
+      } else {
+        player.setVolume(0);
+        setIsMuted(true);
+      }
+    } else if (playerType === 'vimeo') {
+      if (isMuted) {
+        player.setVolume(volume / 100);
         setIsMuted(false);
       } else {
         player.setVolume(0);
@@ -227,7 +359,7 @@ export function CustomVideoPlayer({
     setCurrentTime(video.currentTime);
   };
 
-  if (videoUrl) {
+  if (videoUrl && playerType === 'native') {
     // Renderiza vídeo nativo com controles customizados
     return (
       <Card className="overflow-hidden bg-black">
@@ -294,7 +426,7 @@ export function CustomVideoPlayer({
   return (
     <Card className="overflow-hidden bg-black">
       <div className="relative">
-        {/* YouTube Player */}
+        {/* YouTube ou Vimeo Player */}
         <div ref={playerRef} className="w-full" />
         
         {/* Custom Controls Overlay */}

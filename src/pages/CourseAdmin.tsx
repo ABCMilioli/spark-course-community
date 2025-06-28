@@ -34,8 +34,10 @@ const lessonSchema = z.object({
   id: z.string(),
   title: z.string().min(3, "O título da aula deve ter pelo menos 3 caracteres."),
   duration: z.string().min(4, "A duração deve ser no formato (ex: 10 min)."),
+  video_type: z.enum(['youtube', 'vimeo', 'upload']).default('youtube'),
   youtube_id: z.string().optional().nullable(),
   video_url: z.string().optional().nullable(),
+  video_file: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   is_visible: z.boolean().default(true),
   release_days: z.number().min(0, "Dias de liberação deve ser 0 ou maior.").default(0),
@@ -202,7 +204,10 @@ export default function CourseAdmin() {
             ...lesson,
             title: lesson.title || '',
             duration: lesson.duration || '',
+            video_type: lesson.video_type || 'youtube',
             youtube_id: lesson.youtube_id || '',
+            video_url: lesson.video_url || '',
+            video_file: lesson.video_file || '',
             description: lesson.description || '',
             is_visible: lesson.is_visible !== undefined ? lesson.is_visible : true,
             release_days: lesson.release_days !== undefined ? lesson.release_days : 0,
@@ -493,37 +498,81 @@ function ModuleField({
                 <AccordionContent className="space-y-4 pt-4">
                     {lessonFields.map((lesson, lessonIndex) => (
                         <div key={lesson.id} className="flex items-end gap-2 p-3 border rounded-md bg-background">
-                             <div className="grid grid-cols-1 md:grid-cols-7 gap-2 flex-1">
+                             <div className="grid grid-cols-1 md:grid-cols-8 gap-2 flex-1">
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.title`} render={({ field }) => (
                                     <FormItem><FormLabel>Aula</FormLabel><FormControl><Input placeholder="Título da Aula" {...field} /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.duration`} render={({ field }) => (
                                     <FormItem><FormLabel>Duração</FormLabel><FormControl><Input placeholder="Ex: 15 min" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                                 )} />
-                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.youtube_id`} render={({ field }) => (
-                                    <FormItem><FormLabel>ID do Vídeo (YouTube)</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                                )} />
-                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.video_url`} render={({ field }) => (
+                                <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.video_type`} render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>Upload de Vídeo</FormLabel>
+                                        <FormLabel>Tipo de Vídeo</FormLabel>
                                         <FormControl>
-                                            <div className="flex items-center gap-2">
-                                                <Input 
-                                                    type="file" 
-                                                    accept="video/*" 
-                                                    onChange={(e) => handleVideoUpload(e, moduleIndex, lessonIndex, field)}
-                                                    disabled={uploadingVideos[`${moduleIndex}-${lessonIndex}`]}
-                                                />
-                                                {uploadingVideos[`${moduleIndex}-${lessonIndex}`] && (
-                                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                                )}
-                                            </div>
+                                            <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value}
+                                            >
+                                                <FormControl><SelectTrigger><SelectValue placeholder="Selecione o tipo de vídeo" /></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="youtube">YouTube</SelectItem>
+                                                    <SelectItem value="vimeo">Vimeo</SelectItem>
+                                                    <SelectItem value="upload">Upload</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
+                                {form.watch(`modules.${moduleIndex}.lessons.${lessonIndex}.video_type`) === 'youtube' && (
+                                    <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.youtube_id`} render={({ field }) => (
+                                        <FormItem><FormLabel>YouTube ID</FormLabel><FormControl><Input placeholder="ex: dQw4w9WgXcQ" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                )}
+                                {form.watch(`modules.${moduleIndex}.lessons.${lessonIndex}.video_type`) === 'vimeo' && (
+                                    <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.video_url`} render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Vimeo URL</FormLabel>
+                                            <FormControl>
+                                                <Input 
+                                                    placeholder="https://vimeo.com/123456789" 
+                                                    {...field} 
+                                                    value={field.value ?? ''}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                )}
+                                {form.watch(`modules.${moduleIndex}.lessons.${lessonIndex}.video_type`) === 'upload' && (
+                                    <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.video_file`} render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Upload Vídeo</FormLabel>
+                                            <FormControl>
+                                                <div className="flex items-center gap-2">
+                                                    <Input 
+                                                        type="file" 
+                                                        accept="video/*" 
+                                                        onChange={(e) => handleVideoUpload(e, moduleIndex, lessonIndex, field)}
+                                                        disabled={uploadingVideos[`${moduleIndex}-${lessonIndex}`]}
+                                                    />
+                                                    {uploadingVideos[`${moduleIndex}-${lessonIndex}`] && (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                )}
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.description`} render={({ field }) => (
-                                    <FormItem><FormLabel>Descrição</FormLabel><FormControl><Input placeholder="Descrição da aula" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                    <FormItem className="col-span-2">
+                                        <FormLabel>Descrição</FormLabel>
+                                        <FormControl>
+                                            <Textarea placeholder="Descrição da aula" {...field} value={field.value ?? ''} className="min-h-[80px]" />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
                                 )} />
                                 <FormField control={form.control} name={`modules.${moduleIndex}.lessons.${lessonIndex}.is_visible`} render={({ field }) => (
                                     <FormItem className="flex flex-col space-y-2">
@@ -570,8 +619,10 @@ function ModuleField({
                       id: `new-lesson-${Date.now()}`, 
                       title: '', 
                       duration: '', 
+                      video_type: 'youtube',
                       youtube_id: '', 
                       video_url: '',
+                      video_file: '',
                       description: '',
                       is_visible: true,
                       release_days: 0
