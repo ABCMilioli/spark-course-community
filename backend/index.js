@@ -476,7 +476,7 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT c.*, pr.name as instructor_name,
              m.id as module_id, m.title as module_title, m.module_order, m.is_visible as module_is_visible,
-             l.id as lesson_id, l.title as lesson_title, l.youtube_id, l.video_url, l.duration, l.lesson_order, 
+             l.id as lesson_id, l.title as lesson_title, l.description as lesson_description, l.youtube_id, l.video_url, l.duration, l.lesson_order, 
              l.is_visible as lesson_is_visible, l.release_days
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
@@ -530,7 +530,7 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
           currentModule.lessons.push({
             id: row.lesson_id,
             title: row.lesson_title,
-            description: row.description,
+            description: row.lesson_description,
             youtube_id: row.youtube_id,
             video_url: row.video_url,
             duration: row.duration,
