@@ -243,7 +243,8 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT c.*, pr.name as instructor_name,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
-             c.thumbnail_url as thumbnail
+             c.thumbnail_url as thumbnail,
+             COALESCE(c.rating, 0) as rating
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       ORDER BY c.created_at DESC 
@@ -266,7 +267,8 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
       SELECT c.*, pr.name as instructor_name, pr.avatar_url as instructor_avatar, pr.bio as instructor_bio, pr.created_at as instructor_created_at,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
              c.thumbnail_url as thumbnail,
-             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students_count
+             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students_count,
+             COALESCE(c.rating, 0) as rating
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       WHERE c.id = $1
@@ -368,7 +370,8 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
       SELECT c.*, pr.name as instructor_name,
              (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
-             c.thumbnail_url as thumbnail
+             c.thumbnail_url as thumbnail,
+             COALESCE(c.rating, 0) as rating
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       WHERE c.id = $1
@@ -2255,6 +2258,334 @@ app.get('/api/notifications/count', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[GET /api/notifications/count]', err);
     res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
+  }
+});
+
+// ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
+
+// Buscar avaliações de um curso
+app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { rows } = await pool.query(`
+      SELECT 
+        cr.id, cr.course_id, cr.user_id, cr.rating, cr.review, cr.created_at, cr.updated_at,
+        p.name as user_name, p.avatar_url as user_avatar, p.role as user_role
+      FROM course_ratings cr
+      JOIN profiles p ON cr.user_id = p.id
+      WHERE cr.course_id = $1
+      ORDER BY cr.created_at DESC
+    `, [courseId]);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/courses/:courseId/ratings]', err);
+    res.status(500).json({ error: 'Erro ao buscar avaliações.' });
+  }
+});
+
+// Buscar estatísticas de avaliações de um curso
+app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { rows } = await pool.query(`
+      SELECT 
+        course_id,
+        COUNT(*) as total_ratings,
+        COALESCE(AVG(rating), 0) as average_rating,
+        COUNT(*) FILTER (WHERE rating = 5) as five_star_count,
+        COUNT(*) FILTER (WHERE rating = 4) as four_star_count,
+        COUNT(*) FILTER (WHERE rating = 3) as three_star_count,
+        COUNT(*) FILTER (WHERE rating = 2) as two_star_count,
+        COUNT(*) FILTER (WHERE rating = 1) as one_star_count,
+        ROUND(
+          (COUNT(*) FILTER (WHERE rating >= 4)::DECIMAL / COUNT(*)::DECIMAL) * 100, 1
+        ) as satisfaction_percentage
+      FROM course_ratings
+      WHERE course_id = $1
+      GROUP BY course_id
+    `, [courseId]);
+    
+    res.json(rows[0] || {
+      course_id: courseId,
+      total_ratings: 0,
+      average_rating: 0,
+      five_star_count: 0,
+      four_star_count: 0,
+      three_star_count: 0,
+      two_star_count: 0,
+      one_star_count: 0,
+      satisfaction_percentage: 0
+    });
+  } catch (err) {
+    console.error('[GET /api/courses/:courseId/rating-stats]', err);
+    res.status(500).json({ error: 'Erro ao buscar estatísticas de avaliação.' });
+  }
+});
+
+// Buscar avaliação do usuário atual para um curso
+app.get('/api/courses/:courseId/my-rating', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        cr.id, cr.course_id, cr.user_id, cr.rating, cr.review, cr.created_at, cr.updated_at,
+        p.name as user_name, p.avatar_url as user_avatar, p.role as user_role
+      FROM course_ratings cr
+      JOIN profiles p ON cr.user_id = p.id
+      WHERE cr.course_id = $1 AND cr.user_id = $2
+    `, [courseId, userId]);
+    
+    res.json(rows[0] || null);
+  } catch (err) {
+    console.error('[GET /api/courses/:courseId/my-rating]', err);
+    res.status(500).json({ error: 'Erro ao buscar avaliação do usuário.' });
+  }
+});
+
+// Criar ou atualizar avaliação de um curso
+app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { rating, review } = req.body;
+    const userId = req.user.id;
+
+    // Validações
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Avaliação deve ser entre 1 e 5 estrelas.' });
+    }
+
+    // Verificar se o curso existe
+    const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
+    if (courseCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado.' });
+    }
+
+    // Verificar se já existe uma avaliação do usuário
+    const existingRating = await pool.query(
+      'SELECT id FROM course_ratings WHERE course_id = $1 AND user_id = $2',
+      [courseId, userId]
+    );
+
+    if (existingRating.rows.length > 0) {
+      // Atualizar avaliação existente
+      await pool.query(
+        'UPDATE course_ratings SET rating = $1, review = $2, updated_at = NOW() WHERE course_id = $3 AND user_id = $4',
+        [rating, review || null, courseId, userId]
+      );
+    } else {
+      // Criar nova avaliação
+      await pool.query(
+        'INSERT INTO course_ratings (course_id, user_id, rating, review) VALUES ($1, $2, $3, $4)',
+        [courseId, userId, rating, review || null]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/courses/:courseId/rate]', err);
+    res.status(500).json({ error: 'Erro ao avaliar curso.' });
+  }
+});
+
+// Deletar avaliação do usuário
+app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const userId = req.user.id;
+
+    const { rowCount } = await pool.query(
+      'DELETE FROM course_ratings WHERE course_id = $1 AND user_id = $2',
+      [courseId, userId]
+    );
+
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Avaliação não encontrada.' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/courses/:courseId/rate]', err);
+    res.status(500).json({ error: 'Erro ao deletar avaliação.' });
+  }
+});
+
+// ===== ENDPOINTS DE EXPLORE E BUSCA =====
+
+// Busca geral
+app.get('/api/explore/search', authenticateToken, async (req, res) => {
+  try {
+    const { q, type, category, level, price } = req.query;
+    const results = { courses: [], posts: [], instructors: [] };
+
+    // Buscar cursos
+    if (!type || type === 'all' || type === 'courses') {
+      let courseQuery = `
+        SELECT c.*, pr.name as instructor_name,
+               CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+               c.thumbnail_url as thumbnail,
+               COALESCE(c.rating, 0) as rating
+        FROM courses c 
+        LEFT JOIN profiles pr ON c.instructor_id = pr.id 
+        WHERE 1=1
+      `;
+      const courseParams = [];
+      let paramIndex = 1;
+
+      if (q) {
+        courseQuery += ` AND (c.title ILIKE $${paramIndex} OR c.description ILIKE $${paramIndex})`;
+        courseParams.push(`%${q}%`);
+        paramIndex++;
+      }
+
+      if (category && category !== 'all') {
+        courseQuery += ` AND c.tags @> $${paramIndex}`;
+        courseParams.push(`{${category}}`);
+        paramIndex++;
+      }
+
+      if (level && level !== 'all') {
+        courseQuery += ` AND c.level = $${paramIndex}`;
+        courseParams.push(level);
+        paramIndex++;
+      }
+
+      if (price && price !== 'all') {
+        if (price === 'free') {
+          courseQuery += ` AND c.price = 0`;
+        } else if (price === 'paid') {
+          courseQuery += ` AND c.price > 0`;
+        }
+      }
+
+      courseQuery += ` ORDER BY c.created_at DESC LIMIT 10`;
+      
+      const courseResult = await pool.query(courseQuery, courseParams);
+      results.courses = courseResult.rows;
+    }
+
+    // Buscar posts
+    if (!type || type === 'all' || type === 'posts') {
+      let postQuery = `
+        SELECT p.*, u.name as author_name, u.avatar_url as author_avatar,
+               (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count
+        FROM posts p 
+        LEFT JOIN profiles u ON p.author_id = u.id 
+        WHERE 1=1
+      `;
+      const postParams = [];
+      let paramIndex = 1;
+
+      if (q) {
+        postQuery += ` AND (p.title ILIKE $${paramIndex} OR p.content ILIKE $${paramIndex})`;
+        postParams.push(`%${q}%`);
+        paramIndex++;
+      }
+
+      if (category && category !== 'all') {
+        postQuery += ` AND p.category = $${paramIndex}`;
+        postParams.push(category);
+        paramIndex++;
+      }
+
+      postQuery += ` ORDER BY p.created_at DESC LIMIT 10`;
+      
+      const postResult = await pool.query(postQuery, postParams);
+      results.posts = postResult.rows;
+    }
+
+    // Buscar instrutores
+    if (!type || type === 'all' || type === 'instructors') {
+      let instructorQuery = `
+        SELECT id, name, email, bio, avatar_url, created_at
+        FROM profiles 
+        WHERE role = 'instructor'
+      `;
+      const instructorParams = [];
+      let paramIndex = 1;
+
+      if (q) {
+        instructorQuery += ` AND (name ILIKE $${paramIndex} OR bio ILIKE $${paramIndex})`;
+        instructorParams.push(`%${q}%`);
+        paramIndex++;
+      }
+
+      instructorQuery += ` ORDER BY created_at DESC LIMIT 10`;
+      
+      const instructorResult = await pool.query(instructorQuery, instructorParams);
+      results.instructors = instructorResult.rows;
+    }
+
+    res.json(results);
+  } catch (err) {
+    console.error('[GET /api/explore/search]', err);
+    res.status(500).json({ error: 'Erro na busca.' });
+  }
+});
+
+// Categorias populares
+app.get('/api/explore/categories', authenticateToken, async (req, res) => {
+  try {
+    // Categorias de cursos
+    const courseCategories = await pool.query(`
+      SELECT 
+        CASE WHEN array_length(tags, 1) > 0 THEN tags[1] ELSE 'Sem categoria' END as category,
+        COUNT(*) as count
+      FROM courses 
+      WHERE tags IS NOT NULL AND array_length(tags, 1) > 0
+      GROUP BY CASE WHEN array_length(tags, 1) > 0 THEN tags[1] ELSE 'Sem categoria' END
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    // Categorias de posts
+    const postCategories = await pool.query(`
+      SELECT 
+        COALESCE(category, 'Sem categoria') as category,
+        COUNT(*) as count
+      FROM posts 
+      GROUP BY category
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      courseCategories: courseCategories.rows,
+      postCategories: postCategories.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/explore/categories]', err);
+    res.status(500).json({ error: 'Erro ao buscar categorias.' });
+  }
+});
+
+// Usuários por role
+app.get('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const { role, limit = 10 } = req.query;
+    
+    let query = `
+      SELECT id, name, email, bio, avatar_url, created_at
+      FROM profiles 
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (role) {
+      query += ` AND role = $1`;
+      params.push(role);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/users]', err);
+    res.status(500).json({ error: 'Erro ao buscar usuários.' });
   }
 });
 

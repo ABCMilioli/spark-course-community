@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CustomVideoPlayer } from '@/components/VideoPlayer/CustomVideoPlayer';
 import { LessonComments } from '@/components/VideoPlayer/LessonComments';
+import { CourseRating } from '@/components/Courses/CourseRating';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Clock, BookOpen, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Clock, BookOpen, CheckCircle, ArrowLeft, Star, MessageSquare } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
@@ -151,7 +153,7 @@ export default function VideoPlayer() {
       <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/course/${courseId}`)}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/course/${String(courseId)}`)}>
               <ArrowLeft className="w-4 h-4 mr-2" />
               Voltar para o curso
             </Button>
@@ -212,8 +214,33 @@ export default function VideoPlayer() {
               )}
             </Card>
 
-            {/* Comentários */}
-            <LessonComments lessonId={currentLesson.id} />
+            {/* Sistema de Comentários e Avaliações */}
+            <Tabs defaultValue="comments" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="comments" className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Comentários da Aula
+                </TabsTrigger>
+                <TabsTrigger value="rating" className="flex items-center gap-2">
+                  <Star className="w-4 h-4" />
+                  Avaliar Curso
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="comments" className="mt-4">
+                <LessonComments lessonId={String(currentLesson.id)} />
+              </TabsContent>
+              
+              <TabsContent value="rating" className="mt-4">
+                <CourseRating 
+                  courseId={String(courseId)} 
+                  onRatingChange={() => {
+                    // Atualizar dados do curso se necessário
+                    queryClient.invalidateQueries({ queryKey: ['course-for-player', courseId] });
+                  }}
+                />
+              </TabsContent>
+            </Tabs>
           </div>
 
           {/* Course Sidebar */}

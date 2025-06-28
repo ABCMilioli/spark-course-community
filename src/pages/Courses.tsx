@@ -49,7 +49,6 @@ export default function Courses() {
         instructor_avatar: undefined,
         enrollment_count: 0,
         rating: 0,
-        rating_count: 0,
         category: undefined,
         level: undefined,
         instructor: {

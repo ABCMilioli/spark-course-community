@@ -26,6 +26,12 @@ async function setupDatabase() {
     // Executar o SQL
     await pool.query(sqlContent);
     
+    // Executar migração de avaliações de cursos
+    console.log('Executando migração de avaliações de cursos...');
+    const courseRatingsSQL = fs.readFileSync('./scripts/setup-course-ratings.sql', 'utf8');
+    await pool.query(courseRatingsSQL);
+    console.log('✅ Migração de avaliações de cursos executada com sucesso');
+    
     console.log('✅ Banco de dados configurado com sucesso!');
     console.log('📋 Tabelas criadas:');
     console.log('   - lesson_comments');

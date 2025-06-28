@@ -45,7 +45,7 @@ export interface Course {
   instructor_avatar?: string;
   enrollment_count: number;
   rating: number;
-  rating_count: number;
+  rating_count?: number;
   category?: string;
   level?: string;
   duration?: string;
@@ -54,6 +54,8 @@ export interface Course {
   total_lessons?: number;
   total_duration?: number;
   enrolled_students_count?: number;
+  user_rating?: number;
+  rating_stats?: CourseRatingStats;
   instructor?: {
     id: string;
     name: string;
@@ -323,4 +325,41 @@ export interface Notification {
 export interface NotificationCount {
   unread_count: number;
   total_count: number;
+}
+
+// Sistema de Avaliações de Cursos
+export interface CourseRating {
+  id: string;
+  course_id: string;
+  user_id: string;
+  rating: number; // 1-5 estrelas
+  review?: string; // Comentário opcional
+  created_at: string;
+  updated_at: string;
+  user_name: string;
+  user_avatar?: string;
+  user_role: string;
+}
+
+export interface CourseRatingStats {
+  course_id: string;
+  total_ratings: number;
+  average_rating: number;
+  five_star_count: number;
+  four_star_count: number;
+  three_star_count: number;
+  two_star_count: number;
+  one_star_count: number;
+  satisfaction_percentage: number;
+}
+
+export interface CreateRatingData {
+  course_id: string;
+  rating: number;
+  review?: string;
+}
+
+export interface UpdateRatingData {
+  rating: number;
+  review?: string;
 }

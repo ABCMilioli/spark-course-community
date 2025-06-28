@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CourseRatingDisplay } from "./CourseRatingDisplay";
 import { CourseWithInstructor } from "@/types";
 
 interface CourseCardProps {
@@ -104,8 +105,10 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
               <span>{course.enrolled_students_count || course.students_count || 0}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              <span>{course.rating || 0}</span>
+              <CourseRatingDisplay 
+                rating={typeof course.rating === 'number' ? course.rating : 0} 
+                size="sm"
+              />
             </div>
             <div className="flex items-center gap-1">
               <BookOpen className="w-4 h-4" />
