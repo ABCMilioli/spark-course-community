@@ -8,7 +8,7 @@ import { CourseRatingDisplay } from "./CourseRatingDisplay";
 import { CourseWithInstructor } from "@/types";
 
 interface CourseCardProps {
-  course: CourseWithInstructor & { progressPercentage?: number }; // progress is not in DB yet
+  course: CourseWithInstructor & { progressPercentage?: number; total_ratings?: number };
   onPlay?: (courseId: string) => void;
   showProgress?: boolean;
 }
@@ -106,7 +106,8 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
             </div>
             <div className="flex items-center gap-1">
               <CourseRatingDisplay 
-                rating={typeof course.rating === 'number' ? course.rating : 0} 
+                rating={typeof course.rating === 'number' ? course.rating : 0}
+                ratingCount={course.total_ratings}
                 size="sm"
               />
             </div>

@@ -244,7 +244,9 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
       SELECT c.*, pr.name as instructor_name,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
              c.thumbnail_url as thumbnail,
-             COALESCE(c.rating, 0) as rating
+             COALESCE(c.rating, 0) as rating,
+             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students_count,
+             (SELECT COUNT(*) FROM lessons l JOIN modules m ON l.module_id = m.id WHERE m.course_id = c.id) as total_lessons
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       ORDER BY c.created_at DESC 
@@ -2290,16 +2292,16 @@ app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, re
     const { rows } = await pool.query(`
       SELECT 
         course_id,
-        COUNT(*) as total_ratings,
-        COALESCE(AVG(rating), 0) as average_rating,
-        COUNT(*) FILTER (WHERE rating = 5) as five_star_count,
-        COUNT(*) FILTER (WHERE rating = 4) as four_star_count,
-        COUNT(*) FILTER (WHERE rating = 3) as three_star_count,
-        COUNT(*) FILTER (WHERE rating = 2) as two_star_count,
-        COUNT(*) FILTER (WHERE rating = 1) as one_star_count,
+        COUNT(*)::int as total_ratings,
+        COALESCE(AVG(rating), 0)::float as average_rating,
+        COUNT(*) FILTER (WHERE rating = 5)::int as five_star_count,
+        COUNT(*) FILTER (WHERE rating = 4)::int as four_star_count,
+        COUNT(*) FILTER (WHERE rating = 3)::int as three_star_count,
+        COUNT(*) FILTER (WHERE rating = 2)::int as two_star_count,
+        COUNT(*) FILTER (WHERE rating = 1)::int as one_star_count,
         ROUND(
           (COUNT(*) FILTER (WHERE rating >= 4)::DECIMAL / COUNT(*)::DECIMAL) * 100, 1
-        ) as satisfaction_percentage
+        )::float as satisfaction_percentage
       FROM course_ratings
       WHERE course_id = $1
       GROUP BY course_id
@@ -2425,7 +2427,9 @@ app.get('/api/explore/search', authenticateToken, async (req, res) => {
         SELECT c.*, pr.name as instructor_name,
                CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
                c.thumbnail_url as thumbnail,
-               COALESCE(c.rating, 0) as rating
+               COALESCE(c.rating, 0) as rating,
+               (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students_count,
+               (SELECT COUNT(*) FROM lessons l JOIN modules m ON l.module_id = m.id WHERE m.course_id = c.id) as total_lessons
         FROM courses c 
         LEFT JOIN profiles pr ON c.instructor_id = pr.id 
         WHERE 1=1

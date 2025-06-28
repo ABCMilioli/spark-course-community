@@ -127,6 +127,38 @@ export default function Explore() {
     enabled: Boolean(!searchQuery && selectedType === 'all' && selectedCategory === 'all' && selectedLevel === 'all' && selectedPrice === 'all'),
   });
 
+  // Hook para buscar estatísticas reais de avaliação
+  function useCourseRatingStats(courseId: string) {
+    return useQuery({
+      queryKey: ['course-rating-stats', courseId],
+      queryFn: async () => {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${API_URL}/courses/${courseId}/rating-stats`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        return res.json();
+      },
+      enabled: !!courseId,
+    });
+  }
+
+  // Componente para encapsular o hook por card
+  function CourseCardWithStats({ course, onPlay }: { course: CourseWithInstructor, onPlay: (id: string) => void }) {
+    const { data: ratingStats } = useCourseRatingStats(course.id);
+    return (
+      <CourseCard
+        course={{
+          ...course,
+          rating: typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating)
+            ? ratingStats.average_rating
+            : 0,
+          total_ratings: ratingStats?.total_ratings || 0
+        }}
+        onPlay={onPlay}
+      />
+    );
+  }
+
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedType('all');
@@ -238,17 +270,10 @@ export default function Explore() {
                   <h2 className="text-2xl font-semibold mb-4">Cursos Encontrados ({searchResults.courses.length})</h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {searchResults.courses.map((course: CourseWithInstructor) => (
-                      <CourseCard 
-                        key={course.id} 
-                        course={{
-                          ...course,
-                          rating: typeof course.rating === 'number' ? course.rating : 0,
-                          total_lessons: typeof course.total_lessons === 'number' ? course.total_lessons : 0,
-                          total_duration: typeof course.total_duration === 'number' ? course.total_duration : 0,
-                          enrolled_students_count: typeof course.enrolled_students_count === 'number' ? course.enrolled_students_count : 0,
-                          students_count: typeof course.students_count === 'number' ? course.students_count : 0
-                        }} 
-                        onPlay={() => handleCourseClick(course.id.toString())} 
+                      <CourseCardWithStats
+                        key={course.id}
+                        course={course}
+                        onPlay={() => handleCourseClick(course.id.toString())}
                       />
                     ))}
                   </div>
@@ -329,17 +354,10 @@ export default function Explore() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {isLoadingCourses && Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-72 w-full" />)}
               {courses?.map((course) => (
-                <CourseCard 
-                  key={course.id} 
-                  course={{
-                    ...course,
-                    rating: typeof course.rating === 'number' ? course.rating : 0,
-                    total_lessons: typeof course.total_lessons === 'number' ? course.total_lessons : 0,
-                    total_duration: typeof course.total_duration === 'number' ? course.total_duration : 0,
-                    enrolled_students_count: typeof course.enrolled_students_count === 'number' ? course.enrolled_students_count : 0,
-                    students_count: typeof course.students_count === 'number' ? course.students_count : 0
-                  }} 
-                  onPlay={() => handleCourseClick(course.id.toString())} 
+                <CourseCardWithStats
+                  key={course.id}
+                  course={course}
+                  onPlay={() => handleCourseClick(course.id.toString())}
                 />
               ))}
             </div>

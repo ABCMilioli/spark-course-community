@@ -108,6 +108,18 @@ export default function CourseDetail() {
     enabled: !!courseId && !!course,
   });
 
+  const { data: ratingStats } = useQuery({
+    queryKey: ['course-rating-stats', courseId],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/courses/${courseId}/rating-stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.json();
+    },
+    enabled: !!courseId,
+  });
+
   const formatDuration = (minutes: number) => {
     if (!minutes) return 'Duração não informada';
     const hours = Math.floor(minutes / 60);
@@ -161,7 +173,7 @@ export default function CourseDetail() {
             </div>
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4" />
-              {course.rating || 0} Avaliação
+              {typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'} ({ratingStats?.total_ratings || 0} Avaliações)
             </div>
             <div className="flex items-center gap-2">
               <Play className="w-4 h-4" />
@@ -272,7 +284,7 @@ export default function CourseDetail() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Star className="w-4 h-4" />
-                    {course.rating || 0} Avaliações
+                    {typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'} ({ratingStats?.total_ratings || 0} Avaliações)
                   </div>
                   <div className="flex items-center gap-2">
                     <Play className="w-4 h-4" />

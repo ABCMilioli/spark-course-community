@@ -23,6 +23,81 @@ async function fetchCourses() {
   return data;
 }
 
+function useCourseRatingStats(courseId: string) {
+  return useQuery({
+    queryKey: ['course-rating-stats', courseId],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/courses/${courseId}/rating-stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.json();
+    },
+    enabled: !!courseId,
+  });
+}
+
+// Função utilitária para formatar duração
+function formatDuration(minutes: number) {
+  if (!minutes) return 'Duração não informada';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours > 0) {
+    return `${hours}h ${mins}min`;
+  }
+  return `${mins}min`;
+}
+
+// Componente para encapsular o hook por card
+function CourseCardWithStats({ course, onPlay }: { course: CourseWithInstructor, onPlay: (id: string) => void }) {
+  const { data: ratingStats } = useCourseRatingStats(course.id);
+  return (
+    <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => onPlay(course.id)}>
+      <CardHeader className="p-0">
+        <img 
+          src={course.thumbnail_url || '/placeholder.svg'}
+          alt={course.title}
+          className="w-full h-48 object-cover rounded-t-lg"
+        />
+      </CardHeader>
+      <CardContent className="p-6">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{course.level}</Badge>
+          </div>
+          <CardTitle className="text-lg line-clamp-2">{course.title}</CardTitle>
+          <CardDescription className="line-clamp-2">
+            {course.description}
+          </CardDescription>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Clock className="w-4 h-4" />
+              {course.total_duration ? formatDuration(course.total_duration) : 'Duração não informada'}
+            </div>
+            <div className="flex items-center gap-1">
+              <Users className="w-4 h-4" />
+              {course.enrolled_students_count || course.students_count || 0}
+            </div>
+            <div className="flex items-center gap-2">
+              <Star className="w-4 h-4" />
+              {typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'} ({ratingStats?.total_ratings || 0} Avaliações)
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <BookOpen className="w-4 h-4" />
+              {course.total_lessons || 0} aulas
+            </div>
+            <div className="font-semibold text-primary">
+              R$ {Number(course.price).toFixed(2)}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Courses() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -95,16 +170,6 @@ export default function Courses() {
   const filteredAvailableCourses = availableCourses?.filter(course =>
     course.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const formatDuration = (minutes: number) => {
-    if (!minutes) return 'Duração não informada';
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}min`;
-    }
-    return `${mins}min`;
-  };
 
   return (
     <div className="flex-1 p-6 bg-muted/40">
@@ -227,52 +292,11 @@ export default function Courses() {
             ) : filteredAvailableCourses && filteredAvailableCourses.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredAvailableCourses.map((course) => (
-                  <Card key={course.id} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => handleCourseClick(course.id)}>
-                    <CardHeader className="p-0">
-                      <img 
-                        src={course.thumbnail_url || '/placeholder.svg'}
-                        alt={course.title}
-                        className="w-full h-48 object-cover rounded-t-lg"
-                      />
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{course.level}</Badge>
-                        </div>
-                        
-                        <CardTitle className="text-lg line-clamp-2">{course.title}</CardTitle>
-                        <CardDescription className="line-clamp-2">
-                          {course.description}
-                        </CardDescription>
-                        
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {course.total_duration ? formatDuration(course.total_duration) : 'Duração não informada'}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            {course.enrolled_students_count || course.students_count || 0}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-500" />
-                            {course.rating || 0}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <BookOpen className="w-4 h-4" />
-                            {course.total_lessons || 0} aulas
-                          </div>
-                          <div className="font-semibold text-primary">
-                            R$ {Number(course.price).toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <CourseCardWithStats
+                    key={course.id}
+                    course={course}
+                    onPlay={handleCourseClick}
+                  />
                 ))}
               </div>
             ) : (
