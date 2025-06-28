@@ -17,7 +17,17 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
     onPlay?.(course.id);
   };
 
-  const instructor = course.profiles;
+  const instructor = course.instructor || { name: course.instructor_name, avatar_url: course.instructor_avatar };
+
+  const formatDuration = (minutes: number) => {
+    if (!minutes) return 'Duração não informada';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}min`;
+    }
+    return `${mins}min`;
+  };
 
   return (
     <Card className="hover:shadow-lg transition-all duration-300 group animate-fade-in overflow-hidden">
@@ -50,7 +60,7 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
         {/* Duration */}
         <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          {course.duration}
+          {course.total_duration ? formatDuration(course.total_duration) : course.duration || 'N/A'}
         </div>
       </div>
 
@@ -69,7 +79,7 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
           <div className="flex items-center gap-2">
             <Avatar className="w-6 h-6">
               <AvatarImage src={instructor.avatar_url ?? undefined} />
-              <AvatarFallback className="text-xs">{instructor.name[0]}</AvatarFallback>
+              <AvatarFallback className="text-xs">{instructor.name?.[0] || 'I'}</AvatarFallback>
             </Avatar>
             <span className="text-sm text-muted-foreground">{instructor.name}</span>
           </div>
@@ -91,11 +101,15 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1">
               <Users className="w-4 h-4" />
-              <span>{course.students_count}</span>
+              <span>{course.enrolled_students_count || course.students_count || 0}</span>
             </div>
             <div className="flex items-center gap-1">
               <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-              <span>{course.rating}</span>
+              <span>{course.rating || 0}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <BookOpen className="w-4 h-4" />
+              <span>{course.total_lessons || 0}</span>
             </div>
           </div>
           
@@ -107,13 +121,15 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
         </div>
 
         {/* Tags */}
-        <div className="flex flex-wrap gap-1">
-          {course.tags?.slice(0, 3).map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-        </div>
+        {course.tags && course.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {course.tags.slice(0, 3).map((tag) => (
+              <Badge key={tag} variant="outline" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

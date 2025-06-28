@@ -260,10 +260,13 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
 app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    
+    // Buscar dados básicos do curso
     const { rows } = await pool.query(`
-      SELECT c.*, pr.name as instructor_name,
+      SELECT c.*, pr.name as instructor_name, pr.avatar_url as instructor_avatar, pr.bio as instructor_bio, pr.created_at as instructor_created_at,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
-             c.thumbnail_url as thumbnail
+             c.thumbnail_url as thumbnail,
+             (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students_count
       FROM courses c 
       LEFT JOIN profiles pr ON c.instructor_id = pr.id 
       WHERE c.id = $1
@@ -273,7 +276,74 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Curso não encontrado.' });
     }
     
-    res.json(rows[0]);
+    const course = rows[0];
+    
+    // Buscar módulos e aulas
+    const modulesResult = await pool.query(`
+      SELECT m.id, m.title, m.module_order, m.is_visible,
+             l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
+             l.youtube_id, l.video_url, l.duration, l.lesson_order, l.is_visible as lesson_is_visible, l.release_days
+      FROM modules m
+      LEFT JOIN lessons l ON l.module_id = m.id
+      WHERE m.course_id = $1 AND m.is_visible = true
+      ORDER BY m.module_order, l.lesson_order
+    `, [id]);
+    
+    // Estruturar os dados dos módulos
+    const modules = [];
+    let currentModule = null;
+    
+    modulesResult.rows.forEach(row => {
+      if (!currentModule || currentModule.id !== row.id) {
+        currentModule = {
+          id: row.id,
+          title: row.title,
+          module_order: row.module_order,
+          is_visible: row.is_visible,
+          lessons: []
+        };
+        modules.push(currentModule);
+      }
+      
+      if (row.lesson_id && row.lesson_is_visible) {
+        currentModule.lessons.push({
+          id: row.lesson_id,
+          title: row.lesson_title,
+          description: row.lesson_description,
+          youtube_id: row.youtube_id,
+          video_url: row.video_url,
+          duration: row.duration,
+          lesson_order: row.lesson_order,
+          is_visible: row.lesson_is_visible,
+          release_days: row.release_days
+        });
+      }
+    });
+    
+    // Calcular estatísticas
+    const totalLessons = modules.reduce((total, module) => total + module.lessons.length, 0);
+    const totalDuration = modules.reduce((total, module) => {
+      return total + module.lessons.reduce((moduleTotal, lesson) => {
+        const duration = lesson.duration ? parseInt(lesson.duration) || 0 : 0;
+        return moduleTotal + duration;
+      }, 0);
+    }, 0);
+    
+    const response = {
+      ...course,
+      modules,
+      total_lessons: totalLessons,
+      total_duration: totalDuration,
+      instructor: {
+        id: course.instructor_id,
+        name: course.instructor_name,
+        avatar_url: course.instructor_avatar,
+        bio: course.instructor_bio,
+        created_at: course.instructor_created_at
+      }
+    };
+    
+    res.json(response);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });

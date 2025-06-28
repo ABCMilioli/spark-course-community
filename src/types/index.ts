@@ -48,6 +48,20 @@ export interface Course {
   rating_count: number;
   category?: string;
   level?: string;
+  duration?: string;
+  students_count?: number;
+  tags?: string[];
+  total_lessons?: number;
+  total_duration?: number;
+  enrolled_students_count?: number;
+  instructor?: {
+    id: string;
+    name: string;
+    avatar_url?: string;
+    bio?: string;
+    created_at: string;
+  };
+  modules?: ModuleWithLessons[];
 }
 
 export interface CourseWithInstructor extends Course {

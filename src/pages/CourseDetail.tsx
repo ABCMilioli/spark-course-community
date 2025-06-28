@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { Clock, BarChart, User, Star, Users, MessageSquare } from "lucide-react";
+import { Clock, BarChart, User, Star, Users, MessageSquare, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -90,18 +90,33 @@ export default function CourseDetail() {
     }
   };
 
-  // Example: fetch related posts
+  // Buscar posts relacionados ao curso (por tags ou categoria)
   const { data: posts, isLoading: isLoadingPosts } = useQuery<PostWithAuthor[]>({
     queryKey: ['course-posts', courseId],
     queryFn: async () => {
-      // This logic is a placeholder. You'd likely filter posts by a course tag or category.
       const { data } = await axios.get(`${API_URL}/posts`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
-      return data;
+      // Filtrar posts que tenham tags relacionadas ao curso
+      if (course?.tags && course.tags.length > 0) {
+        return data.filter((post: PostWithAuthor) => 
+          post.tags && post.tags.some(tag => course.tags.includes(tag))
+        ).slice(0, 3); // Limitar a 3 posts
+      }
+      return data.slice(0, 3); // Retornar apenas 3 posts se não houver filtro
     },
-    enabled: !!courseId,
+    enabled: !!courseId && !!course,
   });
+
+  const formatDuration = (minutes: number) => {
+    if (!minutes) return 'Duração não informada';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins}min`;
+    }
+    return `${mins}min`;
+  };
 
   if (isLoadingCourse) {
     return (
@@ -125,7 +140,7 @@ export default function CourseDetail() {
     return <div className="text-center p-8">Curso não encontrado.</div>;
   }
   
-  const instructor = course.profiles;
+  const instructor = course.instructor || { name: course.instructor_name, avatar_url: course.instructor_avatar };
 
   return (
     <div className="flex-1 p-6 bg-muted/40">
@@ -138,15 +153,19 @@ export default function CourseDetail() {
           <div className="flex items-center gap-6 mt-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              {course.duration}
+              {course.total_duration ? formatDuration(course.total_duration) : course.duration || 'Duração não informada'}
             </div>
             <div className="flex items-center gap-2">
               <BarChart className="w-4 h-4" />
-              {course.students_count} estudantes
+              {course.enrolled_students_count || course.students_count || 0} estudantes
             </div>
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4" />
-              {course.rating} Avaliação
+              {course.rating || 0} Avaliação
+            </div>
+            <div className="flex items-center gap-2">
+              <Play className="w-4 h-4" />
+              {course.total_lessons || 0} aulas
             </div>
           </div>
         </div>
@@ -163,28 +182,61 @@ export default function CourseDetail() {
                 </p>
               </CardContent>
             </Card>
+            
+            {/* Conteúdo do Curso - Agora com dados reais */}
             <Card>
               <CardContent className="p-6">
                 <h3 className="text-xl font-semibold mb-4">Conteúdo do Curso</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">Módulo 1: Introdução</p>
-                    <Badge variant="secondary">3 aulas</Badge>
+                {course.modules && course.modules.length > 0 ? (
+                  <div className="space-y-4">
+                    {course.modules.map((module, index) => (
+                      <div key={module.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium">Módulo {module.module_order}: {module.title}</p>
+                          <Badge variant="secondary">{module.lessons.length} aulas</Badge>
+                        </div>
+                        {module.lessons.length > 0 && (
+                          <div className="ml-4 space-y-1">
+                            {module.lessons.slice(0, 3).map((lesson) => (
+                              <div key={lesson.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Play className="w-3 h-3" />
+                                {lesson.title}
+                                {lesson.duration && (
+                                  <span className="text-xs">({lesson.duration})</span>
+                                )}
+                              </div>
+                            ))}
+                            {module.lessons.length > 3 && (
+                              <p className="text-xs text-muted-foreground">
+                                +{module.lessons.length - 3} aulas
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <Progress value={33} />
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">Módulo 2: Intermediário</p>
-                    <Badge variant="secondary">5 aulas</Badge>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>Nenhum conteúdo disponível ainda.</p>
                   </div>
-                  <Progress value={66} />
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">Módulo 3: Avançado</p>
-                    <Badge variant="secondary">2 aulas</Badge>
-                  </div>
-                  <Progress value={100} />
-                </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* Posts Relacionados */}
+            {posts && posts.length > 0 && (
+              <Card>
+                <CardContent className="p-6">
+                  <h3 className="text-xl font-semibold mb-4">Posts Relacionados</h3>
+                  <div className="space-y-4">
+                    {posts.map((post) => (
+                      <PostCard key={post.id} post={post} />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -208,7 +260,7 @@ export default function CourseDetail() {
                 <div className="space-y-3 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    {course.duration}
+                    {course.total_duration ? formatDuration(course.total_duration) : course.duration || 'Duração não informada'}
                   </div>
                   <div className="flex items-center gap-2">
                     <BarChart className="w-4 h-4" />
@@ -216,11 +268,15 @@ export default function CourseDetail() {
                   </div>
                   <div className="flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    {course.students_count} estudantes
+                    {course.enrolled_students_count || course.students_count || 0} estudantes
                   </div>
                   <div className="flex items-center gap-2">
                     <Star className="w-4 h-4" />
-                    {course.rating} Avaliações
+                    {course.rating || 0} Avaliações
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Play className="w-4 h-4" />
+                    {course.total_lessons || 0} aulas
                   </div>
                 </div>
               </CardContent>
@@ -233,16 +289,22 @@ export default function CourseDetail() {
                   <div className="flex items-center gap-4">
                     <Avatar className="w-16 h-16">
                       <AvatarImage src={instructor.avatar_url ?? undefined} />
-                      <AvatarFallback>{instructor.name[0]}</AvatarFallback>
+                      <AvatarFallback>{instructor.name?.[0] || 'I'}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-bold">{instructor.name}</p>
-                      <p className="text-sm text-muted-foreground">Ingressou em {format(new Date(instructor.created_at), "MMM yyyy", { locale: ptBR })}</p>
+                      {instructor.created_at && (
+                        <p className="text-sm text-muted-foreground">
+                          Ingressou em {format(new Date(instructor.created_at), "MMM yyyy", { locale: ptBR })}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    {instructor.bio}
-                  </p>
+                  {instructor.bio && (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      {instructor.bio}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
