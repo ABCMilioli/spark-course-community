@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Clock, BookOpen, CheckCircle, ArrowLeft } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
 import { CourseForPlayer, ModuleWithLessons, LessonWithCompletion } from '@/types';
@@ -18,6 +18,7 @@ export default function VideoPlayer() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   
   const courseId = searchParams.get('courseId');
   const lessonId = searchParams.get('lessonId');
@@ -71,10 +72,21 @@ export default function VideoPlayer() {
 
   const { moduleIndex: currentModuleIndex, lessonIndex: currentLessonIndex } = getLessonIndices(currentLesson);
 
-  const handleProgress = (percentage: number) => {
-    console.log('Progress:', percentage);
-    // TODO: Update lesson progress in DB
-  };
+  const handleProgress = async (percentage: number) => {
+    if (!currentLesson || currentLesson.isCompleted) return;
+    if (percentage >= 95) {
+      try {
+        const token = localStorage.getItem('token');
+        await axios.post(`${API_URL}/lessons/${currentLesson.id}/complete`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setCurrentLesson({ ...currentLesson, isCompleted: true });
+        queryClient.invalidateQueries({ queryKey: ['course-for-player', courseId] });
+      } catch (err) {
+        console.error('Erro ao marcar aula como concluída:', err);
+      }
+    }
+  }
 
   const setLesson = (lesson: LessonWithCompletion) => {
     setCurrentLesson(lesson);

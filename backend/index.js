@@ -536,11 +536,32 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
             duration: row.duration,
             lesson_order: row.lesson_order,
             is_visible: row.lesson_is_visible,
-            release_days: row.release_days
+            release_days: row.release_days,
+            isCompleted: false
           });
         }
       }
     });
+    
+    // Função auxiliar para buscar aulas concluídas
+    async function getCompletedLessons(userId, lessonIds, pool) {
+      if (!lessonIds.length) return [];
+      const completed = await pool.query(
+        'SELECT lesson_id FROM lesson_completions WHERE user_id = $1 AND lesson_id = ANY($2)',
+        [userId, lessonIds]
+      );
+      return completed.rows.map(r => r.lesson_id);
+    }
+    
+    const lessonIds = rows.filter(row => row.lesson_id && row.lesson_is_visible).map(row => row.lesson_id);
+    const completedLessons = await getCompletedLessons(req.user.id, lessonIds, pool);
+    
+    // Atualizar o campo isCompleted em cada aula
+    for (const module of course.modules) {
+      for (const lesson of module.lessons) {
+        lesson.isCompleted = completedLessons.includes(lesson.id);
+      }
+    }
     
     res.json(course);
   } catch (err) {
@@ -1971,6 +1992,23 @@ app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) 
   } catch (err) {
     console.error('[GET /api/lessons/:lessonId/video-url]', err);
     res.status(500).json({ error: 'Erro ao gerar URL assinada.' });
+  }
+});
+
+// Endpoint para marcar aula como concluída
+app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+    // Verifica se já existe
+    const check = await pool.query('SELECT * FROM lesson_completions WHERE user_id = $1 AND lesson_id = $2', [userId, lessonId]);
+    if (check.rows.length === 0) {
+      await pool.query('INSERT INTO lesson_completions (user_id, lesson_id, completed_at) VALUES ($1, $2, NOW())', [userId, lessonId]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/lessons/:lessonId/complete]', err);
+    res.status(500).json({ error: 'Erro ao marcar aula como concluída.' });
   }
 });
 
