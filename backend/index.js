@@ -2012,6 +2012,182 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
   }
 });
 
+// ===== SISTEMA DE COMENTÁRIOS EM AULAS =====
+
+// Buscar comentários de uma aula
+app.get('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { rows } = await pool.query(`
+      SELECT 
+        lc.id, lc.lesson_id, lc.user_id, lc.content, lc.parent_id, lc.created_at, lc.updated_at,
+        p.name as user_name, p.avatar_url as user_avatar, p.role as user_role,
+        (SELECT COUNT(*) FROM lesson_comment_likes WHERE comment_id = lc.id) as likes_count,
+        (SELECT COUNT(*) FROM lesson_comments WHERE parent_id = lc.id) as replies_count,
+        EXISTS(SELECT 1 FROM lesson_comment_likes WHERE comment_id = lc.id AND user_id = $1) as is_liked_by_user
+      FROM lesson_comments lc
+      JOIN profiles p ON lc.user_id = p.id
+      WHERE lc.lesson_id = $2 AND lc.parent_id IS NULL
+      ORDER BY lc.created_at DESC
+    `, [req.user.id, lessonId]);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/lessons/:lessonId/comments]', err);
+    res.status(500).json({ error: 'Erro ao buscar comentários.' });
+  }
+});
+
+// Criar comentário
+app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { content, parent_id } = req.body;
+    const userId = req.user.id;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
+    }
+
+    const { rows } = await pool.query(`
+      INSERT INTO lesson_comments (lesson_id, user_id, content, parent_id)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id
+    `, [lessonId, userId, content.trim(), parent_id || null]);
+
+    res.json({ success: true, comment_id: rows[0].id });
+  } catch (err) {
+    console.error('[POST /api/lessons/:lessonId/comments]', err);
+    res.status(500).json({ error: 'Erro ao criar comentário.' });
+  }
+});
+
+// Atualizar comentário
+app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
+    }
+
+    // Verificar se o comentário existe e pertence ao usuário
+    const commentCheck = await pool.query(
+      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
+      [commentId, userId]
+    );
+
+    if (commentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
+    }
+
+    // Atualizar comentário
+    await pool.query(
+      'UPDATE lesson_comments SET content = $1, updated_at = NOW() WHERE id = $2',
+      [content.trim(), commentId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/comments/:commentId]', err);
+    res.status(500).json({ error: 'Erro ao atualizar comentário.' });
+  }
+});
+
+// Deletar comentário
+app.delete('/api/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.user.id;
+
+    // Verificar se o comentário existe e pertence ao usuário
+    const commentCheck = await pool.query(
+      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
+      [commentId, userId]
+    );
+
+    if (commentCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
+    }
+
+    // Deletar comentário (cascade irá deletar respostas e curtidas)
+    await pool.query('DELETE FROM lesson_comments WHERE id = $1', [commentId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/comments/:commentId]', err);
+    res.status(500).json({ error: 'Erro ao deletar comentário.' });
+  }
+});
+
+// Curtir/descurtir comentário
+app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.user.id;
+
+    const likeCheck = await pool.query(
+      'SELECT id FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
+      [commentId, userId]
+    );
+
+    if (likeCheck.rows.length > 0) {
+      await pool.query(
+        'DELETE FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
+        [commentId, userId]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
+        [commentId, userId]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/comments/:commentId/like]', err);
+    res.status(500).json({ error: 'Erro ao curtir comentário.' });
+  }
+});
+
+// ===== SISTEMA DE NOTIFICAÇÕES =====
+
+// Buscar notificações do usuário
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT id, user_id, title, message, type, reference_id, reference_type, is_read, created_at
+      FROM notifications 
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT 20
+    `, [userId]);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/notifications]', err);
+    res.status(500).json({ error: 'Erro ao buscar notificações.' });
+  }
+});
+
+app.get('/api/notifications/count', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { rows } = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE is_read = false) as unread_count,
+        COUNT(*) as total_count
+      FROM notifications 
+      WHERE user_id = $1
+    `, [userId]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[GET /api/notifications/count]', err);
+    res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Backend rodando na porta ${PORT}`);

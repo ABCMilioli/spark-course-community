@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup-db": "node scripts/setup-database.js"
   },
   "dependencies": {
     "@aws-sdk/s3-request-presigner": "^3.837.0",

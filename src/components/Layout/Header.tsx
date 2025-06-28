@@ -1,9 +1,9 @@
-
-import { Search, Bell, MessageSquare } from "lucide-react";
+import { Search, MessageSquare } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 export function Header() {
   const { user, refreshUser } = useAuth();
@@ -34,15 +34,7 @@ export function Header() {
           {user && (
             <>
               {/* Notifications */}
-              <Button variant="ghost" size="sm" className="relative">
-                <Bell className="w-5 h-5" />
-                <Badge 
-                  variant="destructive" 
-                  className="absolute -top-1 -right-1 w-5 h-5 text-xs p-0 flex items-center justify-center"
-                >
-                  3
-                </Badge>
-              </Button>
+              <NotificationBell />
 
               {/* Messages */}
               <Button variant="ghost" size="sm" className="relative">

@@ -207,8 +207,10 @@ export interface UserClassAccess {
   user_id: string;
   user_name: string;
   user_email: string;
-  class_id: string;
-  class_name: string;
+  class_instance_id: string;
+  class_instance_name: string;
+  course_id: string;
+  course_title: string;
   is_public: boolean;
   user_role: 'student' | 'assistant' | 'instructor' | 'viewer';
   enrollment_status: 'active' | 'inactive' | 'suspended';
@@ -263,16 +265,48 @@ export interface ClassInstanceWithDetails extends ClassInstance {
   content: ClassInstanceContent[];
 }
 
-export interface UserClassAccess {
+// Sistema de Comentários em Aulas
+export interface LessonComment {
+  id: string;
+  lesson_id: string;
   user_id: string;
+  content: string;
+  parent_id?: string;
+  created_at: string;
+  updated_at: string;
   user_name: string;
-  user_email: string;
-  class_instance_id: string;
-  class_instance_name: string;
-  course_id: string;
-  course_title: string;
-  is_public: boolean;
-  user_role: 'student' | 'assistant' | 'instructor' | 'viewer';
-  enrollment_status: 'active' | 'inactive' | 'suspended';
-  instructor_name: string;
+  user_avatar?: string;
+  user_role: string;
+  likes_count: number;
+  replies_count: number;
+  is_liked_by_user?: boolean;
+  replies?: LessonComment[];
+}
+
+export interface CreateCommentData {
+  lesson_id: string;
+  content: string;
+  parent_id?: string;
+}
+
+export interface UpdateCommentData {
+  content: string;
+}
+
+// Sistema de Notificações
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'comment' | 'reply' | 'like' | 'system';
+  reference_id?: string;
+  reference_type?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface NotificationCount {
+  unread_count: number;
+  total_count: number;
 }
