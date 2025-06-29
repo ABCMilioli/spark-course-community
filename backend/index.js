@@ -691,8 +691,16 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
         lesson.isCompleted = completedLessons.includes(lesson.id);
       }
     }
-    
-    res.json(course);
+
+    // Calcular progresso do curso
+    const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0);
+    const completedCount = course.modules.reduce((sum, m) => sum + m.lessons.filter(l => l.isCompleted).length, 0);
+    const progressPercentage = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+
+    res.json({
+      ...course,
+      progressPercentage
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });
