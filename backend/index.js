@@ -252,7 +252,57 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
       ORDER BY c.created_at DESC 
       LIMIT $1
     `, [parseInt(limit)]);
-    res.json(rows);
+
+    // Para cada curso, buscar módulos e aulas e calcular total_duration
+    const results = await Promise.all(rows.map(async (course) => {
+      const modulesQuery = `
+        SELECT m.id as module_id, l.id as lesson_id, l.duration
+        FROM modules m
+        LEFT JOIN lessons l ON l.module_id = m.id
+        WHERE m.course_id = $1
+      `;
+      const { rows: moduleRows } = await pool.query(modulesQuery, [course.id]);
+      const modulesMap = {};
+      moduleRows.forEach(row => {
+        if (!row.module_id) return;
+        if (!modulesMap[row.module_id]) {
+          modulesMap[row.module_id] = { lessons: [] };
+        }
+        if (row.lesson_id) {
+          modulesMap[row.module_id].lessons.push({
+            id: row.lesson_id,
+            duration: row.duration
+          });
+        }
+      });
+      const modules = Object.values(modulesMap);
+      const total_duration = modules.reduce((total, m) => {
+        return total + m.lessons.reduce((sum, lesson) => {
+          const duration = lesson.duration ? parseInt(lesson.duration) || 0 : 0;
+          return sum + duration;
+        }, 0);
+      }, 0);
+      return {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        instructor_id: course.instructor_id,
+        instructor_name: course.instructor_name,
+        thumbnail_url: course.thumbnail_url || course.thumbnail,
+        price: course.price,
+        created_at: course.created_at,
+        updated_at: course.updated_at,
+        level: course.level,
+        tags: course.tags,
+        category: course.category,
+        rating: course.rating,
+        enrolled_students_count: course.enrolled_students_count,
+        total_lessons: course.total_lessons,
+        total_duration: total_duration
+      };
+    }));
+
+    res.json(results);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -281,48 +331,52 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
     }
     
     const course = rows[0];
+    console.log('[GET /api/courses/:id] Dados do curso:', course);
     
     // Buscar módulos e aulas
-    const modulesResult = await pool.query(`
-      SELECT m.id, m.title, m.module_order, m.is_visible,
-             l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
-             l.youtube_id, l.video_url, l.duration, l.lesson_order, l.is_visible as lesson_is_visible, l.release_days
-      FROM modules m
-      LEFT JOIN lessons l ON l.module_id = m.id
-      WHERE m.course_id = $1 AND m.is_visible = true
-      ORDER BY m.module_order, l.lesson_order
-    `, [id]);
-    
-    // Estruturar os dados dos módulos
-    const modules = [];
-    let currentModule = null;
-    
-    modulesResult.rows.forEach(row => {
-      if (!currentModule || currentModule.id !== row.id) {
-        currentModule = {
-          id: row.id,
-          title: row.title,
-          module_order: row.module_order,
-          is_visible: row.is_visible,
-          lessons: []
-        };
-        modules.push(currentModule);
-      }
-      
-      if (row.lesson_id && row.lesson_is_visible) {
-        currentModule.lessons.push({
-          id: row.lesson_id,
-          title: row.lesson_title,
-          description: row.lesson_description,
-          youtube_id: row.youtube_id,
-          video_url: row.video_url,
-          duration: row.duration,
-          lesson_order: row.lesson_order,
-          is_visible: row.lesson_is_visible,
-          release_days: row.release_days
-        });
-      }
-    });
+    let modules = [];
+    try {
+      const modulesResult = await pool.query(`
+        SELECT m.id, m.title, m.module_order, m.is_visible,
+               l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
+               l.youtube_id, l.video_url, l.duration, l.lesson_order, l.is_visible as lesson_is_visible, l.release_days
+        FROM modules m
+        LEFT JOIN lessons l ON l.module_id = m.id
+        WHERE m.course_id = $1 AND m.is_visible = true
+        ORDER BY m.module_order, l.lesson_order
+      `, [id]);
+      // Estruturar os dados dos módulos
+      modules = [];
+      let currentModule = null;
+      modulesResult.rows.forEach(row => {
+        if (!currentModule || currentModule.id !== row.id) {
+          currentModule = {
+            id: row.id,
+            title: row.title,
+            module_order: row.module_order,
+            is_visible: row.is_visible,
+            lessons: []
+          };
+          modules.push(currentModule);
+        }
+        if (row.lesson_id && row.lesson_is_visible) {
+          currentModule.lessons.push({
+            id: row.lesson_id,
+            title: row.lesson_title,
+            description: row.lesson_description,
+            youtube_id: row.youtube_id,
+            video_url: row.video_url,
+            duration: row.duration,
+            lesson_order: row.lesson_order,
+            is_visible: row.lesson_is_visible,
+            release_days: row.release_days
+          });
+        }
+      });
+    } catch (err) {
+      console.error('[GET /api/courses/:id] Erro ao calcular módulos/duração:', err);
+      return res.status(500).json({ error: 'Erro ao calcular módulos/duração.' });
+    }
     
     // Calcular estatísticas
     const totalLessons = modules.reduce((total, module) => total + module.lessons.length, 0);
@@ -349,7 +403,7 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
     
     res.json(response);
   } catch (err) {
-    console.error(err);
+    console.error('[GET /api/courses/:id] Erro geral:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
