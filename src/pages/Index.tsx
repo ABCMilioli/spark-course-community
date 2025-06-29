@@ -10,6 +10,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { CourseWithInstructor } from '@/types';
+import { useEffect, useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -43,6 +45,37 @@ async function fetchPopularTags() {
     headers: { Authorization: `Bearer ${token}` }
   });
   return data;
+}
+
+function useCourseRatingStats(courseId: string) {
+  return useQuery({
+    queryKey: ['course-rating-stats', courseId],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/courses/${courseId}/rating-stats`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return res.json();
+    },
+    enabled: !!courseId,
+  });
+}
+
+// Componente para encapsular o hook por card
+function CourseCardWithStats({ course, onPlay }: { course: CourseWithInstructor, onPlay: (id: string) => void }) {
+  const { data: ratingStats } = useCourseRatingStats(course.id);
+  return (
+    <CourseCard
+      course={{
+        ...course,
+        rating: typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating)
+          ? ratingStats.average_rating
+          : 0,
+        total_ratings: ratingStats?.total_ratings || 0
+      }}
+      onPlay={onPlay}
+    />
+  );
 }
 
 const LoadingSkeleton = () => (
@@ -79,6 +112,42 @@ export default function Index() {
     queryFn: fetchPopularTags,
   });
 
+  // Estado para média real
+  const [realAverageRating, setRealAverageRating] = useState<number | null>(null);
+
+  // Buscar estatísticas de avaliação de todos os cursos e calcular média real
+  useEffect(() => {
+    async function fetchAllRatings() {
+      if (!featuredCourses || featuredCourses.length === 0) {
+        setRealAverageRating(null);
+        return;
+      }
+      let totalSum = 0;
+      let totalCount = 0;
+      for (const course of featuredCourses) {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch(`${API_URL}/courses/${course.id}/rating-stats`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const stats = await res.json();
+          if (stats && stats.total_ratings > 0) {
+            totalSum += stats.average_rating * stats.total_ratings;
+            totalCount += stats.total_ratings;
+          }
+        } catch (e) {
+          // Ignorar erros individuais
+        }
+      }
+      if (totalCount > 0) {
+        setRealAverageRating(Number((totalSum / totalCount).toFixed(2)));
+      } else {
+        setRealAverageRating(0);
+      }
+    }
+    fetchAllRatings();
+  }, [featuredCourses]);
+
   console.log('Query states:', {
     postsLoading: isLoadingPosts,
     coursesLoading: isLoadingCourses,
@@ -93,6 +162,11 @@ export default function Index() {
   // Função para lidar com clique no post
   const handlePostClick = (postId: string) => {
     navigate(`/post/${postId}`);
+  };
+
+  // Função para lidar com clique no curso
+  const handleCourseClick = (courseId: string) => {
+    navigate(`/course/${courseId}`);
   };
 
   return (
@@ -192,7 +266,7 @@ export default function Index() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-2xl font-bold">{stats?.averageRating}</p>
+                    <p className="text-2xl font-bold">{realAverageRating !== null ? realAverageRating : '0.0'}</p>
                     <p className="text-sm text-muted-foreground">Avaliação Média</p>
                   </>
                 )}
@@ -292,10 +366,10 @@ export default function Index() {
               Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-96 w-full" />)
             ) : (
               featuredCourses?.map((course) => (
-                <CourseCard
+                <CourseCardWithStats
                   key={course.id}
                   course={course}
-                  onPlay={(courseId) => console.log('Play course:', courseId)}
+                  onPlay={handleCourseClick}
                 />
               ))
             )}
