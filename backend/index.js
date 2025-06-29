@@ -683,7 +683,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
     query += ` ORDER BY e.enrolled_at DESC`;
     const { rows } = await pool.query(query, params);
 
-    // Para cada curso, buscar módulos e aulas e calcular total_lessons e total_duration
+    // Para cada curso, buscar módulos e aulas e calcular total_lessons, total_duration e progresso
     const results = await Promise.all(rows.map(async (enrollment) => {
       // Buscar módulos e aulas do curso
       const modulesQuery = `
@@ -697,6 +697,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
       const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
       // Montar estrutura de módulos e aulas
       const modulesMap = {};
+      const allLessonIds = [];
       moduleRows.forEach(row => {
         if (!row.module_id) return;
         if (!modulesMap[row.module_id]) {
@@ -708,6 +709,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
             title: row.lesson_title,
             duration: row.duration
           });
+          allLessonIds.push(row.lesson_id);
         }
       });
       const modules = Object.values(modulesMap);
@@ -719,10 +721,22 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
           return sum + duration;
         }, 0);
       }, 0);
+      // Buscar aulas concluídas pelo usuário
+      let completedLessons = 0;
+      if (allLessonIds.length > 0) {
+        const completedResult = await pool.query(
+          'SELECT COUNT(*) FROM lesson_completions WHERE user_id = $1 AND lesson_id = ANY($2)',
+          [enrollment.user_id, allLessonIds]
+        );
+        completedLessons = parseInt(completedResult.rows[0].count, 10);
+      }
+      // Calcular progresso
+      const progress = total_lessons > 0 ? Math.round((completedLessons / total_lessons) * 100) : 0;
       return {
         ...enrollment,
         total_lessons,
-        total_duration
+        total_duration,
+        progress
       };
     }));
 
@@ -2697,7 +2711,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
     query += ` ORDER BY e.enrolled_at DESC`;
     const { rows } = await pool.query(query, params);
 
-    // Para cada curso, buscar módulos e aulas e calcular total_lessons e total_duration
+    // Para cada curso, buscar módulos e aulas e calcular total_lessons, total_duration e progresso
     const results = await Promise.all(rows.map(async (enrollment) => {
       // Buscar módulos e aulas do curso
       const modulesQuery = `
@@ -2711,6 +2725,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
       const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
       // Montar estrutura de módulos e aulas
       const modulesMap = {};
+      const allLessonIds = [];
       moduleRows.forEach(row => {
         if (!row.module_id) return;
         if (!modulesMap[row.module_id]) {
@@ -2722,6 +2737,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
             title: row.lesson_title,
             duration: row.duration
           });
+          allLessonIds.push(row.lesson_id);
         }
       });
       const modules = Object.values(modulesMap);
@@ -2733,10 +2749,22 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
           return sum + duration;
         }, 0);
       }, 0);
+      // Buscar aulas concluídas pelo usuário
+      let completedLessons = 0;
+      if (allLessonIds.length > 0) {
+        const completedResult = await pool.query(
+          'SELECT COUNT(*) FROM lesson_completions WHERE user_id = $1 AND lesson_id = ANY($2)',
+          [enrollment.user_id, allLessonIds]
+        );
+        completedLessons = parseInt(completedResult.rows[0].count, 10);
+      }
+      // Calcular progresso
+      const progress = total_lessons > 0 ? Math.round((completedLessons / total_lessons) * 100) : 0;
       return {
         ...enrollment,
         total_lessons,
-        total_duration
+        total_duration,
+        progress
       };
     }));
 
