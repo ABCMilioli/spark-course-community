@@ -279,6 +279,10 @@ export interface ClassInstanceContent {
   content: string;
   content_type: 'announcement' | 'material' | 'assignment';
   is_pinned: boolean;
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  file_type?: string;
   created_at: string;
   updated_at: string;
 }

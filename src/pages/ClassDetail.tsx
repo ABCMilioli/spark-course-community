@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Users, BookOpen, MessageSquare, Eye, Lock, Calendar, 
-  Plus, ArrowLeft, Settings, UserPlus, FileText, Pin, Trash2, Edit
+  Plus, ArrowLeft, Settings, UserPlus, FileText, Pin, Trash2, Edit, File
 } from "lucide-react";
 import { Class, ClassEnrollment, ClassCourse, ClassInstanceContent } from "@/types";
 import { AddCourseToClassModal } from "@/components/Admin/AddCourseToClassModal";
@@ -136,14 +136,23 @@ export default function ClassDetail() {
 
   // Mutation para criar conteúdo
   const createContentMutation = useMutation({
-    mutationFn: async (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean }) => {
+    mutationFn: async (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean; file?: File }) => {
+      const formData = new FormData();
+      formData.append('title', contentData.title);
+      formData.append('content', contentData.content);
+      formData.append('content_type', contentData.content_type);
+      formData.append('is_pinned', contentData.is_pinned.toString());
+      
+      if (contentData.file) {
+        formData.append('file', contentData.file);
+      }
+      
       const response = await fetch(`/api/classes/${classId}/content`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(contentData)
+        body: formData
       });
       
       if (!response.ok) {
@@ -183,7 +192,7 @@ export default function ClassDetail() {
     setIsCreateContentModalOpen(true);
   };
 
-  const handleContentSuccess = (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean }) => {
+  const handleContentSuccess = (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean; file?: File }) => {
     createContentMutation.mutate(contentData);
   };
 
@@ -354,9 +363,14 @@ export default function ClassDetail() {
                         <div className="flex-1">
                           <h4 className="font-medium">{item.title}</h4>
                           <p className="text-sm text-muted-foreground">{item.author_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                            </p>
+                            {item.file_url && (
+                              <File className="w-3 h-3 text-blue-500" />
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -606,7 +620,31 @@ export default function ClassDetail() {
                             {new Date(item.created_at).toLocaleDateString('pt-BR')}
                           </span>
                         </div>
-                        <p className="text-muted-foreground line-clamp-2">{item.content}</p>
+                        
+                        {item.content && (
+                          <p className="text-muted-foreground line-clamp-2 mb-3">{item.content}</p>
+                        )}
+                        
+                        {item.file_url && (
+                          <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                            <div className="flex items-center gap-3">
+                              <File className="w-5 h-5 text-blue-500" />
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{item.file_name}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.file_size ? `${(item.file_size / 1024 / 1024).toFixed(1)} MB` : ''} • {item.file_type}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(item.file_url, '_blank')}
+                              >
+                                Baixar
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>

@@ -33,15 +33,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: 500 * 1024 * 1024, // 500MB
   },
   fileFilter: (req, file, cb) => {
-    // Permitir apenas imagens e vídeos
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Tipo de arquivo não suportado'), false);
-    }
+    // Permitir todos os tipos de arquivo
+    cb(null, true);
   }
 });
 
@@ -1717,13 +1713,13 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
 });
 
 // Criar conteúdo na turma
-app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
+app.post('/api/classes/:id/content', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, content_type = 'announcement', is_pinned = false } = req.body;
     
-    if (!title || !content) {
-      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+    if (!title || (!content && !req.file)) {
+      return res.status(400).json({ error: 'Título e conteúdo ou arquivo são obrigatórios.' });
     }
     
     // Verificar se a turma existe e se o usuário tem permissão
@@ -1740,12 +1736,38 @@ app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Apenas o instructor da turma pode criar conteúdo.' });
     }
     
+    let fileData = null;
+    
+    // Se há um arquivo, fazer upload para o MinIO
+    if (req.file) {
+      try {
+        const uploadResult = await uploadFile(req.file, 'class-content');
+        fileData = {
+          file_url: uploadResult.url,
+          file_name: req.file.originalname,
+          file_size: req.file.size,
+          file_type: req.file.mimetype
+        };
+        console.log('[POST /api/classes/:id/content] Arquivo enviado:', uploadResult.url);
+      } catch (uploadError) {
+        console.error('[POST /api/classes/:id/content] Erro no upload:', uploadError);
+        return res.status(500).json({ error: 'Erro ao fazer upload do arquivo.' });
+      }
+    }
+    
     const contentId = crypto.randomUUID();
     const { rows } = await pool.query(`
-      INSERT INTO class_instance_content (id, class_instance_id, author_id, title, content, content_type, is_pinned)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO class_instance_content (
+        id, class_instance_id, author_id, title, content, content_type, is_pinned,
+        file_url, file_name, file_size, file_type
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
-    `, [contentId, id, req.user.id, title, content, content_type, is_pinned]);
+    `, [
+      contentId, id, req.user.id, title, content || null, content_type, is_pinned,
+      fileData?.file_url || null, fileData?.file_name || null, 
+      fileData?.file_size || null, fileData?.file_type || null
+    ]);
     
     res.status(201).json(rows[0]);
   } catch (err) {

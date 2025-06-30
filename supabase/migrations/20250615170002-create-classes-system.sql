@@ -48,6 +48,10 @@ CREATE TABLE public.class_content (
     content TEXT,
     content_type TEXT NOT NULL DEFAULT 'announcement' CHECK (content_type IN ('announcement', 'material', 'assignment')),
     is_pinned BOOLEAN DEFAULT false,
+    file_url TEXT, -- URL do arquivo no MinIO
+    file_name TEXT, -- Nome original do arquivo
+    file_size INTEGER, -- Tamanho do arquivo em bytes
+    file_type TEXT, -- Tipo MIME do arquivo
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

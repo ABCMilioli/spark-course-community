@@ -7,12 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, File, X } from "lucide-react";
 
 interface CreateClassContentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean }) => void;
+  onSubmit: (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean; file?: File }) => void;
   isLoading: boolean;
 }
 
@@ -23,6 +23,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
     content_type: "announcement" as 'announcement' | 'material' | 'assignment',
     is_pinned: false
   });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,12 +33,15 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
       return;
     }
 
-    if (!formData.content.trim()) {
-      toast.error("Conteúdo é obrigatório");
+    if (!formData.content.trim() && !selectedFile) {
+      toast.error("Conteúdo ou arquivo é obrigatório");
       return;
     }
 
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      file: selectedFile || undefined
+    });
   };
 
   const handleClose = () => {
@@ -48,8 +52,33 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
         content_type: "announcement",
         is_pinned: false
       });
+      setSelectedFile(null);
       onClose();
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Verificar tamanho do arquivo (500MB)
+      if (file.size > 500 * 1024 * 1024) {
+        toast.error("Arquivo muito grande. Máximo 500MB.");
+        return;
+      }
+      setSelectedFile(file);
+    }
+  };
+
+  const removeFile = () => {
+    setSelectedFile(null);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   return (
@@ -58,7 +87,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
         <DialogHeader>
           <DialogTitle>Criar Conteúdo</DialogTitle>
           <DialogDescription>
-            Crie um novo conteúdo para a turma. Pode ser um anúncio, material ou tarefa.
+            Crie um novo conteúdo para a turma. Pode ser um anúncio, material ou tarefa com arquivo anexado.
           </DialogDescription>
         </DialogHeader>
 
@@ -97,16 +126,65 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="content">Conteúdo *</Label>
+              <Label htmlFor="content">Conteúdo</Label>
               <Textarea
                 id="content"
-                placeholder="Digite o conteúdo..."
+                placeholder="Digite o conteúdo (opcional se houver arquivo)..."
                 value={formData.content}
                 onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
                 disabled={isLoading}
-                rows={6}
-                required
+                rows={4}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="file">Arquivo (opcional)</Label>
+              <div className="space-y-2">
+                {!selectedFile ? (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                    <input
+                      type="file"
+                      id="file"
+                      onChange={handleFileChange}
+                      disabled={isLoading}
+                      className="hidden"
+                      accept="*/*"
+                    />
+                    <label htmlFor="file" className="cursor-pointer">
+                      <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">
+                        Clique para selecionar um arquivo ou arraste aqui
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Máximo 500MB • Todos os tipos de arquivo
+                      </p>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg p-4 bg-gray-50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <File className="w-5 h-5 text-blue-500" />
+                        <div>
+                          <p className="font-medium text-sm">{selectedFile.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatFileSize(selectedFile.size)} • {selectedFile.type || 'Tipo desconhecido'}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={removeFile}
+                        disabled={isLoading}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between">
