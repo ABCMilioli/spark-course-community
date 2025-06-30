@@ -4,20 +4,25 @@ services:
   app:
     image: automacaodebaixocusto/spark-course-unificado:latest
     environment:
-      - JWT_SECRET=um-segredo-bem-forte
-      - POSTGRES_HOST=postgres_postgres
+      - JWT_SECRET=Q2h5b3VldG9zZWNyZXRzZXJhbGhhZG9yYWRvcmFuZG9tMTIzIT8kKiYoKS0r
+      - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=nome_do_banco
-      - POSTGRES_USER=usuario
-      - POSTGRES_PASSWORD=senha
+      - POSTGRES_DB=community
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=131489152850082175195580
       - MINIO_ENDPOINT=mp.iacas.top
       - MINIO_PORT=443
       - MINIO_ACCESS_KEY=1013141255245882
       - MINIO_SECRET_KEY=5420658821784955
       - MINIO_USE_SSL=true
+      - MINIO_REGION=us-east-1
       - MINIO_BUCKET=community
       - MINIO_PUBLIC_URL=https://mp.iacas.top
-      - MINIO_REGION=us-east-1
+
+        # Upload Settings
+      - MINIO_UPLOAD_TIMEOUT=300000
+      - MINIO_MAX_FILE_SIZE=104857600
+      - MINIO_RETENTION_DAYS=365
     networks:
       - network_public
     deploy:
@@ -32,10 +37,12 @@ services:
         max_attempts: 3
       labels:
         - "traefik.enable=true"
-        - "traefik.http.routers.spark-course.rule=Host(`community.iacas.top`) && !PathPrefix(`/api`)"
-        - "traefik.http.routers.spark-course.entrypoints=websecure"
-        - "traefik.http.routers.spark-course.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.spark-course.loadbalancer.server.port=3001"
+        # Frontend route
+        - "traefik.http.routers.spark-course-frontend.rule=Host(`community.iacas.top`) && !PathPrefix(`/api`)"
+        - "traefik.http.routers.spark-course-frontend.entrypoints=websecure"
+        - "traefik.http.routers.spark-course-frontend.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.spark-course-frontend.loadbalancer.server.port=3001"
+        # API route
         - "traefik.http.routers.spark-course-api.rule=Host(`community.iacas.top`) && PathPrefix(`/api`)"
         - "traefik.http.routers.spark-course-api.entrypoints=websecure"
         - "traefik.http.routers.spark-course-api.tls.certresolver=letsencryptresolver"

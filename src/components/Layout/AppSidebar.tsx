@@ -10,7 +10,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users } from "lucide-react";
+import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,12 @@ const menuItems = [
     title: "Comunidade",
     url: "/community",
     icon: MessageSquare,
+    roles: ['student', 'instructor', 'admin']
+  },
+  {
+    title: "Fórum",
+    url: "/forum",
+    icon: MessageCircle,
     roles: ['student', 'instructor', 'admin']
   },
   {

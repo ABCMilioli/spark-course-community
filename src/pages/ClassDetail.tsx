@@ -46,26 +46,47 @@ async function fetchClassEnrollments(classId: string) {
 }
 
 async function fetchClassCourses(classId: string) {
-  console.log('[fetchClassCourses] Buscando cursos da turma:', classId);
-  
-  const response = await fetch(`/api/classes/${classId}/courses`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+  console.log('[fetchClassCourses] Iniciando requisição...');
+  try {
+    const token = localStorage.getItem('token');
+    console.log('[fetchClassCourses] Token:', token);
+    console.log('[fetchClassCourses] Buscando cursos da turma:', classId);
+    
+    const response = await fetch(`/api/classes/${classId}/courses`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      }
+    });
+    
+    console.log('[fetchClassCourses] Status da resposta:', response.status);
+    console.log('[fetchClassCourses] Headers da resposta:', Object.fromEntries(response.headers.entries()));
+    
+    const responseText = await response.text();
+    console.log('[fetchClassCourses] Resposta bruta:', responseText);
+    
+    if (!response.ok) {
+      console.error('[fetchClassCourses] Erro na resposta:', response.status, responseText);
+      throw new Error('Erro ao carregar cursos');
     }
-  });
-  
-  console.log('[fetchClassCourses] Status da resposta:', response.status);
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[fetchClassCourses] Erro na resposta:', response.status, errorText);
-    throw new Error('Erro ao carregar cursos');
+    
+    let data;
+    try {
+      data = JSON.parse(responseText);
+      console.log('[fetchClassCourses] Cursos encontrados:', data.length, data);
+    } catch (parseError) {
+      console.error('[fetchClassCourses] Erro ao fazer parse do JSON:', parseError);
+      console.error('[fetchClassCourses] Texto que falhou o parse:', responseText);
+      throw new Error('Erro ao processar resposta do servidor');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('[fetchClassCourses] Erro ao fazer requisição:', error);
+    throw error;
   }
-  
-  const data = await response.json();
-  console.log('[fetchClassCourses] Cursos encontrados:', data.length, data);
-  
-  return data;
 }
 
 async function fetchClassContent(classId: string) {
@@ -93,25 +114,37 @@ export default function ClassDetail() {
   const { data: classDetails, isLoading: isLoadingClass } = useQuery({
     queryKey: ['class', classId],
     queryFn: () => fetchClassDetails(classId!),
-    enabled: !!classId
+    enabled: !!classId,
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    gcTime: 1000 * 60 * 30, // 30 minutos
+    refetchOnWindowFocus: false
   });
 
   const { data: enrollments, isLoading: isLoadingEnrollments } = useQuery({
     queryKey: ['class-enrollments', classId],
     queryFn: () => fetchClassEnrollments(classId!),
-    enabled: !!classId
+    enabled: !!classId,
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    gcTime: 1000 * 60 * 30, // 30 minutos
+    refetchOnWindowFocus: false
   });
 
   const { data: courses, isLoading: isLoadingCourses } = useQuery({
     queryKey: ['class-courses', classId],
     queryFn: () => fetchClassCourses(classId!),
-    enabled: !!classId
+    enabled: !!classId,
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    gcTime: 1000 * 60 * 30, // 30 minutos
+    refetchOnWindowFocus: false
   });
 
   const { data: content, isLoading: isLoadingContent } = useQuery({
     queryKey: ['class-content', classId],
     queryFn: () => fetchClassContent(classId!),
-    enabled: !!classId
+    enabled: !!classId,
+    staleTime: 1000 * 60 * 5, // 5 minutos
+    gcTime: 1000 * 60 * 30, // 30 minutos
+    refetchOnWindowFocus: false
   });
 
   const isInstructor = classDetails?.instructor_id === user?.id;

@@ -10,6 +10,8 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LoginForm } from "@/components/Auth/LoginForm";
 import Index from "./pages/Index";
 import Community from "./pages/Community";
+import Forum from "./pages/Forum";
+import ForumTopic from "./pages/ForumTopic";
 import Courses from "./pages/Courses";
 import VideoPlayer from "./pages/VideoPlayer";
 import Admin from "./pages/Admin";
@@ -54,6 +56,8 @@ function AppContent() {
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/community" element={<Community />} />
+              <Route path="/forum" element={<Forum />} />
+              <Route path="/forum/topic/:slug" element={<ForumTopic />} />
               <Route path="/courses" element={<Courses />} />
               <Route path="/classes" element={<Classes />} />
               <Route path="/classes/:classId" element={<ClassDetail />} />

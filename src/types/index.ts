@@ -176,20 +176,9 @@ export interface Class {
   updated_at: string;
 }
 
-export interface ClassEnrollment {
-  id: string;
-  class_id: string;
-  user_id: string;
-  user_name: string;
-  user_email: string;
-  enrolled_at: string;
-  role: 'student' | 'assistant' | 'instructor';
-  status: 'active' | 'inactive' | 'suspended';
-}
-
 export interface ClassCourse {
   id: string;
-  class_instance_id: string;
+  class_id: string;
   course_id: string;
   course_title: string;
   course_description?: string;
@@ -204,6 +193,17 @@ export interface ClassCourse {
   created_at: string;
 }
 
+export interface ClassEnrollment {
+  id: string;
+  class_id: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  enrolled_at: string;
+  role: 'student' | 'assistant' | 'instructor';
+  status: 'active' | 'inactive' | 'suspended';
+}
+
 export interface ClassContent {
   id: string;
   class_id: string;
@@ -214,6 +214,10 @@ export interface ClassContent {
   content: string;
   content_type: 'announcement' | 'material' | 'assignment';
   is_pinned: boolean;
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  file_type?: string;
   created_at: string;
   updated_at: string;
 }
@@ -373,4 +377,92 @@ export interface CreateRatingData {
 export interface UpdateRatingData {
   rating: number;
   review?: string;
+}
+
+// ===== TIPOS DO FÓRUM =====
+
+export interface ForumTopic {
+  id: string;
+  title: string;
+  description?: string;
+  slug: string;
+  is_active: boolean;
+  is_pinned: boolean;
+  order_index: number;
+  created_by: string;
+  created_by_name: string;
+  created_by_avatar?: string;
+  created_at: string;
+  updated_at: string;
+  posts_count: number;
+  replies_count: number;
+  last_activity?: string;
+}
+
+export interface ForumPost {
+  id: string;
+  topic_id: string;
+  title: string;
+  content: string;
+  author_id: string;
+  author_name: string;
+  author_avatar?: string;
+  author_role: string;
+  is_pinned: boolean;
+  is_locked: boolean;
+  view_count: number;
+  created_at: string;
+  updated_at: string;
+  replies_count: number;
+  likes_count: number;
+  favorites_count: number;
+  is_liked_by_user: boolean;
+  is_favorited_by_user: boolean;
+  tags: string[];
+}
+
+export interface ForumReply {
+  id: string;
+  post_id: string;
+  parent_reply_id?: string;
+  content: string;
+  author_id: string;
+  author_name: string;
+  author_avatar?: string;
+  author_role: string;
+  is_solution: boolean;
+  created_at: string;
+  updated_at: string;
+  likes_count: number;
+  is_liked_by_user: boolean;
+}
+
+export interface ForumTag {
+  id: string;
+  name: string;
+  color: string;
+  created_at: string;
+}
+
+export interface ForumPostDetail extends ForumPost {
+  topic_title: string;
+  topic_slug: string;
+}
+
+export interface ForumPagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+export interface ForumTopicPosts {
+  topic: ForumTopic;
+  posts: ForumPost[];
+  pagination: ForumPagination;
+}
+
+export interface ForumPostWithReplies {
+  post: ForumPostDetail;
+  replies: ForumReply[];
 }
