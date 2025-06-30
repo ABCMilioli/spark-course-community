@@ -189,11 +189,16 @@ export interface ClassEnrollment {
 
 export interface ClassCourse {
   id: string;
-  class_id: string;
+  class_instance_id: string;
   course_id: string;
   course_title: string;
   course_description?: string;
   course_thumbnail?: string;
+  category?: string;
+  level?: string;
+  price?: number;
+  instructor_name?: string;
+  instructor_avatar?: string;
   is_required: boolean;
   order_index: number;
   created_at: string;
@@ -268,6 +273,8 @@ export interface ClassInstanceContent {
   id: string;
   class_instance_id: string;
   author_id: string;
+  author_name: string;
+  author_avatar?: string;
   title: string;
   content: string;
   content_type: 'announcement' | 'material' | 'assignment';

@@ -73,18 +73,41 @@ if (missingVars.length > 0) {
 
 // Middleware para verificar token
 const authenticateToken = (req, res, next) => {
+  console.log('[authenticateToken] === INÍCIO DO MIDDLEWARE ===');
+  console.log('[authenticateToken] Rota:', req.path);
+  console.log('[authenticateToken] Headers:', req.headers);
+  
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Token ausente.' });
+  console.log('[authenticateToken] Authorization header:', auth);
+  
+  if (!auth) {
+    console.log('[authenticateToken] Token ausente - retornando 401');
+    return res.status(401).json({ error: 'Token ausente.' });
+  }
   
   try {
     const [, token] = auth.split(' ');
+    console.log('[authenticateToken] Token extraído:', token ? token.substring(0, 20) + '...' : 'null');
+    
     const decoded = jwt.verify(token, JWT_SECRET);
+    console.log('[authenticateToken] Token decodificado:', decoded);
+    
     req.user = decoded;
+    console.log('[authenticateToken] Usuário definido no req.user:', req.user);
+    console.log('[authenticateToken] === FIM DO MIDDLEWARE (sucesso) ===');
     next();
   } catch (err) {
+    console.error('[authenticateToken] Erro ao verificar token:', err);
+    console.log('[authenticateToken] === FIM DO MIDDLEWARE (erro) ===');
     res.status(401).json({ error: 'Token inválido.' });
   }
 };
+
+// Adicionar middleware de logging global (após a definição do authenticateToken)
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - User: ${req.user?.id || 'unauthenticated'}`);
+  next();
+});
 
 // Endpoint de login
 app.post('/api/auth/login', async (req, res) => {
@@ -1526,7 +1549,8 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
   }
 });
 
-// Detalhes de uma turma específica
+// Detalhes de uma turma específica (MOVIDA PARA DEPOIS DAS ROTAS DE CURSOS)
+/*
 app.get('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1586,6 +1610,7 @@ app.get('/api/classes/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
+*/
 
 // Matricular usuário em turma
 app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
@@ -1726,18 +1751,19 @@ app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
     }
     
-    // Verificar se a turma existe e se o usuário tem permissão
-    const classCheck = await pool.query(`
-      SELECT instructor_id FROM class_instances WHERE id = $1
-    `, [id]);
+    // Verificar se o usuário tem permissão para criar conteúdo
+    const accessCheck = await pool.query(`
+      SELECT user_role FROM user_class_access 
+      WHERE class_instance_id = $1 AND user_id = $2
+    `, [id, req.user.id]);
     
-    if (classCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     }
     
-    // Verificar se o usuário é o instructor da turma ou admin
-    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Apenas o instructor da turma pode criar conteúdo.' });
+    const userRole = accessCheck.rows[0].user_role;
+    if (!['instructor', 'assistant'].includes(userRole)) {
+      return res.status(403).json({ error: 'Apenas instrutores e assistentes podem criar conteúdo.' });
     }
     
     const contentId = crypto.randomUUID();
@@ -1778,14 +1804,9 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (classData.instructor_id === req.user.id) {
       console.log('[GET /api/classes/:id/content] Usuário é o instructor da turma');
       const { rows } = await pool.query(`
-        SELECT 
-          cic.*,
-          p.name as author_name,
-          p.avatar_url as author_avatar
-        FROM class_instance_content cic
-        JOIN profiles p ON cic.author_id = p.id
-        WHERE cic.class_instance_id = $1 
-        ORDER BY cic.created_at DESC
+        SELECT * FROM class_instance_content 
+        WHERE class_instance_id = $1 
+        ORDER BY created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1795,14 +1816,9 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (classData.is_public) {
       console.log('[GET /api/classes/:id/content] Turma é pública, acesso permitido');
       const { rows } = await pool.query(`
-        SELECT 
-          cic.*,
-          p.name as author_name,
-          p.avatar_url as author_avatar
-        FROM class_instance_content cic
-        JOIN profiles p ON cic.author_id = p.id
-        WHERE cic.class_instance_id = $1
-        ORDER BY cic.created_at DESC
+        SELECT * FROM class_instance_content 
+        WHERE class_instance_id = $1 AND is_public = true
+        ORDER BY created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1817,14 +1833,9 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (enrollmentCheck.rows.length > 0) {
       console.log('[GET /api/classes/:id/content] Usuário está matriculado na turma');
       const { rows } = await pool.query(`
-        SELECT 
-          cic.*,
-          p.name as author_name,
-          p.avatar_url as author_avatar
-        FROM class_instance_content cic
-        JOIN profiles p ON cic.author_id = p.id
-        WHERE cic.class_instance_id = $1 
-        ORDER BY cic.created_at DESC
+        SELECT * FROM class_instance_content 
+        WHERE class_instance_id = $1 
+        ORDER BY created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -2734,11 +2745,6 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Backend rodando na porta ${PORT}`);
-});
-
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -2930,15 +2936,23 @@ app.get('/api/debug/tables', authenticateToken, async (req, res) => {
 
 // Listar cursos de uma turma
 app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
+  console.log('[ROTA CURSOS] === ROTA CHAMADA ===');
+  console.log('[ROTA CURSOS] Params:', req.params);
+  console.log('[ROTA CURSOS] User:', req.user);
   try {
     const { id } = req.params;
-    console.log('[GET /api/classes/:id/courses] Buscando cursos da turma:', id);
+    console.log('[GET /api/classes/:id/courses] === INÍCIO DA REQUISIÇÃO ===');
+    console.log('[GET /api/classes/:id/courses] ID da turma:', id);
     console.log('[GET /api/classes/:id/courses] Usuário:', req.user);
+    console.log('[GET /api/classes/:id/courses] Headers:', req.headers);
     
     // Primeiro, buscar a turma para verificar se o usuário tem acesso
+    console.log('[GET /api/classes/:id/courses] Buscando turma no banco...');
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
+    
+    console.log('[GET /api/classes/:id/courses] Resultado da busca da turma:', classResult.rows);
     
     if (classResult.rows.length === 0) {
       console.log('[GET /api/classes/:id/courses] Turma não encontrada');
@@ -2946,54 +2960,74 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     }
     
     const classData = classResult.rows[0];
+    console.log('[GET /api/classes/:id/courses] Dados da turma:', classData);
     
     // Verificar se o usuário tem acesso aos cursos
     // 1. Se é o instructor da turma
     if (classData.instructor_id === req.user.id) {
       console.log('[GET /api/classes/:id/courses] Usuário é o instructor da turma');
+      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      
       const { rows } = await pool.query(`
         SELECT * FROM class_courses_with_details 
         WHERE class_instance_id = $1
         ORDER BY order_index ASC, created_at ASC
       `, [id]);
       
+      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
+      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (instructor) ===');
       return res.json(rows);
     }
     
     // 2. Se a turma é pública, permitir visualizar cursos
     if (classData.is_public) {
       console.log('[GET /api/classes/:id/courses] Turma é pública, acesso permitido');
+      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      
       const { rows } = await pool.query(`
         SELECT * FROM class_courses_with_details 
         WHERE class_instance_id = $1
         ORDER BY order_index ASC, created_at ASC
       `, [id]);
       
+      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
+      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (pública) ===');
       return res.json(rows);
     }
     
     // 3. Se o usuário está matriculado na turma
+    console.log('[GET /api/classes/:id/courses] Verificando matrícula do usuário...');
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
+    console.log('[GET /api/classes/:id/courses] Resultado da verificação de matrícula:', enrollmentCheck.rows);
+    
     if (enrollmentCheck.rows.length > 0) {
       console.log('[GET /api/classes/:id/courses] Usuário está matriculado na turma');
+      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      
       const { rows } = await pool.query(`
         SELECT * FROM class_courses_with_details 
         WHERE class_instance_id = $1
         ORDER BY order_index ASC, created_at ASC
       `, [id]);
       
+      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
+      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (matriculado) ===');
       return res.json(rows);
     }
     
     console.log('[GET /api/classes/:id/courses] Acesso negado - usuário não tem permissão');
+    console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (acesso negado) ===');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
+    console.error('[GET /api/classes/:id/courses] === ERRO ===');
     console.error('[GET /api/classes/:id/courses] Erro:', err);
+    console.error('[GET /api/classes/:id/courses] Stack:', err.stack);
+    console.error('[GET /api/classes/:id/courses] === FIM DO ERRO ===');
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
@@ -3159,19 +3193,14 @@ app.delete('/api/classes/:id/courses/:courseId', authenticateToken, async (req, 
     
     // Verificar se o curso está na turma
     const courseCheck = await pool.query(`
-      SELECT id, is_required FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
+      SELECT id FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     if (courseCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Curso não encontrado na turma.' });
     }
     
-    // Não permitir remover o curso obrigatório (primeiro curso)
-    if (courseCheck.rows[0].is_required) {
-      return res.status(400).json({ error: 'Não é possível remover o curso obrigatório da turma.' });
-    }
-    
-    // Remover o curso
+    // Remover curso da turma
     await pool.query(`
       DELETE FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
     `, [id, courseId]);
@@ -4039,3 +4068,175 @@ app.get('/api/test/class-courses', async (req, res) => {
     res.status(500).json({ error: 'Erro interno.', details: err.message });
   }
 });
+
+// Endpoint de teste para verificar se o backend está funcionando
+app.get('/api/test', (req, res) => {
+  console.log('[GET /api/test] Endpoint de teste chamado');
+  res.json({ message: 'Backend funcionando!', timestamp: new Date().toISOString() });
+});
+
+// Endpoint para testar a view class_courses_with_details
+app.get('/api/test/view', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test/view] Testando view class_courses_with_details');
+    
+    const { rows } = await pool.query('SELECT COUNT(*) as total FROM class_courses_with_details');
+    console.log('[GET /api/test/view] Total de registros na view:', rows[0].total);
+    
+    res.json({ 
+      message: 'View funcionando!', 
+      total_records: rows[0].total,
+      timestamp: new Date().toISOString() 
+    });
+  } catch (err) {
+    console.error('[GET /api/test/view] Erro ao testar view:', err);
+    res.status(500).json({ error: 'Erro ao testar view: ' + err.message });
+  }
+});
+
+// ===== ROTA GENÉRICA DE TURMAS (MOVIDA PARA DEPOIS DAS ROTAS DE CURSOS) =====
+
+// Detalhes de uma turma específica
+app.get('/api/classes/:id', authenticateToken, async (req, res) => {
+  console.log('[ROTA GENÉRICA] === ROTA CHAMADA ===');
+  console.log('[ROTA GENÉRICA] Params:', req.params);
+  console.log('[ROTA GENÉRICA] User:', req.user);
+  try {
+    const { id } = req.params;
+    console.log('[GET /api/classes/:id] Buscando turma:', id);
+    console.log('[GET /api/classes/:id] Usuário:', req.user);
+    
+    // Primeiro, buscar a turma
+    const classResult = await pool.query(`
+      SELECT 
+        ci.*,
+        c.title as course_title,
+        p.name as instructor_name,
+        (SELECT COUNT(*) FROM class_instance_enrollments WHERE class_instance_id = ci.id AND status = 'active') as current_students
+      FROM class_instances ci
+      JOIN courses c ON ci.course_id = c.id
+      JOIN profiles p ON ci.instructor_id = p.id
+      WHERE ci.id = $1
+    `, [id]);
+    
+    if (classResult.rows.length === 0) {
+      console.log('[GET /api/classes/:id] Turma não encontrada');
+      return res.status(404).json({ error: 'Turma não encontrada.' });
+    }
+    
+    const classData = classResult.rows[0];
+    console.log('[GET /api/classes/:id] Turma encontrada:', classData.instance_name);
+    
+    // Verificar se o usuário tem acesso à turma
+    // 1. Se é o instructor da turma
+    if (classData.instructor_id === req.user.id) {
+      console.log('[GET /api/classes/:id] Usuário é o instructor da turma');
+      return res.json(classData);
+    }
+    
+    // 2. Se a turma é pública
+    if (classData.is_public) {
+      console.log('[GET /api/classes/:id] Turma é pública, acesso permitido');
+      return res.json(classData);
+    }
+    
+    // 3. Se o usuário está matriculado na turma
+    const enrollmentCheck = await pool.query(`
+      SELECT * FROM class_instance_enrollments 
+      WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
+    `, [id, req.user.id]);
+    
+    if (enrollmentCheck.rows.length > 0) {
+      console.log('[GET /api/classes/:id] Usuário está matriculado na turma');
+      return res.json(classData);
+    }
+    
+    console.log('[GET /api/classes/:id] Acesso negado - usuário não tem permissão');
+    return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    
+  } catch (err) {
+    console.error('[GET /api/classes/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para criar matrícula em curso
+app.post('/api/enrollments', authenticateToken, async (req, res) => {
+  try {
+    const { course_id } = req.body;
+    
+    console.log('[POST /api/enrollments] Criando matrícula');
+    console.log('[POST /api/enrollments] course_id:', course_id);
+    console.log('[POST /api/enrollments] req.user:', req.user);
+    
+    if (!course_id) {
+      return res.status(400).json({ error: 'course_id é obrigatório.' });
+    }
+
+    // Verifica se já está matriculado
+    const existing = await pool.query(
+      'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+      [req.user.id, course_id]
+    );
+    
+    console.log('[POST /api/enrollments] Verificação de matrícula existente:', existing.rows);
+    
+    if (existing.rows.length > 0) {
+      console.log('[POST /api/enrollments] Usuário já está matriculado');
+      return res.status(400).json({ error: 'Usuário já está matriculado.' });
+    }
+
+    const id = crypto.randomUUID();
+    console.log('[POST /api/enrollments] Criando matrícula com ID:', id);
+    
+    await pool.query(
+      'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+      [id, req.user.id, course_id, new Date(), 0]
+    );
+    
+    // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
+    const classInstances = await pool.query(
+      'SELECT id FROM class_instances WHERE course_id = $1',
+      [course_id]
+    );
+    for (const turma of classInstances.rows) {
+      // Verifica se já está matriculado na turma
+      const alreadyEnrolled = await pool.query(
+        'SELECT 1 FROM class_instance_enrollments WHERE class_instance_id = $1 AND user_id = $2',
+        [turma.id, req.user.id]
+      );
+      if (alreadyEnrolled.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO class_instance_enrollments (id, class_instance_id, user_id, enrolled_at, status, role)
+           VALUES (gen_random_uuid(), $1, $2, NOW(), 'active', 'student')`,
+          [turma.id, req.user.id]
+        );
+      }
+    }
+    // --- FIM DA LÓGICA ---
+
+    console.log('[POST /api/enrollments] Matrícula criada com sucesso');
+    res.status(201).json({ message: 'Matrícula realizada com sucesso.' });
+  } catch (err) {
+    console.error('[POST /api/enrollments] Erro:', err);
+    res.status(500).json({ error: 'Erro ao realizar matrícula.' });
+  }
+});
+
+// Middleware de erro para capturar erros não tratados
+app.use((err, req, res, next) => {
+  console.error('[MIDDLEWARE DE ERRO] Erro capturado:', err);
+  console.error('[MIDDLEWARE DE ERRO] Stack:', err.stack);
+  console.error('[MIDDLEWARE DE ERRO] Rota:', req.path);
+  console.error('[MIDDLEWARE DE ERRO] Método:', req.method);
+  res.status(500).json({ error: 'Erro interno do servidor.' });
+});
+
+// Middleware para rotas não encontradas
+app.use('*', (req, res) => {
+  console.log('[ROTA NÃO ENCONTRADA] Rota:', req.originalUrl);
+  console.log('[ROTA NÃO ENCONTRADA] Método:', req.method);
+  res.status(404).json({ error: 'Rota não encontrada.' });
+});
+
+const PORT = process.env.PORT || 3000;

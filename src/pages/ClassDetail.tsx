@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Users, BookOpen, MessageSquare, Eye, Lock, Calendar, 
-  Plus, ArrowLeft, Settings, UserPlus, FileText, Pin
+  Plus, ArrowLeft, Settings, UserPlus, FileText, Pin, Trash2, Edit
 } from "lucide-react";
-import { Class, ClassEnrollment, ClassCourse, ClassContent } from "@/types";
+import { Class, ClassEnrollment, ClassCourse, ClassInstanceContent } from "@/types";
+import { AddCourseToClassModal } from "@/components/Admin/AddCourseToClassModal";
+import { CreateClassContentModal } from "@/components/Admin/CreateClassContentModal";
+import { toast } from "sonner";
 
 async function fetchClassDetails(classId: string) {
   const response = await fetch(`/api/classes/${classId}`, {
@@ -73,7 +76,10 @@ async function fetchClassContent(classId: string) {
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
+  const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
+  const [isCreateContentModalOpen, setIsCreateContentModalOpen] = useState(false);
 
   const { data: classDetails, isLoading: isLoadingClass } = useQuery({
     queryKey: ['class', classId],
@@ -101,6 +107,85 @@ export default function ClassDetail() {
 
   const isInstructor = classDetails?.instructor_id === user?.id;
   const isAdmin = user?.role === 'admin';
+
+  // Mutation para remover curso da turma
+  const removeCourseMutation = useMutation({
+    mutationFn: async (courseId: string) => {
+      const response = await fetch(`/api/classes/${classId}/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao remover curso');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-courses', classId] });
+      toast.success('Curso removido da turma com sucesso!');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    }
+  });
+
+  // Mutation para criar conteúdo
+  const createContentMutation = useMutation({
+    mutationFn: async (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean }) => {
+      const response = await fetch(`/api/classes/${classId}/content`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(contentData)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao criar conteúdo');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-content', classId] });
+      setIsCreateContentModalOpen(false);
+      toast.success('Conteúdo criado com sucesso!');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    }
+  });
+
+  const handleAddCourse = () => {
+    setIsAddCourseModalOpen(true);
+  };
+
+  const handleCourseSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['class-courses', classId] });
+  };
+
+  const handleRemoveCourse = async (courseId: string) => {
+    if (!confirm('Tem certeza que deseja remover este curso da turma?')) {
+      return;
+    }
+    
+    removeCourseMutation.mutate(courseId);
+  };
+
+  const handleCreateContent = () => {
+    setIsCreateContentModalOpen(true);
+  };
+
+  const handleContentSuccess = (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean }) => {
+    createContentMutation.mutate(contentData);
+  };
 
   if (isLoadingClass) {
     return (
@@ -144,7 +229,7 @@ export default function ClassDetail() {
         
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-3xl font-bold">{classDetails.name}</h1>
+            <h1 className="text-3xl font-bold">{classDetails.instance_name}</h1>
             {classDetails.is_public ? (
               <Eye className="w-5 h-5 text-green-600" />
             ) : (
@@ -167,10 +252,10 @@ export default function ClassDetail() {
         )}
       </div>
 
-      {classDetails.description && (
+      {classDetails.instance_description && (
         <Card>
           <CardContent className="p-6">
-            <p className="text-muted-foreground">{classDetails.description}</p>
+            <p className="text-muted-foreground">{classDetails.instance_description}</p>
           </CardContent>
         </Card>
       )}
@@ -263,7 +348,7 @@ export default function ClassDetail() {
                   <p className="text-muted-foreground text-center py-4">Nenhum conteúdo ainda</p>
                 ) : (
                   <div className="space-y-3">
-                    {content?.slice(0, 3).map((item: ClassContent) => (
+                    {content?.slice(0, 3).map((item: ClassInstanceContent) => (
                       <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border">
                         {item.is_pinned && <Pin className="w-4 h-4 text-orange-500 mt-1" />}
                         <div className="flex-1">
@@ -388,7 +473,7 @@ export default function ClassDetail() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Cursos da Turma</h2>
             {(isInstructor || isAdmin) && (
-              <Button size="sm">
+              <Button size="sm" onClick={handleAddCourse}>
                 <Plus className="w-4 h-4 mr-2" />
                 Adicionar Curso
               </Button>
@@ -410,7 +495,7 @@ export default function ClassDetail() {
                   Ainda não há cursos associados a esta turma.
                 </p>
                 {(isInstructor || isAdmin) && (
-                  <Button>
+                  <Button onClick={handleAddCourse}>
                     <Plus className="w-4 h-4 mr-2" />
                     Adicionar Primeiro Curso
                   </Button>
@@ -420,7 +505,7 @@ export default function ClassDetail() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {courses?.map((course: ClassCourse) => (
-                <Card key={course.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Card key={course.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -429,9 +514,21 @@ export default function ClassDetail() {
                           {course.course_description}
                         </p>
                       </div>
-                      {course.is_required && (
-                        <Badge variant="destructive">Obrigatório</Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {course.is_required && (
+                          <Badge variant="destructive">Obrigatório</Badge>
+                        )}
+                        {(isInstructor || isAdmin) && !course.is_required && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveCourse(course.course_id)}
+                            disabled={removeCourseMutation.isPending}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -452,7 +549,7 @@ export default function ClassDetail() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Conteúdo da Turma</h2>
             {(isInstructor || isAdmin) && (
-              <Button size="sm">
+              <Button size="sm" onClick={handleCreateContent}>
                 <Plus className="w-4 h-4 mr-2" />
                 Criar Conteúdo
               </Button>
@@ -474,7 +571,7 @@ export default function ClassDetail() {
                   Ainda não há conteúdo criado nesta turma.
                 </p>
                 {(isInstructor || isAdmin) && (
-                  <Button>
+                  <Button onClick={handleCreateContent}>
                     <Plus className="w-4 h-4 mr-2" />
                     Criar Primeiro Conteúdo
                   </Button>
@@ -483,7 +580,7 @@ export default function ClassDetail() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {content?.map((item: ClassContent) => (
+              {content?.map((item: ClassInstanceContent) => (
                 <Card key={item.id} className="hover:shadow-lg transition-shadow">
                   <CardContent className="p-6">
                     <div className="flex items-start gap-4">
@@ -519,6 +616,23 @@ export default function ClassDetail() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Modal para adicionar curso */}
+      <AddCourseToClassModal
+        isOpen={isAddCourseModalOpen}
+        onClose={() => setIsAddCourseModalOpen(false)}
+        onSuccess={handleCourseSuccess}
+        classId={classId!}
+        isLoading={false}
+      />
+
+      {/* Modal para criar conteúdo */}
+      <CreateClassContentModal
+        isOpen={isCreateContentModalOpen}
+        onClose={() => setIsCreateContentModalOpen(false)}
+        onSubmit={handleContentSuccess}
+        isLoading={createContentMutation.isPending}
+      />
     </div>
   );
 } 
