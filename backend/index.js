@@ -1950,6 +1950,27 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
       [id, req.user.id, course_id, new Date(), 0]
     );
     
+    // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
+    const classInstances = await pool.query(
+      'SELECT id FROM class_instances WHERE course_id = $1',
+      [course_id]
+    );
+    for (const turma of classInstances.rows) {
+      // Verifica se já está matriculado na turma
+      const alreadyEnrolled = await pool.query(
+        'SELECT 1 FROM class_instance_enrollments WHERE class_instance_id = $1 AND user_id = $2',
+        [turma.id, req.user.id]
+      );
+      if (alreadyEnrolled.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO class_instance_enrollments (id, class_instance_id, user_id, enrolled_at, status, role)
+           VALUES (gen_random_uuid(), $1, $2, NOW(), 'active', 'student')`,
+          [turma.id, req.user.id]
+        );
+      }
+    }
+    // --- FIM DA LÓGICA ---
+
     console.log('[POST /api/enrollments] Matrícula criada com sucesso');
     res.status(201).json({ message: 'Matrícula realizada com sucesso.' });
   } catch (err) {
