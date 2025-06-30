@@ -46,17 +46,26 @@ async function fetchClassEnrollments(classId: string) {
 }
 
 async function fetchClassCourses(classId: string) {
+  console.log('[fetchClassCourses] Buscando cursos da turma:', classId);
+  
   const response = await fetch(`/api/classes/${classId}/courses`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`
     }
   });
   
+  console.log('[fetchClassCourses] Status da resposta:', response.status);
+  
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[fetchClassCourses] Erro na resposta:', response.status, errorText);
     throw new Error('Erro ao carregar cursos');
   }
   
-  return response.json();
+  const data = await response.json();
+  console.log('[fetchClassCourses] Cursos encontrados:', data.length, data);
+  
+  return data;
 }
 
 async function fetchClassContent(classId: string) {

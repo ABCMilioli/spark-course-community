@@ -129,7 +129,7 @@ export function CreateClassModal({ isOpen, onClose, onSubmit, isLoading }: Creat
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Criar Nova Turma</DialogTitle>
           <DialogDescription>
@@ -137,7 +137,7 @@ export function CreateClassModal({ isOpen, onClose, onSubmit, isLoading }: Creat
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 flex-1 overflow-y-auto">
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="course_id">Curso *</Label>
@@ -238,7 +238,7 @@ export function CreateClassModal({ isOpen, onClose, onSubmit, isLoading }: Creat
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>
               Cancelar
             </Button>

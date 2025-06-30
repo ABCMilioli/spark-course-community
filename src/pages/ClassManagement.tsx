@@ -514,14 +514,14 @@ export default function ClassManagement() {
 
       {/* Modal de Edição */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Editar Turma</DialogTitle>
             <DialogDescription>
               Altere os dados da turma conforme necessário. Os campos marcados com * são obrigatórios.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 flex-1 overflow-y-auto">
             <div className="grid gap-2">
               <Label htmlFor="instance_name">Nome da Turma *</Label>
               <Input
@@ -560,7 +560,7 @@ export default function ClassManagement() {
               <Label htmlFor="is_public">Turma pública</Label>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button 
               onClick={handleSave}
               disabled={updateClassMutation.isPending || !editForm.instance_name.trim()}
@@ -583,7 +583,7 @@ export default function ClassManagement() {
 
       {/* Modal de Confirmação de Exclusão */}
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="w-5 h-5" />
@@ -593,7 +593,7 @@ export default function ClassManagement() {
               Tem certeza que deseja excluir a turma "{classDetails.instance_name}"? Esta ação não pode ser desfeita.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button 
               variant="destructive"
               onClick={handleDelete}

@@ -83,7 +83,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Criar Conteúdo</DialogTitle>
           <DialogDescription>
@@ -91,7 +91,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 flex-1 overflow-y-auto">
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title">Título *</Label>
@@ -203,7 +203,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>
               Cancelar
             </Button>

@@ -2968,16 +2968,43 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     }
     
     const classData = classResult.rows[0];
+    console.log('[GET /api/classes/:id/courses] Dados da turma:', classData);
     
     // Verificar se o usuário tem acesso aos cursos
     // 1. Se é o instructor da turma
     if (classData.instructor_id === req.user.id) {
       console.log('[GET /api/classes/:id/courses] Usuário é o instructor da turma');
-      const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+      
+      // Primeiro, verificar se há dados na tabela class_courses
+      const countResult = await pool.query(`
+        SELECT COUNT(*) as total FROM class_courses WHERE class_instance_id = $1
       `, [id]);
+      console.log('[GET /api/classes/:id/courses] Total de cursos na tabela:', countResult.rows[0].total);
+      
+      const { rows } = await pool.query(`
+        SELECT 
+          cc.id,
+          cc.class_instance_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_instance_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
+      `, [id]);
+      
+      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
+      console.log('[GET /api/classes/:id/courses] Dados dos cursos:', rows);
       
       return res.json(rows);
     }
@@ -2986,9 +3013,25 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     if (classData.is_public) {
       console.log('[GET /api/classes/:id/courses] Turma é pública, acesso permitido');
       const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+        SELECT 
+          cc.id,
+          cc.class_instance_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_instance_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
       `, [id]);
       
       return res.json(rows);
@@ -3003,9 +3046,25 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     if (enrollmentCheck.rows.length > 0) {
       console.log('[GET /api/classes/:id/courses] Usuário está matriculado na turma');
       const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+        SELECT 
+          cc.id,
+          cc.class_instance_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_instance_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
       `, [id]);
       
       return res.json(rows);
@@ -3031,6 +3090,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     console.log('[POST /api/classes/:id/courses] Usuário:', req.user);
     
     if (!course_id) {
+      console.log('[POST /api/classes/:id/courses] Erro: course_id não fornecido');
       return res.status(400).json({ error: 'course_id é obrigatório.' });
     }
     
@@ -3040,16 +3100,23 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (classCheck.rows.length === 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Turma não encontrada');
       return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
+    console.log('[POST /api/classes/:id/courses] Instructor da turma:', classCheck.rows[0].instructor_id);
+    console.log('[POST /api/classes/:id/courses] Usuário atual:', req.user.id);
+    console.log('[POST /api/classes/:id/courses] Role do usuário:', req.user.role);
+    
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      console.log('[POST /api/classes/:id/courses] Erro: Acesso negado');
       return res.status(403).json({ error: 'Apenas o instructor da turma pode adicionar cursos.' });
     }
     
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [course_id]);
     if (courseCheck.rows.length === 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Curso não encontrado');
       return res.status(404).json({ error: 'Curso não encontrado.' });
     }
     
@@ -3059,6 +3126,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     `, [id, course_id]);
     
     if (existingCheck.rows.length > 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Curso já está na turma');
       return res.status(400).json({ error: 'Este curso já está associado à turma.' });
     }
     
@@ -3071,6 +3139,8 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
       finalOrderIndex = maxOrderResult.rows[0].max_order + 1;
     }
     
+    console.log('[POST /api/classes/:id/courses] Ordem final:', finalOrderIndex);
+    
     const courseClassId = crypto.randomUUID();
     const { rows } = await pool.query(`
       INSERT INTO class_courses (id, class_instance_id, course_id, is_required, order_index)
@@ -3078,7 +3148,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
       RETURNING *
     `, [courseClassId, id, course_id, is_required, finalOrderIndex]);
     
-    console.log('[POST /api/classes/:id/courses] Curso adicionado com sucesso');
+    console.log('[POST /api/classes/:id/courses] Curso adicionado com sucesso:', rows[0]);
     res.status(201).json(rows[0]);
     
   } catch (err) {
@@ -4059,5 +4129,109 @@ app.get('/api/test/class-courses', async (req, res) => {
   } catch (err) {
     console.error('[GET /api/test/class-courses] Erro:', err);
     res.status(500).json({ error: 'Erro interno.', details: err.message });
+  }
+});
+
+// Endpoint de teste para verificar a view class_courses_with_details
+app.get('/api/test/class-courses-view', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test/class-courses-view] Testando view class_courses_with_details');
+    
+    // Verificar se a view existe
+    const viewCheck = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.views 
+      WHERE table_name = 'class_courses_with_details' AND table_schema = 'public'
+    `);
+    
+    if (viewCheck.rows.length === 0) {
+      return res.status(500).json({ error: 'View class_courses_with_details não existe' });
+    }
+    
+    // Testar a view
+    const { rows } = await pool.query('SELECT COUNT(*) as total FROM class_courses_with_details');
+    
+    res.json({
+      message: 'View class_courses_with_details está funcionando',
+      total_records: rows[0].total,
+      view_exists: true
+    });
+  } catch (err) {
+    console.error('[GET /api/test/class-courses-view] Erro:', err);
+    res.status(500).json({ error: 'Erro ao testar view', details: err.message });
+  }
+});
+
+// Endpoint para verificar status da tabela class_courses
+app.get('/api/test/class-courses-table', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test/class-courses-table] Verificando tabela class_courses');
+    
+    // Verificar se a tabela existe
+    const tableCheck = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_name = 'class_courses' AND table_schema = 'public'
+    `);
+    
+    if (tableCheck.rows.length === 0) {
+      return res.status(500).json({ error: 'Tabela class_courses não existe' });
+    }
+    
+    // Contar registros
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM class_courses');
+    
+    // Verificar estrutura
+    const structureResult = await pool.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns 
+      WHERE table_name = 'class_courses' AND table_schema = 'public'
+      ORDER BY ordinal_position
+    `);
+    
+    res.json({
+      message: 'Tabela class_courses está funcionando',
+      table_exists: true,
+      total_records: countResult.rows[0].total,
+      structure: structureResult.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/test/class-courses-table] Erro:', err);
+    res.status(500).json({ error: 'Erro ao verificar tabela', details: err.message });
+  }
+});
+
+// Endpoint para testar dados da tabela class_courses
+app.get('/api/test/class-courses-data', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test/class-courses-data] Testando dados da tabela class_courses');
+    
+    // Verificar se há dados na tabela
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM class_courses');
+    
+    // Buscar alguns registros de exemplo
+    const sampleResult = await pool.query(`
+      SELECT 
+        cc.id,
+        cc.class_instance_id,
+        cc.course_id,
+        cc.is_required,
+        cc.order_index,
+        c.title as course_title,
+        ci.instance_name as class_name
+      FROM class_courses cc
+      JOIN courses c ON cc.course_id = c.id
+      JOIN class_instances ci ON cc.class_instance_id = ci.id
+      LIMIT 5
+    `);
+    
+    res.json({
+      message: 'Dados da tabela class_courses',
+      total_records: countResult.rows[0].total,
+      sample_data: sampleResult.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/test/class-courses-data] Erro:', err);
+    res.status(500).json({ error: 'Erro ao verificar dados', details: err.message });
   }
 });

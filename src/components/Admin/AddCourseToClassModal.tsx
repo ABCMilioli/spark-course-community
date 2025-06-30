@@ -61,6 +61,8 @@ export function AddCourseToClassModal({
   const fetchAvailableCourses = async () => {
     try {
       setLoading(true);
+      console.log('[AddCourseToClassModal] Buscando cursos disponíveis...');
+      
       const response = await fetch("/api/courses", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -68,30 +70,49 @@ export function AddCourseToClassModal({
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[AddCourseToClassModal] Erro na resposta:', response.status, errorText);
         throw new Error("Erro ao buscar cursos");
       }
 
       const courses = await response.json();
+      console.log('[AddCourseToClassModal] Cursos encontrados:', courses.length);
       
+      // Por enquanto, mostrar todos os cursos sem filtragem
+      setAvailableCourses(courses);
+      
+      // TODO: Implementar filtragem depois que o problema for resolvido
+      /*
       // Filtrar cursos que ainda não estão na turma
-      const classCoursesResponse = await fetch(`/api/classes/${classId}/courses`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      try {
+        console.log('[AddCourseToClassModal] Buscando cursos da turma:', classId);
+        const classCoursesResponse = await fetch(`/api/classes/${classId}/courses`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
 
-      if (classCoursesResponse.ok) {
-        const classCourses = await classCoursesResponse.json();
-        const existingCourseIds = classCourses.map((cc: any) => cc.course_id);
-        const filteredCourses = courses.filter((course: Course) => 
-          !existingCourseIds.includes(course.id)
-        );
-        setAvailableCourses(filteredCourses);
-      } else {
+        if (classCoursesResponse.ok) {
+          const classCourses = await classCoursesResponse.json();
+          console.log('[AddCourseToClassModal] Cursos da turma:', classCourses.length);
+          const existingCourseIds = classCourses.map((cc: any) => cc.course_id);
+          const filteredCourses = courses.filter((course: Course) => 
+            !existingCourseIds.includes(course.id)
+          );
+          console.log('[AddCourseToClassModal] Cursos filtrados:', filteredCourses.length);
+          setAvailableCourses(filteredCourses);
+        } else {
+          const errorText = await classCoursesResponse.text();
+          console.warn('[AddCourseToClassModal] Não foi possível buscar cursos da turma:', classCoursesResponse.status, errorText);
+          setAvailableCourses(courses);
+        }
+      } catch (error) {
+        console.warn('[AddCourseToClassModal] Erro ao buscar cursos da turma, mostrando todos os cursos:', error);
         setAvailableCourses(courses);
       }
+      */
     } catch (error) {
-      console.error("Erro ao buscar cursos:", error);
+      console.error('[AddCourseToClassModal] Erro ao buscar cursos:', error);
       toast.error("Erro ao carregar cursos disponíveis");
     } finally {
       setLoading(false);
@@ -151,7 +172,7 @@ export function AddCourseToClassModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Adicionar Curso à Turma</DialogTitle>
           <DialogDescription>
@@ -159,7 +180,7 @@ export function AddCourseToClassModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 flex-1 overflow-y-auto">
           <div className="space-y-2">
             <Label htmlFor="course_id">Curso</Label>
             <Select
@@ -216,7 +237,7 @@ export function AddCourseToClassModal({
             Cursos obrigatórios não podem ser removidos da turma.
           </p>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button
               type="button"
               variant="outline"

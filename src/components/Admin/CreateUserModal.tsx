@@ -85,14 +85,14 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, initialData, is
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar Usuário' : 'Criar Novo Usuário'}</DialogTitle>
           <DialogDescription>
             {isEdit ? 'Altere os dados do usuário abaixo.' : 'Preencha os dados abaixo para adicionar um novo usuário à plataforma.'}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4 flex-1 overflow-y-auto">
           <div className="space-y-2">
             <label htmlFor="name" className="block text-sm font-medium">Nome</label>
             <Input id="name" {...form.register('name')} placeholder="Nome do usuário" />
@@ -115,7 +115,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess, initialData, is
             <Input id="role" {...form.register('role')} placeholder="admin, free, premium, etc." />
             <span className="text-xs text-destructive">{form.formState.errors.role?.message}</span>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
