@@ -4686,12 +4686,12 @@ app.get('/api/forum/posts/:id', authenticateToken, async (req, res) => {
         (SELECT COUNT(*) FROM forum_post_favorites WHERE post_id = fp.id) as favorites_count,
         EXISTS(SELECT 1 FROM forum_post_likes WHERE post_id = fp.id AND user_id = $1) as is_liked_by_user,
         EXISTS(SELECT 1 FROM forum_post_favorites WHERE post_id = fp.id AND user_id = $1) as is_favorited_by_user,
-        array_agg(DISTINCT ft.name) as tags
+        array_agg(DISTINCT ftags.name) as tags
       FROM forum_posts fp
       JOIN profiles p ON fp.author_id = p.id
       JOIN forum_topics ft ON fp.topic_id = ft.id
       LEFT JOIN forum_post_tags fpt ON fp.id = fpt.post_id
-      LEFT JOIN forum_tags ft ON fpt.tag_id = ft.id
+      LEFT JOIN forum_tags ftags ON fpt.tag_id = ftags.id
       WHERE fp.id = $2
       GROUP BY fp.id, p.name, p.avatar_url, p.role, ft.title, ft.slug
     `, [req.user.id, id]);

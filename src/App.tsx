@@ -12,6 +12,7 @@ import Index from "./pages/Index";
 import Community from "./pages/Community";
 import Forum from "./pages/Forum";
 import ForumTopic from "./pages/ForumTopic";
+import ForumPostDetail from "./pages/ForumPostDetail";
 import Courses from "./pages/Courses";
 import VideoPlayer from "./pages/VideoPlayer";
 import Admin from "./pages/Admin";
@@ -58,6 +59,7 @@ function AppContent() {
               <Route path="/community" element={<Community />} />
               <Route path="/forum" element={<Forum />} />
               <Route path="/forum/topic/:slug" element={<ForumTopic />} />
+              <Route path="/forum/post/:postId" element={<ForumPostDetail />} />
               <Route path="/courses" element={<Courses />} />
               <Route path="/classes" element={<Classes />} />
               <Route path="/classes/:classId" element={<ClassDetail />} />
