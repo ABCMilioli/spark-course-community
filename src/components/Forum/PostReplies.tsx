@@ -8,49 +8,36 @@ import { ThumbsUp, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { ForumReply } from '@/types';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 interface PostRepliesProps {
   postId: string;
+  replies?: ForumReply[];
+  onRepliesUpdate?: () => void;
 }
 
-export function PostReplies({ postId }: PostRepliesProps) {
+export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepliesProps) {
   const [newReplyContent, setNewReplyContent] = useState('');
   const { user } = useAuth();
   const queryClient = useQueryClient();
-
-  // Buscar respostas do post
-  const { data: replies, isLoading } = useQuery({
-    queryKey: ['forum-post-replies', postId],
-    queryFn: async () => {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/forum/posts/${postId}/replies`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Erro ao buscar respostas');
-      return response.json();
-    },
-    enabled: !!postId
-  });
 
   // Mutation para criar nova resposta
   const createReplyMutation = useMutation({
     mutationFn: async (content: string) => {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/forum/posts/${postId}/replies`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ content })
-      });
-      if (!response.ok) throw new Error('Erro ao criar resposta');
-      return response.json();
+      const response = await axios.post(`${API_URL}/forum/posts/${postId}/replies`, 
+        { content },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forum-post-replies', postId] });
+      queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
       setNewReplyContent('');
       toast.success('Resposta adicionada com sucesso!');
+      if (onRepliesUpdate) onRepliesUpdate();
     },
     onError: () => {
       toast.error('Erro ao adicionar resposta');
@@ -61,15 +48,15 @@ export function PostReplies({ postId }: PostRepliesProps) {
   const likeReplyMutation = useMutation({
     mutationFn: async (replyId: string) => {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/forum/replies/${replyId}/like`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Erro ao curtir resposta');
-      return response.json();
+      const response = await axios.post(`${API_URL}/forum/replies/${replyId}/like`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forum-post-replies', postId] });
+      queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
+      if (onRepliesUpdate) onRepliesUpdate();
     },
     onError: () => {
       toast.error('Erro ao curtir resposta');
@@ -95,29 +82,6 @@ export function PostReplies({ postId }: PostRepliesProps) {
     if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d atrás`;
     return date.toLocaleDateString('pt-BR');
   };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Respostas</h3>
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse w-32" />
-                    <div className="h-3 bg-gray-200 rounded animate-pulse w-full" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

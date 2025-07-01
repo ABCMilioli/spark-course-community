@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { Loader2, Upload, Image, Trash2 } from 'lucide-react';
 import { ForumTopic } from '@/types';
 
+const API_URL = process.env.REACT_APP_API_URL || '/api';
+
 interface EditTopicModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -64,7 +66,7 @@ export function EditTopicModal({ isOpen, onClose, onSuccess, topic }: EditTopicM
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/forum/topics/${topic.id}`, {
+      const response = await fetch(`${API_URL}/forum/topics/${topic.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

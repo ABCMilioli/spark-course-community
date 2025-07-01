@@ -330,9 +330,9 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: 'comment' | 'reply' | 'like' | 'system';
+  type: 'comment' | 'reply' | 'like' | 'system' | 'forum_reply' | 'forum_new_post';
   reference_id?: string;
-  reference_type?: string;
+  reference_type?: 'forum_post' | 'forum_topic' | 'forum_reply' | 'course' | 'lesson' | 'lesson_comment' | 'community_post' | 'class';
   is_read: boolean;
   created_at: string;
 }
@@ -417,6 +417,7 @@ export interface ForumPost {
   author_role?: string;
   likes_count?: number;
   favorites_count?: number;
+  replies_count?: number;
   is_liked_by_user?: boolean;
   is_favorited_by_user?: boolean;
   tags?: string[];

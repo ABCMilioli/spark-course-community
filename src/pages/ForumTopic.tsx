@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ForumTopicPosts, ForumPost } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -58,7 +60,7 @@ export default function ForumTopic() {
   const fetchTopicPosts = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(`/api/forum/topics/${slug}/posts`, {
+      const { data } = await axios.get(`${API_URL}/forum/topics/${slug}/posts`, {
         params: {
           page: currentPage,
           sort: sortBy
@@ -86,7 +88,7 @@ export default function ForumTopic() {
 
   const handleLike = async (postId: string) => {
     try {
-      await axios.post(`/api/forum/posts/${postId}/like`, null, {
+      await axios.post(`${API_URL}/forum/posts/${postId}/like`, null, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -101,7 +103,7 @@ export default function ForumTopic() {
 
   const handleFavorite = async (postId: string) => {
     try {
-      await axios.post(`/api/forum/posts/${postId}/favorite`, null, {
+      await axios.post(`${API_URL}/forum/posts/${postId}/favorite`, null, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -391,7 +393,7 @@ export default function ForumTopic() {
                       
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <MessageSquare className="w-4 h-4" />
-                        <span>0</span>
+                        <span>{post.replies_count || 0}</span>
                       </div>
                     </div>
                   </div>

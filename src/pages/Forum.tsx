@@ -3,6 +3,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ForumTopic } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -58,7 +60,7 @@ export default function Forum() {
   const fetchTopics = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get('/api/forum/topics', {
+      const { data } = await axios.get(`${API_URL}/forum/topics`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -102,7 +104,7 @@ export default function Forum() {
     if (!topicToDelete) return;
 
     try {
-      const response = await fetch(`/api/forum/topics/${topicToDelete.id}`, {
+      const response = await fetch(`${API_URL}/forum/topics/${topicToDelete.id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

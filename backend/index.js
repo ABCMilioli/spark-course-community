@@ -128,7 +128,7 @@ app.post('/api/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Senha inválida.' });
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     console.error(err);
@@ -2400,6 +2400,64 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
       RETURNING id
     `, [lessonId, userId, content.trim(), parent_id || null]);
 
+    // Criar notificações
+    try {
+      if (parent_id) {
+        // É uma resposta a um comentário - notificar autor do comentário pai
+        const parentCommentResult = await pool.query(`
+          SELECT lc.user_id, p.name as author_name, l.title as lesson_title
+          FROM lesson_comments lc
+          JOIN profiles p ON lc.user_id = p.id
+          JOIN lessons l ON lc.lesson_id = l.id
+          WHERE lc.id = $1
+        `, [parent_id]);
+        
+        if (parentCommentResult.rows.length > 0) {
+          const { user_id: parentAuthorId, lesson_title } = parentCommentResult.rows[0];
+          
+          if (parentAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              parentAuthorId,
+              'Resposta ao seu comentário',
+              `${userName} respondeu ao seu comentário na aula "${lesson_title}"`,
+              'reply',
+              lessonId,
+              'lesson'
+            );
+          }
+        }
+      } else {
+        // É um comentário novo - notificar instrutor da aula
+        const lessonInstructorResult = await pool.query(`
+          SELECT c.instructor_id, p.name as instructor_name, l.title as lesson_title
+          FROM lessons l
+          JOIN modules m ON l.module_id = m.id
+          JOIN courses c ON m.course_id = c.id
+          JOIN profiles p ON c.instructor_id = p.id
+          WHERE l.id = $1
+        `, [lessonId]);
+        
+        if (lessonInstructorResult.rows.length > 0) {
+          const { instructor_id: instructorId, lesson_title } = lessonInstructorResult.rows[0];
+          
+          if (instructorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              instructorId,
+              'Novo comentário na sua aula',
+              `${userName} comentou na aula "${lesson_title}"`,
+              'comment',
+              lessonId,
+              'lesson'
+            );
+          }
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de comentário:', notificationErr);
+    }
+
     res.json({ success: true, comment_id: rows[0].id });
   } catch (err) {
     console.error('[POST /api/lessons/:lessonId/comments]', err);
@@ -2488,6 +2546,36 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
         'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
         [commentId, userId]
       );
+      
+      // Criar notificação para o autor do comentário (se não for o mesmo usuário)
+      try {
+        const commentAuthorResult = await pool.query(`
+          SELECT lc.user_id, p.name as author_name, l.title as lesson_title, lc.content
+          FROM lesson_comments lc
+          JOIN profiles p ON lc.user_id = p.id
+          JOIN lessons l ON lc.lesson_id = l.id
+          WHERE lc.id = $1
+        `, [commentId]);
+        
+        if (commentAuthorResult.rows.length > 0) {
+          const { user_id: commentAuthorId, lesson_title, content } = commentAuthorResult.rows[0];
+          
+          if (commentAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+            await createNotification(
+              commentAuthorId,
+              'Curtida no seu comentário',
+              `${userName} curtiu seu comentário "${shortContent}" na aula "${lesson_title}"`,
+              'like',
+              commentId,
+              'lesson_comment'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em comentário:', notificationErr);
+      }
     }
 
     res.json({ success: true });
@@ -2498,6 +2586,45 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
 });
 
 // ===== SISTEMA DE NOTIFICAÇÕES =====
+
+// Função helper para criar notificações
+async function createNotification(userId, title, message, type, referenceId = null, referenceType = null) {
+  try {
+    console.log('[CREATE NOTIFICATION] Tentando criar notificação:', {
+      userId, title, message, type, referenceId, referenceType
+    });
+    
+    const result = await pool.query(`
+      INSERT INTO notifications (user_id, title, message, type, reference_id, reference_type, is_read)
+      VALUES ($1, $2, $3, $4, $5, $6, false)
+      RETURNING id
+    `, [userId, title, message, type, referenceId, referenceType]);
+    
+    console.log('[CREATE NOTIFICATION] Notificação criada com sucesso! ID:', result.rows[0].id);
+  } catch (err) {
+    console.error('[CREATE NOTIFICATION] ERRO ao criar notificação:', err);
+    console.error('[CREATE NOTIFICATION] Parâmetros:', {
+      userId, title, message, type, referenceId, referenceType
+    });
+  }
+}
+
+// Função helper para obter nome do usuário
+async function getUserName(userId, currentUserName = null) {
+  // Se já temos o nome, usar ele
+  if (currentUserName) {
+    return currentUserName;
+  }
+  
+  // Caso contrário, buscar no banco
+  try {
+    const { rows } = await pool.query('SELECT name FROM profiles WHERE id = $1', [userId]);
+    return rows.length > 0 ? rows[0].name : 'Usuário';
+  } catch (err) {
+    console.error('[GET USER NAME] Erro ao buscar nome:', err);
+    return 'Usuário';
+  }
+}
 
 // Buscar notificações do usuário
 app.get('/api/notifications', authenticateToken, async (req, res) => {
@@ -2533,6 +2660,122 @@ app.get('/api/notifications/count', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
   }
 });
+
+// Marcar notificação como lida
+app.put('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/notifications/:id/read]', err);
+    res.status(500).json({ error: 'Erro ao marcar notificação como lida.' });
+  }
+});
+
+// Marcar todas as notificações como lidas
+app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE user_id = $1 AND is_read = false
+    `, [userId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/notifications/read-all]', err);
+    res.status(500).json({ error: 'Erro ao marcar todas as notificações como lidas.' });
+  }
+});
+
+// Navegação inteligente
+app.get('/api/notifications/:notificationId/navigate', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT type, reference_id, reference_type
+      FROM notifications 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+    
+    const { type, reference_id, reference_type } = rows[0];
+    let url = '/';
+    
+    switch (reference_type) {
+      case 'forum_post':
+        url = `/forum/post/${reference_id}`;
+        break;
+      case 'forum_topic':
+        url = `/forum/topic/${reference_id}`;
+        break;
+      case 'forum_reply':
+        // Para respostas do fórum, navegar para o post pai
+        const forumReplyResult = await pool.query(`
+          SELECT post_id FROM forum_replies WHERE id = $1
+        `, [reference_id]);
+        if (forumReplyResult.rows.length > 0) {
+          url = `/forum/post/${forumReplyResult.rows[0].post_id}`;
+        } else {
+          url = '/forum';
+        }
+        break;
+      case 'course':
+        url = `/courses/${reference_id}`;
+        break;
+      case 'lesson':
+        url = `/video-player/${reference_id}`;
+        break;
+      case 'lesson_comment':
+        // Para comentários de aula, navegar para a aula
+        const lessonCommentResult = await pool.query(`
+          SELECT lesson_id FROM lesson_comments WHERE id = $1
+        `, [reference_id]);
+        if (lessonCommentResult.rows.length > 0) {
+          url = `/video-player/${lessonCommentResult.rows[0].lesson_id}`;
+        } else {
+          url = '/';
+        }
+        break;
+      case 'community_post':
+        url = `/post/${reference_id}`;
+        break;
+      case 'class':
+        url = `/classes/${reference_id}`;
+        break;
+      default:
+        url = '/';
+    }
+    
+    // Marcar como lida ao navegar
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    res.json({ url });
+  } catch (err) {
+    console.error('[GET /api/notifications/:id/navigate]', err);
+    res.status(500).json({ error: 'Erro ao navegar pela notificação.' });
+  }
+});
+
 
 // ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
 
@@ -3726,182 +3969,7 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
 });
 
 // ===== SISTEMA DE COMENTÁRIOS EM AULAS =====
-
-// Buscar comentários de uma aula
-app.get('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const { rows } = await pool.query(`
-      SELECT 
-        lc.id, lc.lesson_id, lc.user_id, lc.content, lc.parent_id, lc.created_at, lc.updated_at,
-        p.name as user_name, p.avatar_url as user_avatar, p.role as user_role,
-        (SELECT COUNT(*) FROM lesson_comment_likes WHERE comment_id = lc.id) as likes_count,
-        (SELECT COUNT(*) FROM lesson_comments WHERE parent_id = lc.id) as replies_count,
-        EXISTS(SELECT 1 FROM lesson_comment_likes WHERE comment_id = lc.id AND user_id = $1) as is_liked_by_user
-      FROM lesson_comments lc
-      JOIN profiles p ON lc.user_id = p.id
-      WHERE lc.lesson_id = $2 AND lc.parent_id IS NULL
-      ORDER BY lc.created_at DESC
-    `, [req.user.id, lessonId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao buscar comentários.' });
-  }
-});
-
-// Criar comentário
-app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const { content, parent_id } = req.body;
-    const userId = req.user.id;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
-    }
-
-    const { rows } = await pool.query(`
-      INSERT INTO lesson_comments (lesson_id, user_id, content, parent_id)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id
-    `, [lessonId, userId, content.trim(), parent_id || null]);
-
-    res.json({ success: true, comment_id: rows[0].id });
-  } catch (err) {
-    console.error('[POST /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao criar comentário.' });
-  }
-});
-
-// Atualizar comentário
-app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const { content } = req.body;
-    const userId = req.user.id;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
-    }
-
-    // Verificar se o comentário existe e pertence ao usuário
-    const commentCheck = await pool.query(
-      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
-    }
-
-    // Atualizar comentário
-    await pool.query(
-      'UPDATE lesson_comments SET content = $1, updated_at = NOW() WHERE id = $2',
-      [content.trim(), commentId]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[PUT /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao atualizar comentário.' });
-  }
-});
-
-// Deletar comentário
-app.delete('/api/comments/:commentId', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const userId = req.user.id;
-
-    // Verificar se o comentário existe e pertence ao usuário
-    const commentCheck = await pool.query(
-      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
-    }
-
-    // Deletar comentário (cascade irá deletar respostas e curtidas)
-    await pool.query('DELETE FROM lesson_comments WHERE id = $1', [commentId]);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[DELETE /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao deletar comentário.' });
-  }
-});
-
-// Curtir/descurtir comentário
-app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const userId = req.user.id;
-
-    const likeCheck = await pool.query(
-      'SELECT id FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (likeCheck.rows.length > 0) {
-      await pool.query(
-        'DELETE FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
-        [commentId, userId]
-      );
-    } else {
-      await pool.query(
-        'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
-        [commentId, userId]
-      );
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[POST /api/comments/:commentId/like]', err);
-    res.status(500).json({ error: 'Erro ao curtir comentário.' });
-  }
-});
-
-// ===== SISTEMA DE NOTIFICAÇÕES =====
-
-// Buscar notificações do usuário
-app.get('/api/notifications', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT id, user_id, title, message, type, reference_id, reference_type, is_read, created_at
-      FROM notifications 
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT 20
-    `, [userId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao buscar notificações.' });
-  }
-});
-
-app.get('/api/notifications/count', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT 
-        COUNT(*) FILTER (WHERE is_read = false) as unread_count,
-        COUNT(*) as total_count
-      FROM notifications 
-      WHERE user_id = $1
-    `, [userId]);
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[GET /api/notifications/count]', err);
-    res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
-  }
-});
-
-// ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
+// (Endpoints implementados anteriormente na linha 2363)
 
 // Buscar avaliações de um curso
 app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) => {
@@ -4689,6 +4757,37 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       
       await client.query('COMMIT');
       
+      // Criar notificação para moderadores/admins sobre novo post
+      try {
+        const modAdminResult = await pool.query(`
+          SELECT id, name
+          FROM profiles
+          WHERE role IN ('admin', 'instructor') AND id != $1
+        `, [req.user.id]);
+        
+        const topicResult = await pool.query(`
+          SELECT title FROM forum_topics WHERE id = $1
+        `, [topic_id]);
+        
+        if (topicResult.rows.length > 0) {
+          const topicTitle = topicResult.rows[0].title;
+          
+          const userName = await getUserName(req.user.id, req.user.name);
+          for (const moderator of modAdminResult.rows) {
+            await createNotification(
+              moderator.id,
+              'Novo post no fórum',
+              `${userName} criou um novo post "${title}" no tópico "${topicTitle}"`,
+              'forum_new_post',
+              postResult.rows[0].id,
+              'forum_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de novo post:', notificationErr);
+      }
+      
       console.log('[POST /api/forum/posts] Post criado com sucesso:', postResult.rows[0].title);
       res.status(201).json(postResult.rows[0]);
       
@@ -4807,6 +4906,34 @@ app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => 
       RETURNING *
     `, [replyId, postId, parent_reply_id || null, content.trim(), req.user.id]);
     
+    // Criar notificação para o autor do post (se não for o mesmo usuário)
+    try {
+      const postAuthorResult = await pool.query(`
+        SELECT fp.author_id, fp.title, p.name as author_name
+        FROM forum_posts fp
+        JOIN profiles p ON fp.author_id = p.id
+        WHERE fp.id = $1
+      `, [postId]);
+      
+      if (postAuthorResult.rows.length > 0) {
+        const { author_id: postAuthorId, title: postTitle, author_name } = postAuthorResult.rows[0];
+        
+        if (postAuthorId !== req.user.id) {
+          const userName = await getUserName(req.user.id, req.user.name);
+          await createNotification(
+            postAuthorId,
+            'Nova resposta no seu post',
+            `${userName} respondeu ao seu post "${postTitle}"`,
+            'forum_reply',
+            postId,
+            'forum_post'
+          );
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de resposta:', notificationErr);
+    }
+    
     console.log('[POST /api/forum/posts/:id/replies] Resposta criada com sucesso');
     res.status(201).json(rows[0]);
     
@@ -4836,6 +4963,34 @@ app.post('/api/forum/posts/:id/like', authenticateToken, async (req, res) => {
       await pool.query(`
         INSERT INTO forum_post_likes (post_id, user_id) VALUES ($1, $2)
       `, [postId, userId]);
+      
+      // Criar notificação para o autor do post (se não for o mesmo usuário)
+      try {
+        const postAuthorResult = await pool.query(`
+          SELECT fp.author_id, fp.title, p.name as author_name
+          FROM forum_posts fp
+          JOIN profiles p ON fp.author_id = p.id
+          WHERE fp.id = $1
+        `, [postId]);
+        
+        if (postAuthorResult.rows.length > 0) {
+          const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+          
+          if (postAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              postAuthorId,
+              'Curtida no seu post',
+              `${userName} curtiu seu post "${postTitle}"`,
+              'like',
+              postId,
+              'forum_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida:', notificationErr);
+      }
     }
     
     res.json({ success: true });
@@ -4894,6 +5049,37 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
       await pool.query(`
         INSERT INTO forum_reply_likes (reply_id, user_id) VALUES ($1, $2)
       `, [replyId, userId]);
+      
+      // Criar notificação para o autor da resposta (se não for o mesmo usuário)
+      try {
+        const replyAuthorResult = await pool.query(`
+          SELECT fr.author_id, fr.content, p.name as author_name,
+                 fp.title as post_title
+          FROM forum_replies fr
+          JOIN profiles p ON fr.author_id = p.id
+          JOIN forum_posts fp ON fr.post_id = fp.id
+          WHERE fr.id = $1
+        `, [replyId]);
+        
+        if (replyAuthorResult.rows.length > 0) {
+          const { author_id: replyAuthorId, post_title, content } = replyAuthorResult.rows[0];
+          
+          if (replyAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+            await createNotification(
+              replyAuthorId,
+              'Curtida na sua resposta',
+              `${userName} curtiu sua resposta "${shortContent}" no post "${post_title}"`,
+              'like',
+              replyId,
+              'forum_reply'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em resposta:', notificationErr);
+      }
     }
     
     res.json({ success: true });

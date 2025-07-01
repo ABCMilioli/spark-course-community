@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Loader2, Upload, Image, Trash2 } from 'lucide-react';
 
+const API_URL = process.env.REACT_APP_API_URL || '/api';
+
 interface CreateTopicModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -45,7 +47,7 @@ export function CreateTopicModal({ isOpen, onClose, onSuccess }: CreateTopicModa
 
     try {
       setIsLoading(true);
-      const response = await fetch('/api/forum/topics', {
+      const response = await fetch(`${API_URL}/forum/topics`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +91,7 @@ export function CreateTopicModal({ isOpen, onClose, onSuccess }: CreateTopicModa
       if (type === 'cover') setIsUploadingCover(true);
       else setIsUploadingBanner(true);
 
-      const response = await fetch('/api/forum/upload-image', {
+      const response = await fetch(`${API_URL}/forum/upload-image`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

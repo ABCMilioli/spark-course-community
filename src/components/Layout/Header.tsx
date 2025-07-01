@@ -47,6 +47,8 @@ export function Header() {
                 </Badge>
               </Button>
 
+
+
               {/* Refresh Button (temporário para debug) */}
               <Button variant="outline" size="sm" onClick={handleRefreshUser}>
                 Atualizar

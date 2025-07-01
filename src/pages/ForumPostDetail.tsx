@@ -28,7 +28,7 @@ export default function ForumPostDetail() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Buscar dados do post do fórum
-  const { data: post, isLoading, error } = useQuery({
+  const { data: postData, isLoading, error } = useQuery({
     queryKey: ['forum-post', postId],
     queryFn: async () => {
       if (!postId) throw new Error('ID do post não fornecido');
@@ -40,11 +40,15 @@ export default function ForumPostDetail() {
       console.log('[ForumPostDetail] Post encontrado:', response.data);
       console.log('[ForumPostDetail] Post object:', response.data.post);
       console.log('[ForumPostDetail] content_image_url:', response.data.post?.content_image_url);
-      return response.data.post; // Retornando apenas o post, não o objeto com post e replies
+      return response.data; // Retornando o objeto completo com post e replies
     },
     enabled: !!postId,
     retry: 1
   });
+
+  // Extrair post e replies dos dados
+  const post = postData?.post;
+  const repliesCount = postData?.replies?.length || 0;
 
   // Mutação para curtir/descurtir
   const likeMutation = useMutation({
@@ -305,7 +309,7 @@ export default function ForumPostDetail() {
               
                              <div className="flex items-center gap-2 text-muted-foreground">
                  <MessageSquare className="w-5 h-5" />
-                 <span className="font-medium">0 comentários</span>
+                 <span className="font-medium">{repliesCount} comentários</span>
                </div>
             </div>
             
@@ -323,7 +327,13 @@ export default function ForumPostDetail() {
 
       {/* Seção de Respostas */}
       <div className="max-w-2xl mx-auto mt-8">
-        <PostReplies postId={postId!} />
+        <PostReplies 
+          postId={postId!} 
+          replies={postData?.replies || []}
+          onRepliesUpdate={() => {
+            queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
+          }}
+        />
       </div>
 
 
