@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,16 @@ import {
   Users, BookOpen, MessageSquare, Eye, Lock, Calendar, 
   Plus, ArrowLeft, Settings, UserPlus, FileText, Pin, Trash2, Edit, File
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Class, ClassEnrollment, ClassCourse, ClassInstanceContent } from "@/types";
 import { AddCourseToClassModal } from "@/components/Admin/AddCourseToClassModal";
 import { CreateClassContentModal } from "@/components/Admin/CreateClassContentModal";
@@ -106,10 +116,12 @@ async function fetchClassContent(classId: string) {
 export default function ClassDetail() {
   const { classId } = useParams<{ classId: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
   const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
   const [isCreateContentModalOpen, setIsCreateContentModalOpen] = useState(false);
+  const [courseToRemove, setCourseToRemove] = useState<ClassCourse | null>(null);
 
   const { data: classDetails, isLoading: isLoadingClass } = useQuery({
     queryKey: ['class', classId],
@@ -222,12 +234,15 @@ export default function ClassDetail() {
     queryClient.invalidateQueries({ queryKey: ['class-courses', classId] });
   };
 
-  const handleRemoveCourse = async (courseId: string) => {
-    if (!confirm('Tem certeza que deseja remover este curso da turma?')) {
-      return;
+  const handleRemoveCourse = (course: ClassCourse) => {
+    setCourseToRemove(course);
+  };
+
+  const confirmRemoveCourse = () => {
+    if (courseToRemove) {
+      removeCourseMutation.mutate(courseToRemove.course_id);
+      setCourseToRemove(null);
     }
-    
-    removeCourseMutation.mutate(courseId);
   };
 
   const handleCreateContent = () => {
@@ -236,6 +251,10 @@ export default function ClassDetail() {
 
   const handleContentSuccess = (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean; file?: File }) => {
     createContentMutation.mutate(contentData);
+  };
+
+  const handleViewCourse = (courseId: string) => {
+    navigate(`/course/${courseId}`);
   };
 
   if (isLoadingClass) {
@@ -578,7 +597,7 @@ export default function ClassDetail() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleRemoveCourse(course.course_id)}
+                            onClick={() => handleRemoveCourse(course)}
                             disabled={removeCourseMutation.isPending}
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
@@ -590,7 +609,11 @@ export default function ClassDetail() {
                   <CardContent>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Ordem: {course.order_index}</span>
-                      <Button variant="outline" size="sm">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleViewCourse(course.course_id)}
+                      >
                         Ver Curso
                       </Button>
                     </div>
@@ -696,6 +719,29 @@ export default function ClassDetail() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Modal de confirmação para remover curso */}
+      <AlertDialog open={!!courseToRemove} onOpenChange={() => setCourseToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover Curso da Turma</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover o curso "{courseToRemove?.course_title}" desta turma? 
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmRemoveCourse}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={removeCourseMutation.isPending}
+            >
+              {removeCourseMutation.isPending ? 'Removendo...' : 'Remover Curso'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal para adicionar curso */}
       <AddCourseToClassModal
