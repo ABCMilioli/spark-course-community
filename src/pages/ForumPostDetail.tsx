@@ -4,11 +4,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, ThumbsUp, Star, MessageSquare, Eye, User, Clock, Tag } from 'lucide-react';
+import { ArrowLeft, ThumbsUp, Star, MessageSquare, Eye, Clock, Tag, Edit, Trash2, MoreHorizontal } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { EditPostModal } from '@/components/Forum/EditPostModal';
+import { DeletePostModal } from '@/components/Forum/DeletePostModal';
+import { PostReplies } from '@/components/Forum/PostReplies';
+import { useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -17,6 +22,10 @@ export default function ForumPostDetail() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  // Estados para modais
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Buscar dados do post do fórum
   const { data: post, isLoading, error } = useQuery({
@@ -29,7 +38,9 @@ export default function ForumPostDetail() {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('[ForumPostDetail] Post encontrado:', response.data);
-      return response.data;
+      console.log('[ForumPostDetail] Post object:', response.data.post);
+      console.log('[ForumPostDetail] content_image_url:', response.data.post?.content_image_url);
+      return response.data.post; // Retornando apenas o post, não o objeto com post e replies
     },
     enabled: !!postId,
     retry: 1
@@ -90,6 +101,19 @@ export default function ForumPostDetail() {
     if (diffInHours < 24) return `${diffInHours}h atrás`;
     if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d atrás`;
     return date.toLocaleDateString('pt-BR');
+  };
+
+  // Verificar se o usuário pode editar/excluir o post
+  const canEditPost = user && post && (user.id === post.author_id || user.role === 'admin');
+
+  // Handlers para modais
+  const handleEditSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
+    setIsEditModalOpen(false);
+  };
+
+  const handleDeleteSuccess = () => {
+    navigate(`/forum/topic/${post?.topic_slug || post?.topic_id}`);
   };
 
   if (isLoading) {
@@ -153,12 +177,16 @@ export default function ForumPostDetail() {
           <h1 className="text-2xl font-bold">Post do Fórum</h1>
           <p className="text-muted-foreground">Discussão da comunidade</p>
         </div>
+        {/* Debug info */}
+        <div className="ml-auto text-xs text-gray-500">
+          Post ID: {postId} | Tem imagem: {post?.content_image_url ? 'Sim' : 'Não'}
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-start gap-4">
-            <Avatar className="w-12 h-12 flex-shrink-0">
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-12 h-12">
               <AvatarImage src={post.author_avatar} />
               <AvatarFallback>
                 {post.author_name?.charAt(0).toUpperCase() || 'U'}
@@ -166,126 +194,157 @@ export default function ForumPostDetail() {
             </Avatar>
             
             <div className="flex-1">
-              <h2 className="text-xl font-bold mb-2">{post.title}</h2>
-              
-              <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                <div className="flex items-center gap-1">
-                  <User className="w-4 h-4" />
-                  <span>{post.author_name}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-4 h-4" />
-                  <span>{formatDate(post.created_at)}</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">{post.author_name}</h3>
+                {post.author_role === 'admin' && (
+                  <Badge variant="secondary" className="text-xs">Admin</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <span>{formatDate(post.created_at)}</span>
+                <span>•</span>
                 <div className="flex items-center gap-1">
                   <Eye className="w-4 h-4" />
                   <span>{post.view_count || 0} visualizações</span>
                 </div>
               </div>
-
-              {post.tags && post.tags.length > 0 && (
-                <div className="flex items-center gap-2 mb-3">
-                  {post.tags.map((tag: string) => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      <Tag className="w-3 h-3 mr-1" />
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
+
+            {/* Menu de ações do post */}
+            {canEditPost && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setIsEditModalOpen(true)}>
+                    <Edit className="w-4 h-4 mr-2" />
+                    Editar Post
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Excluir Post
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </CardHeader>
         
-        <CardContent>
-          {/* Imagem de capa */}
-          {post.cover_image_url && (
-            <div className="mb-6">
+        <CardContent className="pt-0">
+          {/* Título do post */}
+          <div className="mb-4">
+            <h1 className="text-xl font-bold">{post.title}</h1>
+          </div>
+
+          {/* Conteúdo do post */}
+          <div className="mb-4">
+            <p className="whitespace-pre-wrap leading-relaxed">{post.content}</p>
+          </div>
+          
+          {/* Imagem de apoio - formato quadrado estilo rede social */}
+          {post.content_image_url ? (
+            <div className="mb-4">
               <img 
-                src={post.cover_image_url} 
-                alt="Capa do post" 
-                className="w-full h-64 object-cover rounded-lg"
+                src={post.content_image_url} 
+                alt="Imagem de apoio" 
+                className="w-full aspect-square object-cover rounded-lg border"
+                onLoad={() => console.log('[RENDER] Imagem carregada com sucesso')}
+                onError={(e) => console.error('[RENDER] Erro ao carregar imagem:', e)}
               />
+            </div>
+          ) : (
+            <div className="mb-4 p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-500">
+              <p>Nenhuma imagem de apoio anexada a este post</p>
+            </div>
+          )}
+
+          {/* Tags */}
+          {post.tags && post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {post.tags.map((tag: string) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  <Tag className="w-3 h-3 mr-1" />
+                  {tag}
+                </Badge>
+              ))}
             </div>
           )}
           
-          <div className="prose prose-sm max-w-none mb-6">
-            <p className="whitespace-pre-wrap">{post.content}</p>
-            
-            {/* Imagem de conteúdo */}
-            {post.content_image_url && (
-              <div className="mt-4">
-                <img 
-                  src={post.content_image_url} 
-                  alt="Imagem do conteúdo" 
-                  className="w-full max-w-md mx-auto rounded-lg"
-                />
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-4 pt-4 border-t">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLike}
-              className={`flex items-center gap-2 ${post.is_liked_by_user ? 'text-primary' : ''}`}
-              disabled={likeMutation.isPending}
-            >
-              <ThumbsUp className="w-4 h-4" />
-              <span>{post.likes_count || 0}</span>
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleFavorite}
-              className={`flex items-center gap-2 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
-              disabled={favoriteMutation.isPending}
-            >
-              <Star className="w-4 h-4" />
-              <span>{post.favorites_count || 0}</span>
-            </Button>
-            
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MessageSquare className="w-4 h-4" />
-              <span>{post.replies_count || 0} respostas</span>
+          {/* Ações do post */}
+          <div className="flex items-center justify-between pt-3 border-t">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLike}
+                className={`flex items-center gap-2 ${post.is_liked_by_user ? 'text-primary' : ''}`}
+                disabled={likeMutation.isPending}
+              >
+                <ThumbsUp className="w-5 h-5" />
+                <span className="font-medium">{post.likes_count || 0}</span>
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleFavorite}
+                className={`flex items-center gap-2 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
+                disabled={favoriteMutation.isPending}
+              >
+                <Star className="w-5 h-5" />
+                <span className="font-medium">{post.favorites_count || 0}</span>
+              </Button>
+              
+                             <div className="flex items-center gap-2 text-muted-foreground">
+                 <MessageSquare className="w-5 h-5" />
+                 <span className="font-medium">0 comentários</span>
+               </div>
             </div>
+            
+            {/* Link para o tópico */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/forum/topic/${post.topic_slug || post.topic_id}`)}
+            >
+              Ver tópico
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Seção de respostas/comentários pode ser adicionada aqui futuramente */}
-      {post.replies && post.replies.length > 0 && (
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-4">Respostas ({post.replies.length})</h3>
-          <div className="grid gap-4">
-            {post.replies.map((reply: any) => (
-              <Card key={reply.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <Avatar className="w-8 h-8 flex-shrink-0">
-                      <AvatarImage src={reply.author_avatar} />
-                      <AvatarFallback>
-                        {reply.author_name?.charAt(0).toUpperCase() || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{reply.author_name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(reply.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-sm whitespace-pre-wrap">{reply.content}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+      {/* Seção de Respostas */}
+      <div className="max-w-2xl mx-auto mt-8">
+        <PostReplies postId={postId!} />
+      </div>
+
+
+
+      {/* Modais */}
+      {post && (
+        <>
+          <EditPostModal
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            onSuccess={handleEditSuccess}
+            post={post}
+          />
+          
+          <DeletePostModal
+            isOpen={isDeleteModalOpen}
+            onClose={() => setIsDeleteModalOpen(false)}
+            onSuccess={handleDeleteSuccess}
+            post={post}
+          />
+        </>
       )}
     </div>
   );

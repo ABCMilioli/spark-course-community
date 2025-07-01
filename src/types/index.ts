@@ -407,21 +407,21 @@ export interface ForumPost {
   title: string;
   content: string;
   author_id: string;
-  author_name: string;
-  author_avatar?: string;
-  author_role: string;
-  is_pinned: boolean;
-  is_locked: boolean;
-  view_count: number;
   created_at: string;
   updated_at: string;
-  replies_count: number;
-  likes_count: number;
-  favorites_count: number;
-  is_liked_by_user: boolean;
-  is_favorited_by_user: boolean;
-  tags: string[];
-  cover_image_url?: string;
+  view_count: number;
+  is_pinned: boolean;
+  is_locked: boolean;
+  author_name?: string;
+  author_avatar?: string;
+  author_role?: string;
+  likes_count?: number;
+  favorites_count?: number;
+  is_liked_by_user?: boolean;
+  is_favorited_by_user?: boolean;
+  tags?: string[];
+  topic_title?: string;
+  topic_slug?: string;
   content_image_url?: string;
 }
 

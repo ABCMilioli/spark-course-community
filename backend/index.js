@@ -4632,7 +4632,7 @@ app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => 
 // Criar novo post
 app.post('/api/forum/posts', authenticateToken, async (req, res) => {
   try {
-    const { topic_id, title, content, tags = [], cover_image_url, content_image_url } = req.body;
+    const { topic_id, title, content, tags = [], content_image_url } = req.body;
     
     console.log('[POST /api/forum/posts] Criando post:', title);
     console.log('[POST /api/forum/posts] Usuário:', req.user);
@@ -4658,10 +4658,10 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       
       // Inserir post
       const postResult = await client.query(`
-        INSERT INTO forum_posts (id, topic_id, title, content, author_id, cover_image_url, content_image_url)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO forum_posts (id, topic_id, title, content, author_id, content_image_url)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING *
-      `, [postId, topic_id, title.trim(), content.trim(), req.user.id, req.body.cover_image_url || null, req.body.content_image_url || null]);
+      `, [postId, topic_id, title.trim(), content.trim(), req.user.id, req.body.content_image_url || null]);
       
       // Inserir tags se fornecidas
       if (tags.length > 0) {
@@ -4906,4 +4906,292 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ===== ENDPOINTS DE ADMINISTRAÇÃO PARA MIGRATION =====
+
+// Verificar estrutura da tabela forum_posts
+app.get('/api/admin/check-forum-posts-structure', authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const result = await pool.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns 
+      WHERE table_name = 'forum_posts' 
+      ORDER BY ordinal_position
+    `);
+
+    res.json({ columns: result.rows });
+  } catch (error) {
+    console.error('Erro ao verificar estrutura:', error);
+    res.status(500).json({ error: 'Erro ao verificar estrutura da tabela.' });
+  }
+});
+
+// Aplicar migration dos posts do fórum
+app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    console.log('[MIGRATION] Aplicando migration dos posts do fórum...');
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verificar se content_image_url existe
+      const checkContentImageUrl = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' AND column_name = 'content_image_url'
+      `);
+      
+      if (checkContentImageUrl.rows.length === 0) {
+        console.log('[MIGRATION] Adicionando coluna content_image_url...');
+        await client.query('ALTER TABLE forum_posts ADD COLUMN content_image_url TEXT');
+      } else {
+        console.log('[MIGRATION] Coluna content_image_url já existe');
+      }
+      
+      // Verificar se cover_image_url existe
+      const checkCoverImageUrl = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' AND column_name = 'cover_image_url'
+      `);
+      
+      if (checkCoverImageUrl.rows.length > 0) {
+        console.log('[MIGRATION] Migrando dados de cover_image_url para content_image_url...');
+        await client.query(`
+          UPDATE forum_posts 
+          SET content_image_url = cover_image_url 
+          WHERE cover_image_url IS NOT NULL AND content_image_url IS NULL
+        `);
+        
+        console.log('[MIGRATION] Removendo coluna cover_image_url...');
+        await client.query('ALTER TABLE forum_posts DROP COLUMN cover_image_url');
+      } else {
+        console.log('[MIGRATION] Coluna cover_image_url não existe');
+      }
+      
+      await client.query('COMMIT');
+      
+      // Verificar estrutura final
+      const finalStructure = await client.query(`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' 
+        ORDER BY ordinal_position
+      `);
+      
+      console.log('[MIGRATION] Migration aplicada com sucesso!');
+      
+      res.json({ 
+        success: true, 
+        message: 'Migration aplicada com sucesso!',
+        finalStructure: finalStructure.rows
+      });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (error) {
+    console.error('[MIGRATION] Erro ao aplicar migration:', error);
+    res.status(500).json({ error: 'Erro ao aplicar migration: ' + error.message });
+  }
+});
+
+// Editar post do fórum
+app.put('/api/forum/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, tags = [], content_image_url } = req.body;
+    
+    console.log('[PUT /api/forum/posts/:id] Editando post:', id);
+    console.log('[PUT /api/forum/posts/:id] Usuário:', req.user);
+    
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+    }
+    
+    // Verificar se o post existe e se o usuário tem permissão para editar
+    const postCheck = await pool.query(`
+      SELECT author_id FROM forum_posts WHERE id = $1
+    `, [id]);
+    
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = postCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem editar)
+    if (post.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para editar este post.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Atualizar post
+      const updateResult = await client.query(`
+        UPDATE forum_posts 
+        SET title = $1, content = $2, content_image_url = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        RETURNING *
+      `, [title.trim(), content.trim(), content_image_url || null, id]);
+      
+      // Remover tags antigas
+      await client.query('DELETE FROM forum_post_tags WHERE post_id = $1', [id]);
+      
+      // Inserir novas tags se fornecidas
+      if (tags.length > 0) {
+        for (const tagName of tags) {
+          // Verificar se tag existe, se não, criar
+          let tagResult = await client.query('SELECT id FROM forum_tags WHERE name = $1', [tagName]);
+          let tagId;
+          
+          if (tagResult.rows.length === 0) {
+            const newTagResult = await client.query(`
+              INSERT INTO forum_tags (name) VALUES ($1) RETURNING id
+            `, [tagName]);
+            tagId = newTagResult.rows[0].id;
+          } else {
+            tagId = tagResult.rows[0].id;
+          }
+          
+          // Associar tag ao post
+          await client.query(`
+            INSERT INTO forum_post_tags (post_id, tag_id) VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+          `, [id, tagId]);
+        }
+      }
+      
+      await client.query('COMMIT');
+      
+      console.log('[PUT /api/forum/posts/:id] Post atualizado com sucesso');
+      res.json(updateResult.rows[0]);
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[PUT /api/forum/posts/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Excluir post do fórum
+app.delete('/api/forum/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[DELETE /api/forum/posts/:id] Excluindo post:', id);
+    console.log('[DELETE /api/forum/posts/:id] Usuário:', req.user);
+    
+    // Verificar se o post existe e se o usuário tem permissão para excluir
+    const postCheck = await pool.query(`
+      SELECT author_id FROM forum_posts WHERE id = $1
+    `, [id]);
+    
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = postCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem excluir)
+    if (post.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para excluir este post.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Excluir relacionamentos de curtidas
+      await client.query('DELETE FROM forum_post_likes WHERE post_id = $1', [id]);
+      
+      // Excluir relacionamentos de favoritos
+      await client.query('DELETE FROM forum_post_favorites WHERE post_id = $1', [id]);
+      
+      // Excluir relacionamentos de tags
+      await client.query('DELETE FROM forum_post_tags WHERE post_id = $1', [id]);
+      
+      // Excluir curtidas de respostas
+      await client.query(`
+        DELETE FROM forum_reply_likes 
+        WHERE reply_id IN (SELECT id FROM forum_replies WHERE post_id = $1)
+      `, [id]);
+      
+      // Excluir respostas
+      await client.query('DELETE FROM forum_replies WHERE post_id = $1', [id]);
+      
+      // Excluir o post
+      await client.query('DELETE FROM forum_posts WHERE id = $1', [id]);
+      
+      await client.query('COMMIT');
+      
+      console.log('[DELETE /api/forum/posts/:id] Post excluído com sucesso');
+      res.json({ success: true, message: 'Post excluído com sucesso.' });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[DELETE /api/forum/posts/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Buscar respostas de um post específico
+app.get('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    
+    console.log('[GET /api/forum/posts/:id/replies] Buscando respostas do post:', postId);
+    
+    const repliesResult = await pool.query(`
+      SELECT 
+        fr.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        (SELECT COUNT(*) FROM forum_reply_likes WHERE reply_id = fr.id) as likes_count,
+        EXISTS(SELECT 1 FROM forum_reply_likes WHERE reply_id = fr.id AND user_id = $1) as is_liked_by_user
+      FROM forum_replies fr
+      JOIN profiles p ON fr.author_id = p.id
+      WHERE fr.post_id = $2
+      ORDER BY fr.is_solution DESC, fr.created_at ASC
+    `, [req.user.id, postId]);
+    
+    console.log('[GET /api/forum/posts/:id/replies] Encontradas', repliesResult.rows.length, 'respostas');
+    
+    res.json(repliesResult.rows);
+    
+  } catch (err) {
+    console.error('[GET /api/forum/posts/:id/replies] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
 });

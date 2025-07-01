@@ -6,26 +6,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, X, Tag, Upload, Image, Trash2 } from 'lucide-react';
-import { ForumTag } from '@/types';
+import { Loader2, X, Tag, Upload, Trash2 } from 'lucide-react';
+import { ForumTag, ForumPost } from '@/types';
 
-interface CreatePostModalProps {
+interface EditPostModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  topicId: string;
-  topicTitle: string;
+  post: ForumPost;
 }
 
-interface CreatePostFormData {
+interface EditPostFormData {
   title: string;
   content: string;
   tags: string[];
   content_image_url: string;
 }
 
-export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitle }: CreatePostModalProps) {
-  const [formData, setFormData] = useState<CreatePostFormData>({
+export function EditPostModal({ isOpen, onClose, onSuccess, post }: EditPostModalProps) {
+  const [formData, setFormData] = useState<EditPostFormData>({
     title: '',
     content: '',
     tags: [],
@@ -39,10 +38,17 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
   const contentImageRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && post) {
+      // Preencher formulário com dados do post
+      setFormData({
+        title: post.title || '',
+        content: post.content || '',
+        tags: post.tags || [],
+        content_image_url: post.content_image_url || ''
+      });
       fetchTags();
     }
-  }, [isOpen]);
+  }, [isOpen, post]);
 
   const fetchTags = async () => {
     try {
@@ -79,14 +85,13 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
 
     try {
       setIsLoading(true);
-      const response = await fetch('/api/forum/posts', {
-        method: 'POST',
+      const response = await fetch(`/api/forum/posts/${post.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          topic_id: topicId,
           title: formData.title.trim(),
           content: formData.content.trim(),
           tags: formData.tags,
@@ -95,16 +100,16 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
       });
 
       if (response.ok) {
-        toast.success('Post criado com sucesso!');
+        toast.success('Post atualizado com sucesso!');
         onSuccess();
-        setFormData({ title: '', content: '', tags: [], content_image_url: '' });
+        onClose();
       } else {
         const error = await response.json();
-        toast.error(error.error || 'Erro ao criar post');
+        toast.error(error.error || 'Erro ao atualizar post');
       }
     } catch (error) {
-      console.error('Erro ao criar post:', error);
-      toast.error('Erro ao criar post');
+      console.error('Erro ao atualizar post:', error);
+      toast.error('Erro ao atualizar post');
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +117,6 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
 
   const handleClose = () => {
     if (!isLoading) {
-      setFormData({ title: '', content: '', tags: [], content_image_url: '' });
       setNewTag('');
       onClose();
     }
@@ -141,8 +145,8 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
   };
 
   const uploadImage = async (file: File) => {
-    const formData = new FormData();
-    formData.append('image', file);
+    const formDataUpload = new FormData();
+    formDataUpload.append('image', file);
 
     try {
       setIsUploadingContent(true);
@@ -152,7 +156,7 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: formData
+        body: formDataUpload
       });
 
       if (response.ok) {
@@ -210,9 +214,9 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Criar Novo Post</DialogTitle>
+          <DialogTitle>Editar Post</DialogTitle>
           <DialogDescription>
-            Criando post no tópico: <span className="font-medium">{topicTitle}</span>
+            Atualize as informações do seu post no fórum.
           </DialogDescription>
         </DialogHeader>
 
@@ -367,10 +371,10 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Criando...
+                  Atualizando...
                 </>
               ) : (
-                'Criar Post'
+                'Atualizar Post'
               )}
             </Button>
           </DialogFooter>

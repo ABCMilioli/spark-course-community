@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { DatabaseMigration } from '@/components/Admin/DatabaseMigration';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -530,6 +531,10 @@ export default function Admin() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+              <div className="grid gap-6">
+          <DatabaseMigration />
+        </div>
     </div>
   );
 }
