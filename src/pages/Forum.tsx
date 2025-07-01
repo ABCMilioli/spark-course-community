@@ -15,17 +15,40 @@ import {
   Star,
   Plus,
   Pin,
-  TrendingUp
+  TrendingUp,
+  MoreVertical,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CreateTopicModal } from '@/components/Forum/CreateTopicModal';
+import { EditTopicModal } from '@/components/Forum/EditTopicModal';
 import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function Forum() {
   const { user } = useAuth();
   const [topics, setTopics] = useState<ForumTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingTopic, setEditingTopic] = useState<ForumTopic | null>(null);
+  const [topicToDelete, setTopicToDelete] = useState<ForumTopic | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -61,6 +84,50 @@ export default function Forum() {
   };
 
   const canCreateTopics = user?.role === 'admin' || user?.role === 'instructor';
+
+  const canEditTopic = (topic: ForumTopic) => {
+    return user?.role === 'admin' || user?.role === 'instructor' || topic.created_by === user?.id;
+  };
+
+  const handleEditTopic = (topic: ForumTopic) => {
+    setEditingTopic(topic);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteTopic = (topic: ForumTopic) => {
+    setTopicToDelete(topic);
+  };
+
+  const confirmDeleteTopic = async () => {
+    if (!topicToDelete) return;
+
+    try {
+      const response = await fetch(`/api/forum/topics/${topicToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        toast.success('Tópico excluído com sucesso!');
+        fetchTopics();
+        setTopicToDelete(null);
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Erro ao excluir tópico');
+      }
+    } catch (error) {
+      console.error('Erro ao excluir tópico:', error);
+      toast.error('Erro ao excluir tópico');
+    }
+  };
+
+  const handleEditSuccess = () => {
+    setIsEditModalOpen(false);
+    setEditingTopic(null);
+    fetchTopics();
+  };
 
   if (loading) {
     return (
@@ -117,20 +184,19 @@ export default function Forum() {
 
       <div className="grid gap-4">
         {topics.map((topic) => (
-          <Card 
-            key={topic.id} 
-            className="hover:shadow-md transition-shadow cursor-pointer" 
-            onClick={() => {
-              if (!topic.slug) {
-                toast.error('Erro ao acessar o tópico. Tente novamente.');
-                return;
-              }
-              navigate(`/forum/topic/${topic.slug}`);
-            }}
-          >
+          <Card key={topic.id} className="hover:shadow-md transition-shadow">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4 flex-1">
+                <div 
+                  className="flex items-center gap-4 flex-1 cursor-pointer"
+                  onClick={() => {
+                    if (!topic.slug) {
+                      toast.error('Erro ao acessar o tópico. Tente novamente.');
+                      return;
+                    }
+                    navigate(`/forum/topic/${topic.slug}`);
+                  }}
+                >
                   <div className="flex-shrink-0">
                     <Avatar className="w-12 h-12">
                       <AvatarImage src={topic.created_by_avatar} />
@@ -185,6 +251,29 @@ export default function Forum() {
                     <TrendingUp className="w-4 h-4" />
                     <span>{topic.posts_count + topic.replies_count}</span>
                   </div>
+
+                  {canEditTopic(topic) && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEditTopic(topic)}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleDeleteTopic(topic)}
+                          className="text-red-600 focus:text-red-600"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -218,6 +307,38 @@ export default function Forum() {
           fetchTopics();
         }}
       />
+
+      <EditTopicModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingTopic(null);
+        }}
+        onSuccess={handleEditSuccess}
+        topic={editingTopic}
+      />
+
+      {/* Modal de confirmação para excluir tópico */}
+      <AlertDialog open={!!topicToDelete} onOpenChange={() => setTopicToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir Tópico</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o tópico "{topicToDelete?.title}"? 
+              Esta ação não pode ser desfeita e todos os posts do tópico também serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDeleteTopic}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir Tópico
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 } 

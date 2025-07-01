@@ -4400,6 +4400,120 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
   }
 });
 
+// Editar tópico (apenas admin/instructor ou criador)
+app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, order_index } = req.body;
+    
+    console.log('[PUT /api/forum/topics/:id] Editando tópico:', id);
+    console.log('[PUT /api/forum/topics/:id] Usuário:', req.user);
+    
+    if (!title || title.trim().length === 0) {
+      return res.status(400).json({ error: 'Título é obrigatório.' });
+    }
+    
+    // Verificar se o tópico existe
+    const topicCheck = await pool.query(`
+      SELECT * FROM forum_topics WHERE id = $1
+    `, [id]);
+    
+    if (topicCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado.' });
+    }
+    
+    const topic = topicCheck.rows[0];
+    
+    // Verificar permissão (admin, instructor ou criador do tópico)
+    if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Você não tem permissão para editar este tópico.' });
+    }
+    
+    // Gerar novo slug se o título mudou
+    let slug = topic.slug;
+    if (title.trim() !== topic.title) {
+      const baseSlug = title.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim('-');
+      
+      slug = baseSlug;
+      let counter = 1;
+      
+      // Verificar se slug já existe (excluindo o tópico atual)
+      while (true) {
+        const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1 AND id != $2', [slug, id]);
+        if (existingSlug.rows.length === 0) break;
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+    }
+    
+    const { rows } = await pool.query(`
+      UPDATE forum_topics 
+      SET title = $1, description = $2, slug = $3, order_index = $4, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING *
+    `, [title.trim(), description?.trim() || null, slug, order_index || topic.order_index, id]);
+    
+    console.log('[PUT /api/forum/topics/:id] Tópico editado com sucesso:', rows[0].title);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/forum/topics/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Excluir tópico (apenas admin/instructor ou criador)
+app.delete('/api/forum/topics/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[DELETE /api/forum/topics/:id] Excluindo tópico:', id);
+    console.log('[DELETE /api/forum/topics/:id] Usuário:', req.user);
+    
+    // Verificar se o tópico existe
+    const topicCheck = await pool.query(`
+      SELECT * FROM forum_topics WHERE id = $1
+    `, [id]);
+    
+    if (topicCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado.' });
+    }
+    
+    const topic = topicCheck.rows[0];
+    
+    // Verificar permissão (admin, instructor ou criador do tópico)
+    if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Você não tem permissão para excluir este tópico.' });
+    }
+    
+    // Verificar se há posts no tópico
+    const postsCheck = await pool.query(`
+      SELECT COUNT(*) as count FROM forum_posts WHERE topic_id = $1
+    `, [id]);
+    
+    const postsCount = parseInt(postsCheck.rows[0].count);
+    
+    if (postsCount > 0) {
+      return res.status(400).json({ 
+        error: `Não é possível excluir o tópico. Ele possui ${postsCount} post(s). Remova todos os posts primeiro.` 
+      });
+    }
+    
+    await pool.query(`
+      DELETE FROM forum_topics WHERE id = $1
+    `, [id]);
+    
+    console.log('[DELETE /api/forum/topics/:id] Tópico excluído com sucesso:', topic.title);
+    res.json({ message: 'Tópico excluído com sucesso.' });
+  } catch (err) {
+    console.error('[DELETE /api/forum/topics/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // Listar posts de um tópico
 app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => {
   try {
