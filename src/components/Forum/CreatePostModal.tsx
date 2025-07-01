@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, X, Tag } from 'lucide-react';
+import { Loader2, X, Tag, Upload, Image, Trash2 } from 'lucide-react';
 import { ForumTag } from '@/types';
 
 interface CreatePostModalProps {
@@ -21,18 +21,26 @@ interface CreatePostFormData {
   title: string;
   content: string;
   tags: string[];
+  cover_image_url: string;
+  content_image_url: string;
 }
 
 export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitle }: CreatePostModalProps) {
   const [formData, setFormData] = useState<CreatePostFormData>({
     title: '',
     content: '',
-    tags: []
+    tags: [],
+    cover_image_url: '',
+    content_image_url: ''
   });
   const [availableTags, setAvailableTags] = useState<ForumTag[]>([]);
   const [newTag, setNewTag] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isUploadingContent, setIsUploadingContent] = useState(false);
+  const coverImageRef = useRef<HTMLInputElement>(null);
+  const contentImageRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -85,14 +93,16 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
           topic_id: topicId,
           title: formData.title.trim(),
           content: formData.content.trim(),
-          tags: formData.tags
+          tags: formData.tags,
+          cover_image_url: formData.cover_image_url,
+          content_image_url: formData.content_image_url
         })
       });
 
       if (response.ok) {
         toast.success('Post criado com sucesso!');
         onSuccess();
-        setFormData({ title: '', content: '', tags: [] });
+        setFormData({ title: '', content: '', tags: [], cover_image_url: '', content_image_url: '' });
       } else {
         const error = await response.json();
         toast.error(error.error || 'Erro ao criar post');
@@ -107,7 +117,7 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
 
   const handleClose = () => {
     if (!isLoading) {
-      setFormData({ title: '', content: '', tags: [] });
+      setFormData({ title: '', content: '', tags: [], cover_image_url: '', content_image_url: '' });
       setNewTag('');
       onClose();
     }
@@ -133,6 +143,75 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
       e.preventDefault();
       addTag(newTag);
     }
+  };
+
+  const uploadImage = async (file: File, type: 'cover' | 'content') => {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      if (type === 'cover') setIsUploadingCover(true);
+      else setIsUploadingContent(true);
+
+      const response = await fetch('/api/forum/upload-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setFormData(prev => ({
+          ...prev,
+          [type === 'cover' ? 'cover_image_url' : 'content_image_url']: result.url
+        }));
+        toast.success(`Imagem ${type === 'cover' ? 'de capa' : 'de conteúdo'} enviada com sucesso!`);
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Erro ao fazer upload da imagem');
+      }
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      toast.error('Erro ao fazer upload da imagem');
+    } finally {
+      if (type === 'cover') setIsUploadingCover(false);
+      else setIsUploadingContent(false);
+    }
+  };
+
+  const handleImageUpload = (type: 'cover' | 'content') => {
+    const ref = type === 'cover' ? coverImageRef : contentImageRef;
+    ref.current?.click();
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'cover' | 'content') => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validar tipo de arquivo
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP.');
+        return;
+      }
+
+      // Validar tamanho (máximo 10MB)
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSize) {
+        toast.error('Arquivo muito grande. Tamanho máximo: 10MB.');
+        return;
+      }
+
+      uploadImage(file, type);
+    }
+  };
+
+  const removeImage = (type: 'cover' | 'content') => {
+    setFormData(prev => ({
+      ...prev,
+      [type === 'cover' ? 'cover_image_url' : 'content_image_url']: ''
+    }));
   };
 
   return (
@@ -168,6 +247,96 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
                 rows={8}
                 disabled={isLoading}
               />
+            </div>
+
+            {/* Campo de imagem de capa */}
+            <div className="space-y-2">
+              <Label>Imagem de Capa</Label>
+              <div className="space-y-2">
+                {formData.cover_image_url ? (
+                  <div className="relative">
+                    <img 
+                      src={formData.cover_image_url} 
+                      alt="Capa do post" 
+                      className="w-full h-40 object-cover rounded-md"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-2 right-2"
+                      onClick={() => removeImage('cover')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleImageUpload('cover')}
+                    disabled={isLoading || isUploadingCover}
+                    className="w-full h-20 border-dashed"
+                  >
+                    {isUploadingCover ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Adicionar imagem de capa
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Campo de imagem de conteúdo */}
+            <div className="space-y-2">
+              <Label>Imagem de Conteúdo</Label>
+              <div className="space-y-2">
+                {formData.content_image_url ? (
+                  <div className="relative">
+                    <img 
+                      src={formData.content_image_url} 
+                      alt="Imagem do conteúdo" 
+                      className="w-full h-40 object-cover rounded-md"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-2 right-2"
+                      onClick={() => removeImage('content')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => handleImageUpload('content')}
+                    disabled={isLoading || isUploadingContent}
+                    className="w-full h-20 border-dashed"
+                  >
+                    {isUploadingContent ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <Image className="w-4 h-4 mr-2" />
+                        Adicionar imagem ao conteúdo
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -220,6 +389,22 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
               </div>
             </div>
           </div>
+
+          {/* Inputs ocultos para upload de imagens */}
+          <input
+            ref={coverImageRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageChange(e, 'cover')}
+            className="hidden"
+          />
+          <input
+            ref={contentImageRef}
+            type="file"
+            accept="image/*"
+            onChange={(e) => handleImageChange(e, 'content')}
+            className="hidden"
+          />
 
           <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isLoading}>

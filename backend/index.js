@@ -146,6 +146,45 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// ===== UPLOAD DE IMAGENS DO FÓRUM =====
+app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    console.log('[POST /api/forum/upload-image] Upload de imagem iniciado');
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada.' });
+    }
+
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP.' });
+    }
+
+    // Validar tamanho (máximo 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (req.file.size > maxSize) {
+      return res.status(400).json({ error: 'Arquivo muito grande. Tamanho máximo: 10MB.' });
+    }
+
+    // Fazer upload para MinIO
+    const result = await uploadFile(req.file, 'forum-images');
+    
+    console.log('[POST /api/forum/upload-image] Upload concluído:', result.url);
+    
+    res.json({
+      success: true,
+      url: result.url,
+      fileName: result.fileName,
+      size: result.size
+    });
+    
+  } catch (error) {
+    console.error('[POST /api/forum/upload-image] Erro:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload da imagem.' });
+  }
+});
+
 // ===== SISTEMA DE FÓRUM: GET TÓPICOS =====
 app.get('/api/forum/topics', authenticateToken, async (req, res) => {
   process.stdout.write('\n[DEBUG] ========== Início GET /api/forum/topics ==========\n');
@@ -4352,7 +4391,7 @@ app.get('/api/test/class-courses-data', authenticateToken, async (req, res) => {
 // Criar novo tópico (apenas admin/instructor)
 app.post('/api/forum/topics', authenticateToken, async (req, res) => {
   try {
-    const { title, description, order_index = 0 } = req.body;
+    const { title, description, order_index = 0, cover_image_url, banner_image_url } = req.body;
     
     console.log('[POST /api/forum/topics] Criando tópico:', title);
     console.log('[POST /api/forum/topics] Usuário:', req.user);
@@ -4387,10 +4426,10 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
     
     const id = crypto.randomUUID();
     const { rows } = await pool.query(`
-      INSERT INTO forum_topics (id, title, description, slug, order_index, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO forum_topics (id, title, description, slug, order_index, created_by, cover_image_url, banner_image_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
-    `, [id, title.trim(), description?.trim() || null, slug, order_index, req.user.id]);
+    `, [id, title.trim(), description?.trim() || null, slug, order_index, req.user.id, cover_image_url || null, banner_image_url || null]);
     
     console.log('[POST /api/forum/topics] Tópico criado com sucesso:', rows[0].title);
     res.status(201).json(rows[0]);
@@ -4404,7 +4443,7 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
 app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, order_index } = req.body;
+    const { title, description, order_index, cover_image_url, banner_image_url } = req.body;
     
     console.log('[PUT /api/forum/topics/:id] Editando tópico:', id);
     console.log('[PUT /api/forum/topics/:id] Usuário:', req.user);
@@ -4452,10 +4491,10 @@ app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
     
     const { rows } = await pool.query(`
       UPDATE forum_topics 
-      SET title = $1, description = $2, slug = $3, order_index = $4, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $5
+      SET title = $1, description = $2, slug = $3, order_index = $4, cover_image_url = $5, banner_image_url = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
       RETURNING *
-    `, [title.trim(), description?.trim() || null, slug, order_index || topic.order_index, id]);
+    `, [title.trim(), description?.trim() || null, slug, order_index || topic.order_index, cover_image_url || null, banner_image_url || null, id]);
     
     console.log('[PUT /api/forum/topics/:id] Tópico editado com sucesso:', rows[0].title);
     res.json(rows[0]);
@@ -4593,7 +4632,7 @@ app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => 
 // Criar novo post
 app.post('/api/forum/posts', authenticateToken, async (req, res) => {
   try {
-    const { topic_id, title, content, tags = [] } = req.body;
+    const { topic_id, title, content, tags = [], cover_image_url, content_image_url } = req.body;
     
     console.log('[POST /api/forum/posts] Criando post:', title);
     console.log('[POST /api/forum/posts] Usuário:', req.user);
@@ -4619,10 +4658,10 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       
       // Inserir post
       const postResult = await client.query(`
-        INSERT INTO forum_posts (id, topic_id, title, content, author_id)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO forum_posts (id, topic_id, title, content, author_id, cover_image_url, content_image_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
-      `, [postId, topic_id, title.trim(), content.trim(), req.user.id]);
+      `, [postId, topic_id, title.trim(), content.trim(), req.user.id, req.body.cover_image_url || null, req.body.content_image_url || null]);
       
       // Inserir tags se fornecidas
       if (tags.length > 0) {

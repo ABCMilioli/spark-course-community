@@ -198,8 +198,30 @@ export default function ForumPostDetail() {
         </CardHeader>
         
         <CardContent>
+          {/* Imagem de capa */}
+          {post.cover_image_url && (
+            <div className="mb-6">
+              <img 
+                src={post.cover_image_url} 
+                alt="Capa do post" 
+                className="w-full h-64 object-cover rounded-lg"
+              />
+            </div>
+          )}
+          
           <div className="prose prose-sm max-w-none mb-6">
             <p className="whitespace-pre-wrap">{post.content}</p>
+            
+            {/* Imagem de conteúdo */}
+            {post.content_image_url && (
+              <div className="mt-4">
+                <img 
+                  src={post.content_image_url} 
+                  alt="Imagem do conteúdo" 
+                  className="w-full max-w-md mx-auto rounded-lg"
+                />
+              </div>
+            )}
           </div>
           
           <div className="flex items-center gap-4 pt-4 border-t">

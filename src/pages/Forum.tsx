@@ -197,6 +197,16 @@ export default function Forum() {
                     navigate(`/forum/topic/${topic.slug}`);
                   }}
                 >
+                  {/* Imagem de capa do tópico */}
+                  {topic.cover_image_url && (
+                    <div className="flex-shrink-0">
+                      <img 
+                        src={topic.cover_image_url} 
+                        alt={`Capa do tópico ${topic.title}`}
+                        className="w-16 h-16 object-cover rounded-lg"
+                      />
+                    </div>
+                  )}
                   <div className="flex-shrink-0">
                     <Avatar className="w-12 h-12">
                       <AvatarImage src={topic.created_by_avatar} />

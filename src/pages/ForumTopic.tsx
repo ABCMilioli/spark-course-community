@@ -164,16 +164,39 @@ export default function ForumTopic() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Banner do tópico */}
+      {topicData.topic.banner_image_url && (
+        <div className="mb-8 rounded-lg overflow-hidden">
+          <img 
+            src={topicData.topic.banner_image_url} 
+            alt={`Banner do tópico ${topicData.topic.title}`}
+            className="w-full h-32 object-cover"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-8">
         <Button variant="ghost" size="sm" onClick={() => navigate('/forum')}>
           <ArrowLeft className="w-4 h-4 mr-2" />
           Voltar
         </Button>
         <div className="flex-1">
-          <h1 className="text-3xl font-bold">{topicData.topic.title}</h1>
-          {topicData.topic.description && (
-            <p className="text-muted-foreground mt-2">{topicData.topic.description}</p>
-          )}
+          {/* Imagem de capa ao lado do título */}
+          <div className="flex items-center gap-4">
+            {topicData.topic.cover_image_url && (
+              <img 
+                src={topicData.topic.cover_image_url} 
+                alt={`Capa do tópico ${topicData.topic.title}`}
+                className="w-12 h-12 object-cover rounded-lg flex-shrink-0"
+              />
+            )}
+            <div>
+              <h1 className="text-3xl font-bold">{topicData.topic.title}</h1>
+              {topicData.topic.description && (
+                <p className="text-muted-foreground mt-2">{topicData.topic.description}</p>
+              )}
+            </div>
+          </div>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
@@ -205,79 +228,97 @@ export default function ForumTopic() {
       <div className="grid gap-4">
         {topicData.posts.map((post) => (
           <Card key={post.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <Avatar className="w-12 h-12 flex-shrink-0">
-                  <AvatarImage src={post.author_avatar} />
-                  <AvatarFallback>
-                    {post.author_name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Link 
-                      to={`/forum/post/${post.id}`}
-                      className="text-lg font-semibold hover:text-primary transition-colors"
-                    >
-                      {post.title}
-                    </Link>
-                    {post.is_pinned && (
-                      <Pin className="w-4 h-4 text-yellow-500" />
-                    )}
-                  </div>
-                  
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                    <div className="flex items-center gap-1">
-                      <User className="w-4 h-4" />
-                      <span>{post.author_name}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatDate(post.created_at)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Eye className="w-4 h-4" />
-                      <span>{post.view_count}</span>
-                    </div>
-                  </div>
-                  
-                  {post.tags && post.tags.length > 0 && (
-                    <div className="flex items-center gap-2 mb-3">
-                      {post.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          <Tag className="w-3 h-3 mr-1" />
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
+            <CardContent className="p-0">
+              {/* Imagem de capa grande no topo */}
+              {post.cover_image_url && (
+                <div className="w-full">
+                  <img 
+                    src={post.cover_image_url} 
+                    alt="Capa do post" 
+                    className="w-full h-48 object-cover rounded-t-lg"
+                  />
+                </div>
+              )}
+              
+              <div className="p-6">
+                {/* Título centralizado */}
+                <div className="text-center mb-4">
+                  <Link 
+                    to={`/forum/post/${post.id}`}
+                    className="text-xl font-bold hover:text-primary transition-colors block"
+                  >
+                    {post.title}
+                  </Link>
+                  {post.is_pinned && (
+                    <Pin className="w-4 h-4 text-yellow-500 mx-auto mt-1" />
                   )}
+                </div>
+
+                {/* Conteúdo do post (preview) */}
+                <div className="text-center text-muted-foreground mb-4">
+                  <p className="text-sm line-clamp-3">
+                    {post.content?.substring(0, 150)}...
+                  </p>
+                </div>
+
+                {/* Tags */}
+                {post.tags && post.tags.length > 0 && (
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    {post.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        <Tag className="w-3 h-3 mr-1" />
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Informações do autor e data */}
+                <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground mb-4">
+                  <div className="flex items-center gap-2">
+                    <Avatar className="w-6 h-6">
+                      <AvatarImage src={post.author_avatar} />
+                      <AvatarFallback>
+                        {post.author_name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{post.author_name}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    <span>{formatDate(post.created_at)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Eye className="w-4 h-4" />
+                    <span>{post.view_count}</span>
+                  </div>
+                </div>
+                
+                {/* Botões de ação centralizados */}
+                <div className="flex items-center justify-center gap-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleLike(post.id)}
+                    className={`flex items-center gap-1 ${post.is_liked_by_user ? 'text-primary' : ''}`}
+                  >
+                    <ThumbsUp className="w-4 h-4" />
+                    <span>{post.likes_count}</span>
+                  </Button>
                   
-                  <div className="flex items-center gap-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleLike(post.id)}
-                      className={`flex items-center gap-1 ${post.is_liked_by_user ? 'text-primary' : ''}`}
-                    >
-                      <ThumbsUp className="w-4 h-4" />
-                      <span>{post.likes_count}</span>
-                    </Button>
-                    
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleFavorite(post.id)}
-                      className={`flex items-center gap-1 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
-                    >
-                      <Star className="w-4 h-4" />
-                      <span>{post.favorites_count}</span>
-                    </Button>
-                    
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <MessageSquare className="w-4 h-4" />
-                      <span>{post.replies_count} respostas</span>
-                    </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleFavorite(post.id)}
+                    className={`flex items-center gap-1 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
+                  >
+                    <Star className="w-4 h-4" />
+                    <span>{post.favorites_count}</span>
+                  </Button>
+                  
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>{post.replies_count} respostas</span>
                   </div>
                 </div>
               </div>

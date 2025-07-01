@@ -397,6 +397,8 @@ export interface ForumTopic {
   posts_count: number;
   replies_count: number;
   last_activity?: string;
+  cover_image_url?: string;
+  banner_image_url?: string;
 }
 
 export interface ForumPost {
@@ -419,6 +421,8 @@ export interface ForumPost {
   is_liked_by_user: boolean;
   is_favorited_by_user: boolean;
   tags: string[];
+  cover_image_url?: string;
+  content_image_url?: string;
 }
 
 export interface ForumReply {

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload, Image, Trash2 } from 'lucide-react';
 import { ForumTopic } from '@/types';
 
 interface EditTopicModalProps {
@@ -19,22 +19,32 @@ interface EditTopicFormData {
   title: string;
   description: string;
   order_index: number;
+  cover_image_url: string;
+  banner_image_url: string;
 }
 
 export function EditTopicModal({ isOpen, onClose, onSuccess, topic }: EditTopicModalProps) {
   const [formData, setFormData] = useState<EditTopicFormData>({
     title: '',
     description: '',
-    order_index: 0
+    order_index: 0,
+    cover_image_url: '',
+    banner_image_url: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const coverImageRef = useRef<HTMLInputElement>(null);
+  const bannerImageRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (topic && isOpen) {
       setFormData({
         title: topic.title,
         description: topic.description || '',
-        order_index: topic.order_index
+        order_index: topic.order_index,
+        cover_image_url: topic.cover_image_url || '',
+        banner_image_url: topic.banner_image_url || ''
       });
     }
   }, [topic, isOpen]);
@@ -60,7 +70,11 @@ export function EditTopicModal({ isOpen, onClose, onSuccess, topic }: EditTopicM
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          cover_image_url: formData.cover_image_url,
+          banner_image_url: formData.banner_image_url
+        })
       });
 
       if (response.ok) {
@@ -81,7 +95,7 @@ export function EditTopicModal({ isOpen, onClose, onSuccess, topic }: EditTopicM
 
   const handleClose = () => {
     if (!isLoading) {
-      setFormData({ title: '', description: '', order_index: 0 });
+      setFormData({ title: '', description: '', order_index: 0, cover_image_url: '', banner_image_url: '' });
       onClose();
     }
   };
