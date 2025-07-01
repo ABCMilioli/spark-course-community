@@ -3029,7 +3029,7 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     
     // Primeiro, buscar a turma para verificar se o usuário tem acesso
     const classResult = await pool.query(`
-      SELECT instructor_id, is_public FROM classes WHERE id = $1
+      SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
     
     process.stdout.write(`[GET /api/classes/:id/courses] Resultado da busca da turma: ${JSON.stringify(classResult.rows)}\n`);
@@ -3138,8 +3138,8 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     
     // 3. Se o usuário está matriculado na turma
     const enrollmentCheck = await pool.query(`
-      SELECT * FROM class_enrollments 
-      WHERE class_id = $1 AND user_id = $2 AND status = 'active'
+      SELECT * FROM class_instance_enrollments 
+      WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
     process.stdout.write(`[GET /api/classes/:id/courses] Resultado da verificação de matrícula: ${JSON.stringify(enrollmentCheck.rows)}\n`);
@@ -3207,7 +3207,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     
     // Verificar se o usuário é instructor da turma ou admin
     const classCheck = await pool.query(`
-      SELECT instructor_id FROM classes WHERE id = $1
+      SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
@@ -3280,7 +3280,7 @@ app.put('/api/classes/:id/courses/:courseId', authenticateToken, async (req, res
     
     // Verificar se o usuário é instructor da turma ou admin
     const classCheck = await pool.query(`
-      SELECT instructor_id FROM classes WHERE id = $1
+      SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
@@ -3349,7 +3349,7 @@ app.delete('/api/classes/:id/courses/:courseId', authenticateToken, async (req, 
     
     // Verificar se o usuário é instructor da turma ou admin
     const classCheck = await pool.query(`
-      SELECT instructor_id FROM classes WHERE id = $1
+      SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
