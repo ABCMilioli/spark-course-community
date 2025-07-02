@@ -330,7 +330,7 @@ export interface Notification {
   user_id: string;
   title: string;
   message: string;
-  type: 'comment' | 'reply' | 'like' | 'system' | 'forum_reply' | 'forum_new_post';
+  type: 'comment' | 'reply' | 'like' | 'system' | 'forum_reply' | 'forum_new_post' | 'community_new_post' | 'community_comment';
   reference_id?: string;
   reference_type?: 'forum_post' | 'forum_topic' | 'forum_reply' | 'course' | 'lesson' | 'lesson_comment' | 'community_post' | 'class';
   is_read: boolean;

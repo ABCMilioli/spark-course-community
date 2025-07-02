@@ -1,4 +1,4 @@
-import { Search, MessageSquare } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +36,8 @@ export function Header() {
               {/* Notifications */}
               <NotificationBell />
 
-              {/* Messages */}
+              {/* Messages - Escondido temporariamente (sem serviço de mensagem ativo) */}
+              {/* 
               <Button variant="ghost" size="sm" className="relative">
                 <MessageSquare className="w-5 h-5" />
                 <Badge 
@@ -46,6 +47,7 @@ export function Header() {
                   1
                 </Badge>
               </Button>
+              */}
 
 
 

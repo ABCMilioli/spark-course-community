@@ -332,6 +332,30 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       'INSERT INTO posts (id, title, content, author_id, category, cover_image, video_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [id, title, content, req.user.id, category, cover_image, video_url, created_at]
     );
+
+    // Criar notificação para moderadores/admins sobre novo post na comunidade
+    try {
+      const modAdminResult = await pool.query(`
+        SELECT id, name
+        FROM profiles
+        WHERE role IN ('admin', 'instructor') AND id != $1
+      `, [req.user.id]);
+      
+      const userName = await getUserName(req.user.id, req.user.name);
+      for (const moderator of modAdminResult.rows) {
+        await createNotification(
+          moderator.id,
+          'Novo post na comunidade',
+          `${userName} criou um novo post "${title}" na comunidade`,
+          'community_new_post',
+          id,
+          'community_post'
+        );
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de novo post da comunidade:', notificationErr);
+    }
+
     console.log('[POST /api/posts] Post criado com sucesso:', { id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
     res.status(201).json({ id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
   } catch (err) {
@@ -1375,11 +1399,49 @@ app.post('/api/posts/:id/like', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
     const userId = req.user.id;
-    // Tenta inserir, ignora se já existe
-    await pool.query(
-      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    
+    // Verificar se já curtiu (para notificar apenas na primeira curtida)
+    const existingLike = await pool.query(
+      'SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2',
       [postId, userId]
     );
+    
+    // Tenta inserir, ignora se já existe
+    const result = await pool.query(
+      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
+      [postId, userId]
+    );
+    
+    // Se foi uma nova curtida (não existia antes), criar notificação
+    if (existingLike.rows.length === 0 && result.rows.length > 0) {
+      try {
+        const postAuthorResult = await pool.query(`
+          SELECT p.author_id, p.title, prof.name as author_name
+          FROM posts p
+          JOIN profiles prof ON p.author_id = prof.id
+          WHERE p.id = $1
+        `, [postId]);
+        
+        if (postAuthorResult.rows.length > 0) {
+          const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+          
+          if (postAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              postAuthorId,
+              'Curtida no seu post',
+              `${userName} curtiu seu post "${postTitle}"`,
+              'like',
+              postId,
+              'community_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em post da comunidade:', notificationErr);
+      }
+    }
+    
     res.json({ success: true });
   } catch (err) {
     console.error('[POST /api/posts/:id/like] Erro:', err);
@@ -1457,6 +1519,35 @@ app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
       'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING *',
       [postId, userId, content.trim()]
     );
+
+    // Criar notificação para o autor do post sobre novo comentário
+    try {
+      const postAuthorResult = await pool.query(`
+        SELECT p.author_id, p.title, prof.name as author_name
+        FROM posts p
+        JOIN profiles prof ON p.author_id = prof.id
+        WHERE p.id = $1
+      `, [postId]);
+      
+      if (postAuthorResult.rows.length > 0) {
+        const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+        
+        if (postAuthorId !== userId) {
+          const userName = await getUserName(req.user.id, req.user.name);
+          await createNotification(
+            postAuthorId,
+            'Novo comentário no seu post',
+            `${userName} comentou no seu post "${postTitle}"`,
+            'community_comment',
+            postId,
+            'community_post'
+          );
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de comentário em post da comunidade:', notificationErr);
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('[POST /api/posts/:id/comments] Erro:', err);
@@ -2698,6 +2789,71 @@ app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
   }
 });
 
+// Deletar notificação específica
+app.delete('/api/notifications/:notificationId', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+    `, [notificationId, userId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/notifications/:id]', err);
+    res.status(500).json({ error: 'Erro ao deletar notificação.' });
+  }
+});
+
+// Deletar múltiplas notificações
+app.delete('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const { notificationIds } = req.body;
+    const userId = req.user.id;
+    
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return res.status(400).json({ error: 'IDs das notificações são obrigatórios.' });
+    }
+    
+    const placeholders = notificationIds.map((_, index) => `$${index + 2}`).join(', ');
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE id IN (${placeholders}) AND user_id = $1
+      RETURNING id
+    `, [userId, ...notificationIds]);
+    
+    res.json({ success: true, deletedCount: result.rows.length });
+  } catch (err) {
+    console.error('[DELETE /api/notifications]', err);
+    res.status(500).json({ error: 'Erro ao deletar notificações.' });
+  }
+});
+
+// Deletar todas as notificações
+app.delete('/api/notifications/all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE user_id = $1
+      RETURNING id
+    `, [userId]);
+    
+    res.json({ success: true, deletedCount: result.rows.length });
+  } catch (err) {
+    console.error('[DELETE /api/notifications/all]', err);
+    res.status(500).json({ error: 'Erro ao deletar todas as notificações.' });
+  }
+});
+
 // Navegação inteligente
 app.get('/api/notifications/:notificationId/navigate', authenticateToken, async (req, res) => {
   try {
@@ -2739,15 +2895,30 @@ app.get('/api/notifications/:notificationId/navigate', authenticateToken, async 
         url = `/courses/${reference_id}`;
         break;
       case 'lesson':
-        url = `/video-player/${reference_id}`;
+        // Para aulas, buscar o courseId
+        const lessonResult = await pool.query(`
+          SELECT m.course_id FROM lessons l
+          JOIN modules m ON l.module_id = m.id
+          WHERE l.id = $1
+        `, [reference_id]);
+        if (lessonResult.rows.length > 0) {
+          url = `/player?courseId=${lessonResult.rows[0].course_id}&lessonId=${reference_id}`;
+        } else {
+          url = '/';
+        }
         break;
       case 'lesson_comment':
         // Para comentários de aula, navegar para a aula
         const lessonCommentResult = await pool.query(`
-          SELECT lesson_id FROM lesson_comments WHERE id = $1
+          SELECT lc.lesson_id, m.course_id 
+          FROM lesson_comments lc
+          JOIN lessons l ON lc.lesson_id = l.id
+          JOIN modules m ON l.module_id = m.id
+          WHERE lc.id = $1
         `, [reference_id]);
         if (lessonCommentResult.rows.length > 0) {
-          url = `/video-player/${lessonCommentResult.rows[0].lesson_id}`;
+          const { lesson_id, course_id } = lessonCommentResult.rows[0];
+          url = `/player?courseId=${course_id}&lessonId=${lesson_id}`;
         } else {
           url = '/';
         }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Trash2, Square, CheckSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -9,6 +9,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
 import { Notification } from '@/types';
@@ -20,6 +21,8 @@ const API_URL = process.env.REACT_APP_API_URL || '/api';
 export function NotificationBell() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -152,6 +155,9 @@ export function NotificationBell() {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
+    // Se está no modo de seleção, não fazer navegação
+    if (isSelectionMode) return;
+    
     try {
       const token = localStorage.getItem('token');
       
@@ -177,6 +183,86 @@ export function NotificationBell() {
     }
   };
 
+  const toggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode);
+    setSelectedNotifications([]);
+  };
+
+  const toggleNotificationSelection = (notificationId: string) => {
+    setSelectedNotifications(prev => 
+      prev.includes(notificationId)
+        ? prev.filter(id => id !== notificationId)
+        : [...prev, notificationId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (!notifications) return;
+    
+    const allIds = notifications.map(n => n.id);
+    if (selectedNotifications.length === notifications.length) {
+      setSelectedNotifications([]);
+    } else {
+      setSelectedNotifications(allIds);
+    }
+  };
+
+  const deleteSelectedNotifications = async () => {
+    if (selectedNotifications.length === 0) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      if (selectedNotifications.length === 1) {
+        // Deletar uma notificação
+        await axios.delete(`${API_URL}/notifications/${selectedNotifications[0]}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        // Deletar múltiplas notificações
+        await axios.delete(`${API_URL}/notifications`, {
+          data: { notificationIds: selectedNotifications },
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+      
+      // Atualizar cache
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-count'] });
+      
+      toast.success(`${selectedNotifications.length} notificação${selectedNotifications.length > 1 ? 'ões deletadas' : ' deletada'}`);
+      
+      // Sair do modo de seleção
+      setSelectedNotifications([]);
+      setIsSelectionMode(false);
+    } catch (error) {
+      console.error('Erro ao deletar notificações:', error);
+      toast.error('Erro ao deletar notificações');
+    }
+  };
+
+  const deleteAllNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.delete(`${API_URL}/notifications/all`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Atualizar cache
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notification-count'] });
+      
+      toast.success(`${data.deletedCount} notificações deletadas`);
+      
+      // Sair do modo de seleção
+      setSelectedNotifications([]);
+      setIsSelectionMode(false);
+    } catch (error) {
+      console.error('Erro ao deletar todas as notificações:', error);
+      toast.error('Erro ao deletar notificações');
+    }
+  };
+
   if (!user) return null;
 
   // Mostrar badge mesmo se está carregando e há erro, para debug
@@ -184,7 +270,14 @@ export function NotificationBell() {
   const badgeText = countLoading ? '...' : countError ? '!' : (notificationCount?.unread_count > 9 ? '9+' : notificationCount?.unread_count);
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={(open) => {
+      setIsOpen(open);
+      if (!open) {
+        // Limpar seleção quando fechar
+        setIsSelectionMode(false);
+        setSelectedNotifications([]);
+      }
+    }}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="sm" className="relative">
           <Bell className={`w-5 h-5 ${countLoading ? 'animate-pulse' : ''}`} />
@@ -203,24 +296,90 @@ export function NotificationBell() {
           <div className="flex items-center justify-between">
             <div>
               <h4 className="font-semibold">Notificações</h4>
-              {notificationCount?.unread_count > 0 && (
+              {isSelectionMode && notifications && (
+                <p className="text-sm text-muted-foreground">
+                  {selectedNotifications.length} de {notifications.length} selecionada{selectedNotifications.length !== 1 ? 's' : ''}
+                </p>
+              )}
+              {!isSelectionMode && notificationCount?.unread_count > 0 && (
                 <p className="text-sm text-muted-foreground">
                   {notificationCount.unread_count} não lida{notificationCount.unread_count > 1 ? 's' : ''}
                 </p>
               )}
             </div>
-            {notificationCount?.unread_count > 0 && (
+            <div className="flex items-center gap-2">
+              {isSelectionMode ? (
+                <>
+                  {selectedNotifications.length > 0 && (
+                                         <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={deleteSelectedNotifications}
+                       className="text-xs text-red-600 hover:text-red-700"
+                     >
+                       <Trash2 className="w-3 h-3 mr-1" />
+                       Deletar ({selectedNotifications.length})
+                     </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleSelectionMode}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {notifications && notifications.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleSelectionMode}
+                      className="text-xs"
+                    >
+                      <Square className="w-3 h-3 mr-1" />
+                      Selecionar
+                    </Button>
+                  )}
+                  {notificationCount?.unread_count > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={markAllAsRead}
+                      className="text-xs"
+                    >
+                      <CheckCheck className="w-3 h-3 mr-1" />
+                      Marcar todas
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+          {isSelectionMode && notifications && notifications.length > 0 && (
+            <div className="flex items-center justify-center mt-3 pt-3 border-t">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={markAllAsRead}
+                onClick={toggleSelectAll}
                 className="text-xs"
               >
-                <CheckCheck className="w-3 h-3 mr-1" />
-                Marcar todas
+                {selectedNotifications.length === notifications.length ? (
+                  <>
+                    <CheckSquare className="w-3 h-3 mr-1" />
+                    Desmarcar todas
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-3 h-3 mr-1" />
+                    Selecionar todas
+                  </>
+                )}
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
         <ScrollArea className="h-80">
           <div className="p-2">
@@ -245,14 +404,29 @@ export function NotificationBell() {
                 {notifications?.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                      !notification.is_read 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : 'hover:bg-muted/50'
+                    className={`p-3 rounded-lg border transition-colors ${
+                      isSelectionMode 
+                        ? selectedNotifications.includes(notification.id)
+                          ? 'bg-blue-50 border-blue-200' 
+                          : 'hover:bg-muted/50 cursor-pointer'
+                        : !notification.is_read 
+                          ? 'bg-blue-50 border-blue-200 cursor-pointer' 
+                          : 'hover:bg-muted/50 cursor-pointer'
                     }`}
-                    onClick={() => handleNotificationClick(notification)}
+                    onClick={() => 
+                      isSelectionMode 
+                        ? toggleNotificationSelection(notification.id)
+                        : handleNotificationClick(notification)
+                    }
                   >
                     <div className="flex items-start gap-3">
+                      {isSelectionMode && (
+                        <Checkbox
+                          checked={selectedNotifications.includes(notification.id)}
+                          onCheckedChange={() => toggleNotificationSelection(notification.id)}
+                          className="mt-1"
+                        />
+                      )}
                       <span className="text-lg">
                         {getNotificationIcon(notification.type)}
                       </span>
@@ -265,7 +439,7 @@ export function NotificationBell() {
                           {formatDate(notification.created_at)}
                         </p>
                       </div>
-                      {!notification.is_read && (
+                      {!notification.is_read && !isSelectionMode && (
                         <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1" />
                       )}
                     </div>
