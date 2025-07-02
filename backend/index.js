@@ -5260,6 +5260,108 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
   }
 });
 
+// Editar comentário/resposta do fórum
+app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id: replyId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+    
+    console.log('[PUT /api/forum/replies/:id] Editando resposta:', replyId);
+    console.log('[PUT /api/forum/replies/:id] Usuário:', req.user);
+    
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Conteúdo da resposta é obrigatório.' });
+    }
+    
+    // Verificar se a resposta existe e se o usuário tem permissão para editar
+    const replyCheck = await pool.query(`
+      SELECT author_id FROM forum_replies WHERE id = $1
+    `, [replyId]);
+    
+    if (replyCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Resposta não encontrada.' });
+    }
+    
+    const reply = replyCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem editar)
+    if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para editar esta resposta.' });
+    }
+    
+    // Atualizar a resposta
+    await pool.query(`
+      UPDATE forum_replies 
+      SET content = $1, updated_at = NOW() 
+      WHERE id = $2
+    `, [content.trim(), replyId]);
+    
+    console.log('[PUT /api/forum/replies/:id] Resposta editada com sucesso');
+    res.json({ success: true, message: 'Resposta editada com sucesso.' });
+    
+  } catch (err) {
+    console.error('[PUT /api/forum/replies/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Deletar comentário/resposta do fórum
+app.delete('/api/forum/replies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id: replyId } = req.params;
+    const userId = req.user.id;
+    
+    console.log('[DELETE /api/forum/replies/:id] Deletando resposta:', replyId);
+    console.log('[DELETE /api/forum/replies/:id] Usuário:', req.user);
+    
+    // Verificar se a resposta existe e se o usuário tem permissão para deletar
+    const replyCheck = await pool.query(`
+      SELECT author_id FROM forum_replies WHERE id = $1
+    `, [replyId]);
+    
+    if (replyCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Resposta não encontrada.' });
+    }
+    
+    const reply = replyCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem deletar)
+    if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para deletar esta resposta.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Deletar curtidas da resposta
+      await client.query('DELETE FROM forum_reply_likes WHERE reply_id = $1', [replyId]);
+      
+      // Deletar respostas filhas (se houver)
+      await client.query('DELETE FROM forum_replies WHERE parent_reply_id = $1', [replyId]);
+      
+      // Deletar a resposta
+      await client.query('DELETE FROM forum_replies WHERE id = $1', [replyId]);
+      
+      await client.query('COMMIT');
+      
+      console.log('[DELETE /api/forum/replies/:id] Resposta deletada com sucesso');
+      res.json({ success: true, message: 'Resposta deletada com sucesso.' });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[DELETE /api/forum/replies/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // Rota catch-all para SPA (deve ser a última rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

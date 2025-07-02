@@ -4,10 +4,18 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageSquare, Send, Loader2 } from 'lucide-react';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ThumbsUp, MessageSquare, Send, Loader2, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { ForumReply } from '@/types';
+import { DeleteReplyModal } from './DeleteReplyModal';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -20,6 +28,10 @@ interface PostRepliesProps {
 
 export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepliesProps) {
   const [newReplyContent, setNewReplyContent] = useState('');
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [replyToDelete, setReplyToDelete] = useState<ForumReply | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
@@ -63,6 +75,47 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
     }
   });
 
+  // Mutation para editar resposta
+  const editReplyMutation = useMutation({
+    mutationFn: async ({ replyId, content }: { replyId: string; content: string }) => {
+      const token = localStorage.getItem('token');
+      const response = await axios.put(`${API_URL}/forum/replies/${replyId}`,
+        { content },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
+      setEditingReplyId(null);
+      setEditContent('');
+      toast.success('Resposta editada com sucesso!');
+      if (onRepliesUpdate) onRepliesUpdate();
+    },
+    onError: () => {
+      toast.error('Erro ao editar resposta');
+    }
+  });
+
+  // Mutation para deletar resposta
+  const deleteReplyMutation = useMutation({
+    mutationFn: async (replyId: string) => {
+      const token = localStorage.getItem('token');
+      const response = await axios.delete(`${API_URL}/forum/replies/${replyId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['forum-post', postId] });
+      toast.success('Resposta deletada com sucesso!');
+      if (onRepliesUpdate) onRepliesUpdate();
+    },
+    onError: () => {
+      toast.error('Erro ao deletar resposta');
+    }
+  });
+
   const handleSubmitReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReplyContent.trim()) {
@@ -70,6 +123,41 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
       return;
     }
     createReplyMutation.mutate(newReplyContent.trim());
+  };
+
+  const handleEditReply = (reply: ForumReply) => {
+    setEditingReplyId(reply.id);
+    setEditContent(reply.content);
+  };
+
+  const handleSaveEdit = (replyId: string) => {
+    if (!editContent.trim()) {
+      toast.error('Digite um conteúdo para a resposta');
+      return;
+    }
+    editReplyMutation.mutate({ replyId, content: editContent.trim() });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingReplyId(null);
+    setEditContent('');
+  };
+
+  const handleDeleteReply = (reply: ForumReply) => {
+    setReplyToDelete(reply);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteReply = () => {
+    if (replyToDelete) {
+      deleteReplyMutation.mutate(replyToDelete.id);
+      setIsDeleteModalOpen(false);
+      setReplyToDelete(null);
+    }
+  };
+
+  const canEditReply = (reply: ForumReply) => {
+    return user && (user.id === reply.author_id || user.role === 'admin');
   };
 
   const formatDate = (dateString: string) => {
@@ -150,41 +238,106 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
                 </Avatar>
                 
                 <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{reply.author_name}</span>
-                    {reply.author_role === 'admin' && (
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-                        Admin
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{reply.author_name}</span>
+                      {reply.author_role === 'admin' && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                          Admin
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {formatDate(reply.created_at)}
                       </span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(reply.created_at)}
-                    </span>
-                    {reply.is_solution && (
-                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
-                        Solução
-                      </span>
+                      {reply.is_solution && (
+                        <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                          Solução
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Menu de ações */}
+                    {canEditReply(reply) && editingReplyId !== reply.id && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditReply(reply)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteReply(reply)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Deletar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     )}
                   </div>
                   
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {reply.content}
-                  </p>
+                  {/* Conteúdo ou editor */}
+                  {editingReplyId === reply.id ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="min-h-[80px]"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveEdit(reply.id)}
+                          disabled={editReplyMutation.isPending || !editContent.trim()}
+                        >
+                          {editReplyMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Salvando...
+                            </>
+                          ) : (
+                            'Salvar'
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCancelEdit}
+                          disabled={editReplyMutation.isPending}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                      {reply.content}
+                    </p>
+                  )}
                   
-                  <div className="flex items-center gap-4 pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => likeReplyMutation.mutate(reply.id)}
-                      className={`flex items-center gap-1 h-8 px-2 ${
-                        reply.is_liked_by_user ? 'text-primary' : 'text-muted-foreground'
-                      }`}
-                      disabled={likeReplyMutation.isPending}
-                    >
-                      <ThumbsUp className="w-3 h-3" />
-                      <span className="text-xs">{reply.likes_count || 0}</span>
-                    </Button>
-                  </div>
+                  {/* Ações (curtir) - só mostra se não estiver editando */}
+                  {editingReplyId !== reply.id && (
+                    <div className="flex items-center gap-4 pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => likeReplyMutation.mutate(reply.id)}
+                        className={`flex items-center gap-1 h-8 px-2 ${
+                          reply.is_liked_by_user ? 'text-primary' : 'text-muted-foreground'
+                        }`}
+                        disabled={likeReplyMutation.isPending}
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                        <span className="text-xs">{reply.likes_count || 0}</span>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -203,6 +356,18 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
           </Card>
         )}
       </div>
+
+      {/* Modal de confirmação de deleção */}
+      <DeleteReplyModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setReplyToDelete(null);
+        }}
+        onConfirm={confirmDeleteReply}
+        reply={replyToDelete}
+        isDeleting={deleteReplyMutation.isPending}
+      />
     </div>
   );
 } 
