@@ -10,10 +10,12 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users, MessageCircle } from "lucide-react";
+import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users, MessageCircle, Mail } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useQuery } from "@tanstack/react-query";
 
 const menuItems = [
   {
@@ -32,6 +34,12 @@ const menuItems = [
     title: "Fórum",
     url: "/forum",
     icon: MessageCircle,
+    roles: ['student', 'instructor', 'admin']
+  },
+  {
+    title: "Mensagens",
+    url: "/messages",
+    icon: Mail,
     roles: ['student', 'instructor', 'admin']
   },
   {
@@ -72,6 +80,24 @@ const adminItems = [
 export function AppSidebar() {
   const { user, logout } = useAuth();
   const location = useLocation();
+
+  // Query para contar mensagens não lidas
+  const { data: unreadMessagesCount } = useQuery({
+    queryKey: ['unread-messages-count'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/conversations/unread-count', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        return data.unread_count;
+      }
+      return 0;
+    },
+    enabled: !!user,
+    refetchInterval: 30000, // Atualizar a cada 30 segundos
+  });
 
   // Log para debug
   console.log('AppSidebar - Current user:', user);
@@ -116,7 +142,12 @@ export function AppSidebar() {
                   >
                     <Link to={item.url} className="flex items-center gap-3">
                       <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
+                      <span className="flex-1">{item.title}</span>
+                      {item.title === "Mensagens" && unreadMessagesCount > 0 && (
+                        <Badge variant="destructive" className="ml-auto text-xs">
+                          {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                        </Badge>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

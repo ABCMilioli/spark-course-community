@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -39,6 +40,27 @@ export default function PublicProfile() {
     navigate('/profile');
     return null;
   }
+
+  const handleSendMessage = async () => {
+    if (!userId || !currentUser) return;
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(`${API_URL}/conversations/direct`, 
+        { otherUserId: userId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (response.status === 200) {
+        const conversation = response.data;
+        navigate(`/messages/${conversation.id}`);
+        toast.success('Conversa iniciada!');
+      }
+    } catch (error) {
+      console.error('Erro ao criar conversa:', error);
+      toast.error('Erro ao iniciar conversa');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -90,6 +112,9 @@ export default function PublicProfile() {
               <p className="text-muted-foreground">{profile.bio || "Nenhuma bio informada."}</p>
             </div>
             <div className="flex gap-2">
+              <Button onClick={handleSendMessage}>
+                <Mail className="w-4 h-4 mr-2" /> Enviar Mensagem
+              </Button>
               <Button variant="outline" onClick={() => navigate(-1)}>
                 <ArrowLeft className="w-4 h-4 mr-2" /> Voltar
               </Button>

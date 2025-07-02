@@ -486,3 +486,65 @@ export interface ForumPostWithReplies {
   post: ForumPostDetail;
   replies: ForumReply[];
 }
+
+// ===== SISTEMA DE MENSAGENS =====
+export interface Conversation {
+  id: string;
+  title?: string;
+  type: 'direct' | 'group';
+  created_at: string;
+  updated_at: string;
+  last_message_content?: string;
+  last_message_at?: string;
+  last_message_sender_id?: string;
+  last_message_sender_name?: string;
+  last_message_sender_avatar?: string;
+  unread_count?: number;
+  participants?: ConversationParticipant[];
+}
+
+export interface ConversationParticipant {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  user_name: string;
+  user_avatar?: string;
+  user_role: string;
+  joined_at: string;
+  last_read_at?: string;
+  is_active: boolean;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  message_type: 'text' | 'image' | 'file';
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  reply_to_message_id?: string;
+  is_edited: boolean;
+  created_at: string;
+  updated_at: string;
+  sender_name: string;
+  sender_avatar?: string;
+  sender_role: string;
+  reply_to_message?: Message;
+}
+
+export interface CreateMessageData {
+  content: string;
+  message_type?: 'text' | 'image' | 'file';
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
+  reply_to_message_id?: string;
+}
+
+export interface ConversationWithMessages {
+  conversation: Conversation;
+  messages: Message[];
+  participants: ConversationParticipant[];
+}

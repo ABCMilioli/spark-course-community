@@ -3162,6 +3162,331 @@ app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) =>
   }
 });
 
+// ===== SISTEMA DE MENSAGENS =====
+
+// Buscar conversas do usuário
+app.get('/api/conversations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT * FROM conversations_with_last_message 
+      WHERE id IN (
+        SELECT conversation_id 
+        FROM conversation_participants 
+        WHERE user_id = $1
+      )
+      ORDER BY last_message_at DESC NULLS LAST, created_at DESC
+    `, [userId]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/conversations]', err);
+    res.status(500).json({ error: 'Erro ao buscar conversas.' });
+  }
+});
+
+// Buscar conversa específica com mensagens
+app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { limit = 50, offset = 0 } = req.query;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Buscar dados da conversa
+    const conversationResult = await pool.query(
+      'SELECT * FROM conversations WHERE id = $1',
+      [id]
+    );
+
+    if (conversationResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Conversa não encontrada.' });
+    }
+
+    // Buscar participantes
+    const participantsResult = await pool.query(`
+      SELECT cp.*, p.name, p.avatar_url
+      FROM conversation_participants cp
+      JOIN profiles p ON cp.user_id = p.id
+      WHERE cp.conversation_id = $1
+    `, [id]);
+
+    // Buscar mensagens
+    const messagesResult = await pool.query(`
+      SELECT * FROM messages_with_sender
+      WHERE conversation_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [id, limit, offset]);
+
+    // Marcar mensagens como lidas
+    await pool.query(`
+      UPDATE conversation_participants 
+      SET last_read_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [id, userId]);
+
+    res.json({
+      conversation: conversationResult.rows[0],
+      participants: participantsResult.rows,
+      messages: messagesResult.rows.reverse(), // Ordem cronológica
+      hasMore: messagesResult.rows.length === parseInt(limit)
+    });
+  } catch (err) {
+    console.error('[GET /api/conversations/:id]', err);
+    res.status(500).json({ error: 'Erro ao buscar conversa.' });
+  }
+});
+
+// Criar conversa direta entre dois usuários
+app.post('/api/conversations/direct', authenticateToken, async (req, res) => {
+  try {
+    const { otherUserId } = req.body;
+    const userId = req.user.id;
+
+    if (!otherUserId) {
+      return res.status(400).json({ error: 'ID do outro usuário é obrigatório.' });
+    }
+
+    if (otherUserId === userId) {
+      return res.status(400).json({ error: 'Não é possível criar conversa consigo mesmo.' });
+    }
+
+    // Verificar se o outro usuário existe
+    const userCheck = await pool.query('SELECT 1 FROM profiles WHERE id = $1', [otherUserId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Usar função do banco para obter ou criar conversa
+    const { rows } = await pool.query(
+      'SELECT get_or_create_direct_conversation($1, $2) as conversation_id',
+      [userId, otherUserId]
+    );
+
+    const conversationId = rows[0].conversation_id;
+    
+    // Buscar dados da conversa criada/encontrada
+    const conversationData = await pool.query(`
+      SELECT * FROM conversations_with_last_message WHERE id = $1
+    `, [conversationId]);
+
+    res.json(conversationData.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/conversations/direct]', err);
+    res.status(500).json({ error: 'Erro ao criar conversa.' });
+  }
+});
+
+// Enviar mensagem
+app.post('/api/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const { content, type = 'text', reply_to_id = null } = req.body;
+    const userId = req.user.id;
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Conteúdo da mensagem é obrigatório.' });
+    }
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Verificar se reply_to_id existe na conversa (se fornecido)
+    if (reply_to_id) {
+      const replyCheck = await pool.query(
+        'SELECT 1 FROM messages WHERE id = $1 AND conversation_id = $2',
+        [reply_to_id, conversationId]
+      );
+      if (replyCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Mensagem de resposta não encontrada.' });
+      }
+    }
+
+    // Inserir mensagem
+    const messageResult = await pool.query(`
+      INSERT INTO messages (conversation_id, sender_id, content, type, reply_to_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [conversationId, userId, content.trim(), type, reply_to_id]);
+
+    const messageId = messageResult.rows[0].id;
+
+    // Buscar mensagem completa com dados do remetente
+    const fullMessage = await pool.query(`
+      SELECT * FROM messages_with_sender WHERE id = $1
+    `, [messageId]);
+
+    // Buscar outros participantes para notificar
+    const otherParticipants = await pool.query(`
+      SELECT cp.user_id, p.name
+      FROM conversation_participants cp
+      JOIN profiles p ON cp.user_id = p.id
+      WHERE cp.conversation_id = $1 AND cp.user_id != $2
+    `, [conversationId, userId]);
+
+    // Criar notificações para outros participantes
+    const senderName = await getUserName(userId);
+    for (const participant of otherParticipants.rows) {
+      await createNotification(
+        participant.user_id,
+        'Nova mensagem',
+        `${senderName} enviou uma mensagem`,
+        'new_message',
+        conversationId,
+        'conversation'
+      );
+    }
+
+    res.status(201).json(fullMessage.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/conversations/:id/messages]', err);
+    res.status(500).json({ error: 'Erro ao enviar mensagem.' });
+  }
+});
+
+// Carregar mensagens mais antigas
+app.get('/api/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const { before, limit = 20 } = req.query;
+    const userId = req.user.id;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    let query = `
+      SELECT * FROM messages_with_sender
+      WHERE conversation_id = $1
+    `;
+    const params = [conversationId];
+
+    if (before) {
+      query += ` AND created_at < (SELECT created_at FROM messages WHERE id = $2)`;
+      params.push(before);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const { rows } = await pool.query(query, params);
+    
+    res.json({
+      messages: rows.reverse(), // Ordem cronológica
+      hasMore: rows.length === parseInt(limit)
+    });
+  } catch (err) {
+    console.error('[GET /api/conversations/:id/messages]', err);
+    res.status(500).json({ error: 'Erro ao carregar mensagens.' });
+  }
+});
+
+// Marcar conversa como lida
+app.post('/api/conversations/:id/mark-read', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const userId = req.user.id;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Atualizar timestamp de leitura
+    await pool.query(`
+      UPDATE conversation_participants 
+      SET last_read_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [conversationId, userId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/conversations/:id/mark-read]', err);
+    res.status(500).json({ error: 'Erro ao marcar como lida.' });
+  }
+});
+
+// Buscar usuários para iniciar conversa
+app.get('/api/users/search', authenticateToken, async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    const userId = req.user.id;
+
+    if (!q || q.trim() === '') {
+      return res.json([]);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT id, name, avatar_url, role
+      FROM profiles
+      WHERE id != $1 
+        AND (name ILIKE $2 OR email ILIKE $2)
+      ORDER BY name
+      LIMIT $3
+    `, [userId, `%${q.trim()}%`, parseInt(limit)]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/users/search]', err);
+    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+  }
+});
+
+// Contar mensagens não lidas
+app.get('/api/conversations/unread-count', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { rows } = await pool.query(`
+      SELECT COUNT(DISTINCT c.id)::int as unread_count
+      FROM conversations c
+      JOIN conversation_participants cp ON c.id = cp.conversation_id
+      WHERE cp.user_id = $1
+        AND c.updated_at > COALESCE(cp.last_read_at, '1970-01-01'::timestamptz)
+        AND EXISTS (
+          SELECT 1 FROM messages m 
+          WHERE m.conversation_id = c.id 
+            AND m.sender_id != $1
+            AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01'::timestamptz)
+        )
+    `, [userId]);
+
+    res.json({ unread_count: rows[0]?.unread_count || 0 });
+  } catch (err) {
+    console.error('[GET /api/conversations/unread-count]', err);
+    res.status(500).json({ error: 'Erro ao contar mensagens não lidas.' });
+  }
+});
+
 // ===== ENDPOINTS DE EXPLORE E BUSCA =====
 
 // Busca geral

@@ -27,6 +27,7 @@ import ClassDetail from "./pages/ClassDetail";
 import ClassManagement from "./pages/ClassManagement";
 import Payment from "./pages/Payment";
 import PublicProfile from "./pages/PublicProfile";
+import Messages from "./pages/Messages";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +72,8 @@ function AppContent() {
               <Route path="/player" element={<VideoPlayer />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/user/:userId" element={<PublicProfile />} />
+              <Route path="/messages" element={<Messages />} />
+              <Route path="/messages/:conversationId" element={<Messages />} />
               <Route path="/explore" element={<Explore />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/course/edit/:courseId" element={<CourseAdmin />} />
