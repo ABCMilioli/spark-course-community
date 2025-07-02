@@ -10,6 +10,21 @@ export interface Profile {
   created_at: string;
 }
 
+export interface PublicProfile {
+  id: string;
+  name: string;
+  role: 'student' | 'instructor' | 'admin';
+  bio?: string;
+  avatar_url?: string;
+  created_at: string;
+  stats: {
+    posts_count: number;
+    courses_enrolled: number;
+    forum_posts_count: number;
+  };
+  recent_posts: Post[];
+}
+
 export interface Post {
   id: string;
   title: string;

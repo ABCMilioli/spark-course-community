@@ -270,6 +270,10 @@ export default function PostDetail() {
     }
   };
 
+  const handleAuthorClick = (authorId: string) => {
+    navigate(`/user/${authorId}`);
+  };
+
   // Log de erro se houver
   if (error) {
     console.error('[PostDetail] Erro na query:', error);
@@ -343,13 +347,21 @@ export default function PostDetail() {
         </Button>
         
         <div className="flex items-center gap-3 mb-4">
-          <Avatar className="w-12 h-12">
+          <Avatar 
+            className="w-12 h-12 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+            onClick={() => handleAuthorClick(post.author_id)}
+          >
             <AvatarImage src={post.author_avatar ?? undefined} />
             <AvatarFallback>{post.author_name?.[0] || 'U'}</AvatarFallback>
           </Avatar>
           <div>
             <div className="flex items-center gap-2">
-              <p className="font-medium">{post.author_name}</p>
+              <p 
+                className="font-medium cursor-pointer hover:text-primary transition-colors"
+                onClick={() => handleAuthorClick(post.author_id)}
+              >
+                {post.author_name}
+              </p>
               <Badge variant="secondary">
                 Membro
               </Badge>
@@ -481,13 +493,21 @@ export default function PostDetail() {
           <div className="space-y-6">
             {comments.map((c: any) => (
               <div key={c.id} className="flex gap-3 items-start group">
-                <Avatar className="w-9 h-9">
+                <Avatar 
+                  className="w-9 h-9 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+                  onClick={() => handleAuthorClick(c.author_id || c.user_id)}
+                >
                   <AvatarImage src={c.author_avatar ?? undefined} />
                   <AvatarFallback>{c.author_name?.[0] || 'U'}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 bg-muted/40 rounded-lg px-4 py-2">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm">{c.author_name}</span>
+                    <span 
+                      className="font-medium text-sm cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => handleAuthorClick(c.author_id || c.user_id)}
+                    >
+                      {c.author_name}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {c.created_at ? formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: ptBR }) : 'agora'}
                     </span>

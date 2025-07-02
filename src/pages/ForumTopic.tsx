@@ -155,6 +155,10 @@ export default function ForumTopic() {
     setSelectedPost(null);
   };
 
+  const handleAuthorClick = (authorId: string) => {
+    navigate(`/user/${authorId}`);
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -351,13 +355,21 @@ export default function ForumTopic() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <Avatar className="w-6 h-6">
+                        <Avatar 
+                          className="w-6 h-6 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+                          onClick={() => handleAuthorClick(post.author_id)}
+                        >
                           <AvatarImage src={post.author_avatar} />
                           <AvatarFallback>
                             {post.author_name.charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <span>{post.author_name}</span>
+                        <span 
+                          className="cursor-pointer hover:text-primary transition-colors"
+                          onClick={() => handleAuthorClick(post.author_id)}
+                        >
+                          {post.author_name}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Clock className="w-4 h-4" />

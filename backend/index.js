@@ -146,6 +146,70 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint para perfil público de usuário
+app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log('[GET /api/users/:userId/profile] Buscando perfil público para usuário:', userId);
+    
+    // Buscar dados básicos do usuário (apenas campos públicos)
+    const userResult = await pool.query(
+      'SELECT id, name, role, bio, avatar_url, created_at FROM profiles WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Buscar estatísticas do usuário
+    const [postsResult, enrollmentsResult, forumPostsResult] = await Promise.all([
+      // Posts criados na comunidade
+      pool.query('SELECT COUNT(*) as count FROM posts WHERE author_id = $1', [userId]),
+      // Cursos matriculados (apenas contagem)
+      pool.query('SELECT COUNT(*) as count FROM enrollments WHERE user_id = $1', [userId]),
+      // Posts no fórum
+      pool.query('SELECT COUNT(*) as count FROM forum_posts WHERE author_id = $1', [userId])
+    ]);
+    
+    const stats = {
+      posts_count: parseInt(postsResult.rows[0].count),
+      courses_enrolled: parseInt(enrollmentsResult.rows[0].count),
+      forum_posts_count: parseInt(forumPostsResult.rows[0].count),
+    };
+    
+    // Buscar posts recentes do usuário (últimos 5)
+    const recentPostsResult = await pool.query(`
+      SELECT p.*, 
+             (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count
+      FROM posts p 
+      WHERE p.author_id = $1 
+      ORDER BY p.created_at DESC 
+      LIMIT 5
+    `, [userId]);
+    
+    const response = {
+      ...user,
+      stats,
+      recent_posts: recentPostsResult.rows
+    };
+    
+    console.log('[GET /api/users/:userId/profile] Perfil público encontrado:', {
+      id: user.id,
+      name: user.name,
+      stats
+    });
+    
+    res.json(response);
+  } catch (err) {
+    console.error('[GET /api/users/:userId/profile] Erro ao buscar perfil público:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ===== UPLOAD DE IMAGENS DO FÓRUM =====
 app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {

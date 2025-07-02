@@ -26,6 +26,7 @@ import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
 import ClassManagement from "./pages/ClassManagement";
 import Payment from "./pages/Payment";
+import PublicProfile from "./pages/PublicProfile";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ function AppContent() {
               <Route path="/post/:postId" element={<PostDetail />} />
               <Route path="/player" element={<VideoPlayer />} />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/user/:userId" element={<PublicProfile />} />
               <Route path="/explore" element={<Explore />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/course/edit/:courseId" element={<CourseAdmin />} />

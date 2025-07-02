@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { ForumReply } from '@/types';
 import { DeleteReplyModal } from './DeleteReplyModal';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -34,6 +35,7 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
   const [replyToDelete, setReplyToDelete] = useState<ForumReply | null>(null);
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Mutation para criar nova resposta
   const createReplyMutation = useMutation({
@@ -171,6 +173,10 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
     return date.toLocaleDateString('pt-BR');
   };
 
+  const handleAuthorClick = (authorId: string) => {
+    navigate(`/user/${authorId}`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -230,7 +236,10 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
           <Card key={reply.id}>
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
-                <Avatar className="w-8 h-8">
+                <Avatar 
+                  className="w-8 h-8 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+                  onClick={() => handleAuthorClick(reply.author_id)}
+                >
                   <AvatarImage src={reply.author_avatar} />
                   <AvatarFallback>
                     {reply.author_name?.charAt(0).toUpperCase() || 'U'}
@@ -240,7 +249,12 @@ export function PostReplies({ postId, replies = [], onRepliesUpdate }: PostRepli
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{reply.author_name}</span>
+                      <span 
+                        className="font-medium text-sm cursor-pointer hover:text-primary transition-colors"
+                        onClick={() => handleAuthorClick(reply.author_id)}
+                      >
+                        {reply.author_name}
+                      </span>
                       {reply.author_role === 'admin' && (
                         <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
                           Admin

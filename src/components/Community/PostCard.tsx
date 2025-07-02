@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Post } from "@/types";
 import { getVideoEmbedUrl } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
 
 interface PostCardProps {
   post: Post & { isLiked?: boolean };
@@ -15,6 +16,8 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, onLike, onClick }: PostCardProps) {
+  const navigate = useNavigate();
+  
   const timeAgo = formatDistanceToNow(new Date(post.created_at), {
     addSuffix: true,
     locale: ptBR
@@ -29,6 +32,11 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
     onClick?.(post.id.toString());
   };
 
+  const handleAuthorClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/user/${post.author_id}`);
+  };
+
   return (
     <Card 
       className="hover:shadow-lg transition-all duration-300 cursor-pointer group animate-fade-in"
@@ -37,13 +45,21 @@ export function PostCard({ post, onLike, onClick }: PostCardProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <Avatar className="w-10 h-10">
+            <Avatar 
+              className="w-10 h-10 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+              onClick={handleAuthorClick}
+            >
               <AvatarImage src={post.author_avatar ?? undefined} />
               <AvatarFallback>{post.author_name?.[0] || 'U'}</AvatarFallback>
             </Avatar>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-medium text-sm">{post.author_name}</p>
+                <p 
+                  className="font-medium text-sm cursor-pointer hover:text-primary transition-colors"
+                  onClick={handleAuthorClick}
+                >
+                  {post.author_name}
+                </p>
                 <Badge variant="secondary" className="text-xs">
                   Membro
                 </Badge>

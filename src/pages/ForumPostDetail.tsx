@@ -120,6 +120,12 @@ export default function ForumPostDetail() {
     navigate(`/forum/topic/${post?.topic_slug || post?.topic_id}`);
   };
 
+  const handleAuthorClick = () => {
+    if (post?.author_id) {
+      navigate(`/user/${post.author_id}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -190,7 +196,10 @@ export default function ForumPostDetail() {
       <Card className="max-w-2xl mx-auto">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
-            <Avatar className="w-12 h-12">
+            <Avatar 
+              className="w-12 h-12 cursor-pointer hover:ring-2 hover:ring-primary/20 transition-all"
+              onClick={handleAuthorClick}
+            >
               <AvatarImage src={post.author_avatar} />
               <AvatarFallback>
                 {post.author_name?.charAt(0).toUpperCase() || 'U'}
@@ -199,7 +208,12 @@ export default function ForumPostDetail() {
             
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold">{post.author_name}</h3>
+                <h3 
+                  className="font-semibold cursor-pointer hover:text-primary transition-colors"
+                  onClick={handleAuthorClick}
+                >
+                  {post.author_name}
+                </h3>
                 {post.author_role === 'admin' && (
                   <Badge variant="secondary" className="text-xs">Admin</Badge>
                 )}
