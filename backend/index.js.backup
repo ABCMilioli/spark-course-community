@@ -15,8 +15,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true,
+  exposedHeaders: ['Authorization']
+}));
 app.use(express.json());
+
+// Adicionar log para todas as requisições
+app.use((req, res, next) => {
+  process.stdout.write(`[${new Date().toISOString()}] ${req.method} ${req.path}\n`);
+  process.stdout.write(`[DEBUG] Headers: ${JSON.stringify(req.headers)}\n`);
+  next();
+});
 
 // Configuração do Postgres
 const pool = new Pool({
@@ -33,15 +44,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: 500 * 1024 * 1024, // 500MB
   },
   fileFilter: (req, file, cb) => {
-    // Permitir apenas imagens e vídeos
-    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Tipo de arquivo não suportado'), false);
-    }
+    // Permitir todos os tipos de arquivo
+    cb(null, true);
   }
 });
 
@@ -73,41 +80,32 @@ if (missingVars.length > 0) {
 
 // Middleware para verificar token
 const authenticateToken = (req, res, next) => {
-  console.log('[authenticateToken] === INÍCIO DO MIDDLEWARE ===');
-  console.log('[authenticateToken] Rota:', req.path);
-  console.log('[authenticateToken] Headers:', req.headers);
+  process.stdout.write(`\n[AUTH] === INÍCIO DA AUTENTICAÇÃO ===\n`);
+  process.stdout.write(`[AUTH] Rota: ${req.method} ${req.path}\n`);
+  process.stdout.write(`[AUTH] Headers: ${JSON.stringify(req.headers)}\n`);
   
   const auth = req.headers.authorization;
-  console.log('[authenticateToken] Authorization header:', auth);
-  
   if (!auth) {
-    console.log('[authenticateToken] Token ausente - retornando 401');
+    process.stdout.write('[AUTH] Token ausente\n');
+    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (erro) ===\n\n');
     return res.status(401).json({ error: 'Token ausente.' });
   }
   
   try {
     const [, token] = auth.split(' ');
-    console.log('[authenticateToken] Token extraído:', token ? token.substring(0, 20) + '...' : 'null');
-    
+    process.stdout.write(`[AUTH] Token recebido: ${token}\n`);
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('[authenticateToken] Token decodificado:', decoded);
-    
+    process.stdout.write(`[AUTH] Token válido para usuário: ${JSON.stringify(decoded)}\n`);
+    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (sucesso) ===\n\n');
     req.user = decoded;
-    console.log('[authenticateToken] Usuário definido no req.user:', req.user);
-    console.log('[authenticateToken] === FIM DO MIDDLEWARE (sucesso) ===');
     next();
   } catch (err) {
-    console.error('[authenticateToken] Erro ao verificar token:', err);
-    console.log('[authenticateToken] === FIM DO MIDDLEWARE (erro) ===');
+    process.stdout.write(`[AUTH] Token inválido: ${err.message}\n`);
+    process.stdout.write(`[AUTH] Stack trace: ${err.stack}\n`);
+    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (erro) ===\n\n');
     res.status(401).json({ error: 'Token inválido.' });
   }
 };
-
-// Adicionar middleware de logging global (após a definição do authenticateToken)
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - User: ${req.user?.id || 'unauthenticated'}`);
-  next();
-});
 
 // Endpoint de login
 app.post('/api/auth/login', async (req, res) => {
@@ -130,7 +128,7 @@ app.post('/api/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Senha inválida.' });
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+    const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {
     console.error(err);
@@ -145,6 +143,153 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Endpoint para perfil público de usuário
+app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log('[GET /api/users/:userId/profile] Buscando perfil público para usuário:', userId);
+    
+    // Buscar dados básicos do usuário (apenas campos públicos)
+    const userResult = await pool.query(
+      'SELECT id, name, role, bio, avatar_url, created_at FROM profiles WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Buscar estatísticas do usuário
+    const [postsResult, enrollmentsResult, forumPostsResult] = await Promise.all([
+      // Posts criados na comunidade
+      pool.query('SELECT COUNT(*) as count FROM posts WHERE author_id = $1', [userId]),
+      // Cursos matriculados (apenas contagem)
+      pool.query('SELECT COUNT(*) as count FROM enrollments WHERE user_id = $1', [userId]),
+      // Posts no fórum
+      pool.query('SELECT COUNT(*) as count FROM forum_posts WHERE author_id = $1', [userId])
+    ]);
+    
+    const stats = {
+      posts_count: parseInt(postsResult.rows[0].count),
+      courses_enrolled: parseInt(enrollmentsResult.rows[0].count),
+      forum_posts_count: parseInt(forumPostsResult.rows[0].count),
+    };
+    
+    // Buscar posts recentes do usuário (últimos 5)
+    const recentPostsResult = await pool.query(`
+      SELECT p.*, 
+             (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count
+      FROM posts p 
+      WHERE p.author_id = $1 
+      ORDER BY p.created_at DESC 
+      LIMIT 5
+    `, [userId]);
+    
+    const response = {
+      ...user,
+      stats,
+      recent_posts: recentPostsResult.rows
+    };
+    
+    console.log('[GET /api/users/:userId/profile] Perfil público encontrado:', {
+      id: user.id,
+      name: user.name,
+      stats
+    });
+    
+    res.json(response);
+  } catch (err) {
+    console.error('[GET /api/users/:userId/profile] Erro ao buscar perfil público:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ===== UPLOAD DE IMAGENS DO FÓRUM =====
+app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    console.log('[POST /api/forum/upload-image] Upload de imagem iniciado');
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem foi enviada.' });
+    }
+
+    // Validar tipo de arquivo
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP.' });
+    }
+
+    // Validar tamanho (máximo 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (req.file.size > maxSize) {
+      return res.status(400).json({ error: 'Arquivo muito grande. Tamanho máximo: 10MB.' });
+    }
+
+    // Fazer upload para MinIO
+    const result = await uploadFile(req.file, 'forum-images');
+    
+    console.log('[POST /api/forum/upload-image] Upload concluído:', result.url);
+    
+    res.json({
+      success: true,
+      url: result.url,
+      fileName: result.fileName,
+      size: result.size
+    });
+    
+  } catch (error) {
+    console.error('[POST /api/forum/upload-image] Erro:', error);
+    res.status(500).json({ error: 'Erro ao fazer upload da imagem.' });
+  }
+});
+
+// ===== SISTEMA DE FÓRUM: GET TÓPICOS =====
+app.get('/api/forum/topics', authenticateToken, async (req, res) => {
+  process.stdout.write('\n[DEBUG] ========== Início GET /api/forum/topics ==========\n');
+  process.stdout.write(`[DEBUG] Usuário: ${JSON.stringify(req.user)}\n`);
+  try {
+    process.stdout.write('[GET /api/forum/topics] Iniciando busca de tópicos do fórum...\n');
+    process.stdout.write('[GET /api/forum/topics] Executando query...\n');
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        ft.*,
+        p.name as created_by_name,
+        p.avatar_url as created_by_avatar,
+        (SELECT COUNT(*) FROM forum_posts WHERE topic_id = ft.id) as posts_count,
+        (SELECT COUNT(*) FROM forum_posts fp 
+         JOIN forum_replies fr ON fp.id = fr.post_id 
+         WHERE fp.topic_id = ft.id) as replies_count,
+        (SELECT MAX(fp.updated_at) FROM forum_posts fp WHERE fp.topic_id = ft.id) as last_activity
+      FROM forum_topics ft
+      JOIN profiles p ON ft.created_by = p.id
+      WHERE ft.is_active = true
+      ORDER BY ft.is_pinned DESC, ft.order_index ASC, ft.created_at ASC
+    `);
+    
+    process.stdout.write('[GET /api/forum/topics] Query executada com sucesso\n');
+    process.stdout.write(`[GET /api/forum/topics] Tópicos encontrados: ${rows.length}\n`);
+    process.stdout.write(`[GET /api/forum/topics] IDs dos tópicos: ${rows.map(r => r.id).join(', ')}\n`);
+    
+    if (!Array.isArray(rows)) {
+      process.stdout.write('[GET /api/forum/topics] Erro: rows não é um array\n');
+      res.json([]);
+      return;
+    }
+    
+    res.json(rows);
+    process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics ==========\n\n');
+  } catch (err) {
+    process.stdout.write(`[GET /api/forum/topics] Erro ao buscar tópicos: ${err}\n`);
+    process.stdout.write(`[GET /api/forum/topics] Stack trace: ${err.stack}\n`);
+    res.status(500).json({ error: 'Erro interno ao buscar tópicos.' });
+    process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics (com erro) ==========\n\n');
   }
 });
 
@@ -195,6 +340,20 @@ app.post('/api/auth/signup', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const id = crypto.randomUUID();
     await pool.query('INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [id, name, email, hash, 'student']);
+    
+    // Disparar webhook user.created
+    try {
+      await sendWebhook('user.created', {
+        id,
+        name,
+        email,
+        role: 'student',
+        created_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao disparar user.created:', webhookError);
+    }
+    
     res.status(201).json({ message: 'Usuário criado com sucesso.' });
   } catch (err) {
     console.error(err);
@@ -251,6 +410,30 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       'INSERT INTO posts (id, title, content, author_id, category, cover_image, video_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [id, title, content, req.user.id, category, cover_image, video_url, created_at]
     );
+
+    // Criar notificação para moderadores/admins sobre novo post na comunidade
+    try {
+      const modAdminResult = await pool.query(`
+        SELECT id, name
+        FROM profiles
+        WHERE role IN ('admin', 'instructor') AND id != $1
+      `, [req.user.id]);
+      
+      const userName = await getUserName(req.user.id, req.user.name);
+      for (const moderator of modAdminResult.rows) {
+        await createNotification(
+          moderator.id,
+          'Novo post na comunidade',
+          `${userName} criou um novo post "${title}" na comunidade`,
+          'community_new_post',
+          id,
+          'community_post'
+        );
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de novo post da comunidade:', notificationErr);
+    }
+
     console.log('[POST /api/posts] Post criado com sucesso:', { id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
     res.status(201).json({ id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
   } catch (err) {
@@ -894,11 +1077,35 @@ app.get('/api/dashboard-stats', authenticateToken, async (req, res) => {
 // Endpoint para popular tags
 app.get('/api/popular-tags', authenticateToken, async (req, res) => {
   try {
-    // Por enquanto, retornar tags fixas
-    res.json(['javascript', 'react', 'nodejs', 'python', 'docker', 'aws']);
+    // Buscar categorias mais populares baseadas nos posts existentes
+    const { rows } = await pool.query(`
+      SELECT category, COUNT(*) as count
+      FROM posts 
+      WHERE category IS NOT NULL AND category <> ''
+      GROUP BY category 
+      ORDER BY count DESC 
+      LIMIT 8
+    `);
+    
+    const popularTags = rows.map(row => row.category);
+    
+    // Se não houver tags suficientes, adicionar algumas padrão
+    if (popularTags.length < 6) {
+      const defaultTags = ['javascript', 'react', 'nodejs', 'python', 'docker', 'aws'];
+      const existingTags = new Set(popularTags);
+      
+      for (const tag of defaultTags) {
+        if (!existingTags.has(tag) && popularTags.length < 8) {
+          popularTags.push(tag);
+        }
+      }
+    }
+    
+    res.json(popularTags);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erro interno.' });
+    console.error('[GET /api/popular-tags] Erro:', err);
+    // Fallback para tags fixas em caso de erro
+    res.json(['javascript', 'react', 'nodejs', 'python', 'docker', 'aws']);
   }
 });
 
@@ -1294,11 +1501,49 @@ app.post('/api/posts/:id/like', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
     const userId = req.user.id;
-    // Tenta inserir, ignora se já existe
-    await pool.query(
-      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    
+    // Verificar se já curtiu (para notificar apenas na primeira curtida)
+    const existingLike = await pool.query(
+      'SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2',
       [postId, userId]
     );
+    
+    // Tenta inserir, ignora se já existe
+    const result = await pool.query(
+      'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
+      [postId, userId]
+    );
+    
+    // Se foi uma nova curtida (não existia antes), criar notificação
+    if (existingLike.rows.length === 0 && result.rows.length > 0) {
+      try {
+        const postAuthorResult = await pool.query(`
+          SELECT p.author_id, p.title, prof.name as author_name
+          FROM posts p
+          JOIN profiles prof ON p.author_id = prof.id
+          WHERE p.id = $1
+        `, [postId]);
+        
+        if (postAuthorResult.rows.length > 0) {
+          const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+          
+          if (postAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              postAuthorId,
+              'Curtida no seu post',
+              `${userName} curtiu seu post "${postTitle}"`,
+              'like',
+              postId,
+              'community_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em post da comunidade:', notificationErr);
+      }
+    }
+    
     res.json({ success: true });
   } catch (err) {
     console.error('[POST /api/posts/:id/like] Erro:', err);
@@ -1376,6 +1621,35 @@ app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
       'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING *',
       [postId, userId, content.trim()]
     );
+
+    // Criar notificação para o autor do post sobre novo comentário
+    try {
+      const postAuthorResult = await pool.query(`
+        SELECT p.author_id, p.title, prof.name as author_name
+        FROM posts p
+        JOIN profiles prof ON p.author_id = prof.id
+        WHERE p.id = $1
+      `, [postId]);
+      
+      if (postAuthorResult.rows.length > 0) {
+        const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+        
+        if (postAuthorId !== userId) {
+          const userName = await getUserName(req.user.id, req.user.name);
+          await createNotification(
+            postAuthorId,
+            'Novo comentário no seu post',
+            `${userName} comentou no seu post "${postTitle}"`,
+            'community_comment',
+            postId,
+            'community_post'
+          );
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de comentário em post da comunidade:', notificationErr);
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('[POST /api/posts/:id/comments] Erro:', err);
@@ -1549,8 +1823,7 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
   }
 });
 
-// Detalhes de uma turma específica (MOVIDA PARA DEPOIS DAS ROTAS DE CURSOS)
-/*
+// Detalhes de uma turma específica
 app.get('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1610,7 +1883,6 @@ app.get('/api/classes/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
-*/
 
 // Matricular usuário em turma
 app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
@@ -1742,36 +2014,61 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
 });
 
 // Criar conteúdo na turma
-app.post('/api/classes/:id/content', authenticateToken, async (req, res) => {
+app.post('/api/classes/:id/content', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, content_type = 'announcement', is_pinned = false } = req.body;
     
-    if (!title || !content) {
-      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+    if (!title || (!content && !req.file)) {
+      return res.status(400).json({ error: 'Título e conteúdo ou arquivo são obrigatórios.' });
     }
     
-    // Verificar se o usuário tem permissão para criar conteúdo
-    const accessCheck = await pool.query(`
-      SELECT user_role FROM user_class_access 
-      WHERE class_instance_id = $1 AND user_id = $2
-    `, [id, req.user.id]);
+    // Verificar se a turma existe e se o usuário tem permissão
+    const classCheck = await pool.query(`
+      SELECT instructor_id FROM class_instances WHERE id = $1
+    `, [id]);
     
-    if (accessCheck.rows.length === 0) {
-      return res.status(403).json({ error: 'Acesso negado a esta turma.' });
+    if (classCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
-    const userRole = accessCheck.rows[0].user_role;
-    if (!['instructor', 'assistant'].includes(userRole)) {
-      return res.status(403).json({ error: 'Apenas instrutores e assistentes podem criar conteúdo.' });
+    // Verificar se o usuário é o instructor da turma ou admin
+    if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode criar conteúdo.' });
+    }
+    
+    let fileData = null;
+    
+    // Se há um arquivo, fazer upload para o MinIO
+    if (req.file) {
+      try {
+        const uploadResult = await uploadFile(req.file, 'class-content');
+        fileData = {
+          file_url: uploadResult.url,
+          file_name: req.file.originalname,
+          file_size: req.file.size,
+          file_type: req.file.mimetype
+        };
+        console.log('[POST /api/classes/:id/content] Arquivo enviado:', uploadResult.url);
+      } catch (uploadError) {
+        console.error('[POST /api/classes/:id/content] Erro no upload:', uploadError);
+        return res.status(500).json({ error: 'Erro ao fazer upload do arquivo.' });
+      }
     }
     
     const contentId = crypto.randomUUID();
     const { rows } = await pool.query(`
-      INSERT INTO class_instance_content (id, class_instance_id, author_id, title, content, content_type, is_pinned)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO class_instance_content (
+        id, class_instance_id, author_id, title, content, content_type, is_pinned,
+        file_url, file_name, file_size, file_type
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
-    `, [contentId, id, req.user.id, title, content, content_type, is_pinned]);
+    `, [
+      contentId, id, req.user.id, title, content || null, content_type, is_pinned,
+      fileData?.file_url || null, fileData?.file_name || null, 
+      fileData?.file_size || null, fileData?.file_type || null
+    ]);
     
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -1804,9 +2101,14 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (classData.instructor_id === req.user.id) {
       console.log('[GET /api/classes/:id/content] Usuário é o instructor da turma');
       const { rows } = await pool.query(`
-        SELECT * FROM class_instance_content 
-        WHERE class_instance_id = $1 
-        ORDER BY created_at DESC
+        SELECT 
+          cic.*,
+          p.name as author_name,
+          p.avatar_url as author_avatar
+        FROM class_instance_content cic
+        JOIN profiles p ON cic.author_id = p.id
+        WHERE cic.class_instance_id = $1 
+        ORDER BY cic.created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1816,9 +2118,14 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (classData.is_public) {
       console.log('[GET /api/classes/:id/content] Turma é pública, acesso permitido');
       const { rows } = await pool.query(`
-        SELECT * FROM class_instance_content 
-        WHERE class_instance_id = $1 AND is_public = true
-        ORDER BY created_at DESC
+        SELECT 
+          cic.*,
+          p.name as author_name,
+          p.avatar_url as author_avatar
+        FROM class_instance_content cic
+        JOIN profiles p ON cic.author_id = p.id
+        WHERE cic.class_instance_id = $1
+        ORDER BY cic.created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -1833,9 +2140,14 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
     if (enrollmentCheck.rows.length > 0) {
       console.log('[GET /api/classes/:id/content] Usuário está matriculado na turma');
       const { rows } = await pool.query(`
-        SELECT * FROM class_instance_content 
-        WHERE class_instance_id = $1 
-        ORDER BY created_at DESC
+        SELECT 
+          cic.*,
+          p.name as author_name,
+          p.avatar_url as author_avatar
+        FROM class_instance_content cic
+        JOIN profiles p ON cic.author_id = p.id
+        WHERE cic.class_instance_id = $1 
+        ORDER BY cic.created_at DESC
       `, [id]);
       
       return res.json(rows);
@@ -2281,6 +2593,64 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
       RETURNING id
     `, [lessonId, userId, content.trim(), parent_id || null]);
 
+    // Criar notificações
+    try {
+      if (parent_id) {
+        // É uma resposta a um comentário - notificar autor do comentário pai
+        const parentCommentResult = await pool.query(`
+          SELECT lc.user_id, p.name as author_name, l.title as lesson_title
+          FROM lesson_comments lc
+          JOIN profiles p ON lc.user_id = p.id
+          JOIN lessons l ON lc.lesson_id = l.id
+          WHERE lc.id = $1
+        `, [parent_id]);
+        
+        if (parentCommentResult.rows.length > 0) {
+          const { user_id: parentAuthorId, lesson_title } = parentCommentResult.rows[0];
+          
+          if (parentAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              parentAuthorId,
+              'Resposta ao seu comentário',
+              `${userName} respondeu ao seu comentário na aula "${lesson_title}"`,
+              'reply',
+              lessonId,
+              'lesson'
+            );
+          }
+        }
+      } else {
+        // É um comentário novo - notificar instrutor da aula
+        const lessonInstructorResult = await pool.query(`
+          SELECT c.instructor_id, p.name as instructor_name, l.title as lesson_title
+          FROM lessons l
+          JOIN modules m ON l.module_id = m.id
+          JOIN courses c ON m.course_id = c.id
+          JOIN profiles p ON c.instructor_id = p.id
+          WHERE l.id = $1
+        `, [lessonId]);
+        
+        if (lessonInstructorResult.rows.length > 0) {
+          const { instructor_id: instructorId, lesson_title } = lessonInstructorResult.rows[0];
+          
+          if (instructorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              instructorId,
+              'Novo comentário na sua aula',
+              `${userName} comentou na aula "${lesson_title}"`,
+              'comment',
+              lessonId,
+              'lesson'
+            );
+          }
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de comentário:', notificationErr);
+    }
+
     res.json({ success: true, comment_id: rows[0].id });
   } catch (err) {
     console.error('[POST /api/lessons/:lessonId/comments]', err);
@@ -2369,6 +2739,36 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
         'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
         [commentId, userId]
       );
+      
+      // Criar notificação para o autor do comentário (se não for o mesmo usuário)
+      try {
+        const commentAuthorResult = await pool.query(`
+          SELECT lc.user_id, p.name as author_name, l.title as lesson_title, lc.content
+          FROM lesson_comments lc
+          JOIN profiles p ON lc.user_id = p.id
+          JOIN lessons l ON lc.lesson_id = l.id
+          WHERE lc.id = $1
+        `, [commentId]);
+        
+        if (commentAuthorResult.rows.length > 0) {
+          const { user_id: commentAuthorId, lesson_title, content } = commentAuthorResult.rows[0];
+          
+          if (commentAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+            await createNotification(
+              commentAuthorId,
+              'Curtida no seu comentário',
+              `${userName} curtiu seu comentário "${shortContent}" na aula "${lesson_title}"`,
+              'like',
+              commentId,
+              'lesson_comment'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em comentário:', notificationErr);
+      }
     }
 
     res.json({ success: true });
@@ -2379,6 +2779,45 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
 });
 
 // ===== SISTEMA DE NOTIFICAÇÕES =====
+
+// Função helper para criar notificações
+async function createNotification(userId, title, message, type, referenceId = null, referenceType = null) {
+  try {
+    console.log('[CREATE NOTIFICATION] Tentando criar notificação:', {
+      userId, title, message, type, referenceId, referenceType
+    });
+    
+    const result = await pool.query(`
+      INSERT INTO notifications (user_id, title, message, type, reference_id, reference_type, is_read)
+      VALUES ($1, $2, $3, $4, $5, $6, false)
+      RETURNING id
+    `, [userId, title, message, type, referenceId, referenceType]);
+    
+    console.log('[CREATE NOTIFICATION] Notificação criada com sucesso! ID:', result.rows[0].id);
+  } catch (err) {
+    console.error('[CREATE NOTIFICATION] ERRO ao criar notificação:', err);
+    console.error('[CREATE NOTIFICATION] Parâmetros:', {
+      userId, title, message, type, referenceId, referenceType
+    });
+  }
+}
+
+// Função helper para obter nome do usuário
+async function getUserName(userId, currentUserName = null) {
+  // Se já temos o nome, usar ele
+  if (currentUserName) {
+    return currentUserName;
+  }
+  
+  // Caso contrário, buscar no banco
+  try {
+    const { rows } = await pool.query('SELECT name FROM profiles WHERE id = $1', [userId]);
+    return rows.length > 0 ? rows[0].name : 'Usuário';
+  } catch (err) {
+    console.error('[GET USER NAME] Erro ao buscar nome:', err);
+    return 'Usuário';
+  }
+}
 
 // Buscar notificações do usuário
 app.get('/api/notifications', authenticateToken, async (req, res) => {
@@ -2414,6 +2853,202 @@ app.get('/api/notifications/count', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
   }
 });
+
+// Marcar notificação como lida
+app.put('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/notifications/:id/read]', err);
+    res.status(500).json({ error: 'Erro ao marcar notificação como lida.' });
+  }
+});
+
+// Marcar todas as notificações como lidas
+app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE user_id = $1 AND is_read = false
+    `, [userId]);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[PUT /api/notifications/read-all]', err);
+    res.status(500).json({ error: 'Erro ao marcar todas as notificações como lidas.' });
+  }
+});
+
+// Deletar notificação específica
+app.delete('/api/notifications/:notificationId', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+    `, [notificationId, userId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/notifications/:id]', err);
+    res.status(500).json({ error: 'Erro ao deletar notificação.' });
+  }
+});
+
+// Deletar múltiplas notificações
+app.delete('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const { notificationIds } = req.body;
+    const userId = req.user.id;
+    
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return res.status(400).json({ error: 'IDs das notificações são obrigatórios.' });
+    }
+    
+    const placeholders = notificationIds.map((_, index) => `$${index + 2}`).join(', ');
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE id IN (${placeholders}) AND user_id = $1
+      RETURNING id
+    `, [userId, ...notificationIds]);
+    
+    res.json({ success: true, deletedCount: result.rows.length });
+  } catch (err) {
+    console.error('[DELETE /api/notifications]', err);
+    res.status(500).json({ error: 'Erro ao deletar notificações.' });
+  }
+});
+
+// Deletar todas as notificações
+app.delete('/api/notifications/all', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const result = await pool.query(`
+      DELETE FROM notifications 
+      WHERE user_id = $1
+      RETURNING id
+    `, [userId]);
+    
+    res.json({ success: true, deletedCount: result.rows.length });
+  } catch (err) {
+    console.error('[DELETE /api/notifications/all]', err);
+    res.status(500).json({ error: 'Erro ao deletar todas as notificações.' });
+  }
+});
+
+// Navegação inteligente
+app.get('/api/notifications/:notificationId/navigate', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+    const userId = req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT type, reference_id, reference_type
+      FROM notifications 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+    
+    const { type, reference_id, reference_type } = rows[0];
+    let url = '/';
+    
+    switch (reference_type) {
+      case 'forum_post':
+        url = `/forum/post/${reference_id}`;
+        break;
+      case 'forum_topic':
+        url = `/forum/topic/${reference_id}`;
+        break;
+      case 'forum_reply':
+        // Para respostas do fórum, navegar para o post pai
+        const forumReplyResult = await pool.query(`
+          SELECT post_id FROM forum_replies WHERE id = $1
+        `, [reference_id]);
+        if (forumReplyResult.rows.length > 0) {
+          url = `/forum/post/${forumReplyResult.rows[0].post_id}`;
+        } else {
+          url = '/forum';
+        }
+        break;
+      case 'course':
+        url = `/courses/${reference_id}`;
+        break;
+      case 'lesson':
+        // Para aulas, buscar o courseId
+        const lessonResult = await pool.query(`
+          SELECT m.course_id FROM lessons l
+          JOIN modules m ON l.module_id = m.id
+          WHERE l.id = $1
+        `, [reference_id]);
+        if (lessonResult.rows.length > 0) {
+          url = `/player?courseId=${lessonResult.rows[0].course_id}&lessonId=${reference_id}`;
+        } else {
+          url = '/';
+        }
+        break;
+      case 'lesson_comment':
+        // Para comentários de aula, navegar para a aula
+        const lessonCommentResult = await pool.query(`
+          SELECT lc.lesson_id, m.course_id 
+          FROM lesson_comments lc
+          JOIN lessons l ON lc.lesson_id = l.id
+          JOIN modules m ON l.module_id = m.id
+          WHERE lc.id = $1
+        `, [reference_id]);
+        if (lessonCommentResult.rows.length > 0) {
+          const { lesson_id, course_id } = lessonCommentResult.rows[0];
+          url = `/player?courseId=${course_id}&lessonId=${lesson_id}`;
+        } else {
+          url = '/';
+        }
+        break;
+      case 'community_post':
+        url = `/post/${reference_id}`;
+        break;
+      case 'class':
+        url = `/classes/${reference_id}`;
+        break;
+      default:
+        url = '/';
+    }
+    
+    // Marcar como lida ao navegar
+    await pool.query(`
+      UPDATE notifications 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [notificationId, userId]);
+    
+    res.json({ url });
+  } catch (err) {
+    console.error('[GET /api/notifications/:id/navigate]', err);
+    res.status(500).json({ error: 'Erro ao navegar pela notificação.' });
+  }
+});
+
 
 // ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
 
@@ -2562,6 +3197,367 @@ app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) =>
   } catch (err) {
     console.error('[DELETE /api/courses/:courseId/rate]', err);
     res.status(500).json({ error: 'Erro ao deletar avaliação.' });
+  }
+});
+
+// ===== SISTEMA DE MENSAGENS =====
+
+// Buscar conversas do usuário
+app.get('/api/conversations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const { rows } = await pool.query(`
+      SELECT * FROM conversations_with_last_message 
+      WHERE id IN (
+        SELECT conversation_id 
+        FROM conversation_participants 
+        WHERE user_id = $1
+      )
+      ORDER BY last_message_at DESC NULLS LAST, created_at DESC
+    `, [userId]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/conversations]', err);
+    res.status(500).json({ error: 'Erro ao buscar conversas.' });
+  }
+});
+
+// Buscar conversa específica com mensagens
+app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { limit = 50, offset = 0 } = req.query;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Buscar dados da conversa
+    const conversationResult = await pool.query(
+      'SELECT * FROM conversations WHERE id = $1',
+      [id]
+    );
+
+    if (conversationResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Conversa não encontrada.' });
+    }
+
+    // Buscar participantes
+    const participantsResult = await pool.query(`
+      SELECT cp.*, p.name, p.avatar_url
+      FROM conversation_participants cp
+      JOIN profiles p ON cp.user_id = p.id
+      WHERE cp.conversation_id = $1
+    `, [id]);
+
+    // Buscar mensagens
+    const messagesResult = await pool.query(`
+      SELECT * FROM messages_with_sender
+      WHERE conversation_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [id, limit, offset]);
+
+    // Marcar mensagens como lidas
+    await pool.query(`
+      UPDATE conversation_participants 
+      SET last_read_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [id, userId]);
+
+    res.json({
+      conversation: conversationResult.rows[0],
+      participants: participantsResult.rows,
+      messages: messagesResult.rows.reverse(), // Ordem cronológica
+      hasMore: messagesResult.rows.length === parseInt(limit)
+    });
+  } catch (err) {
+    console.error('[GET /api/conversations/:id]', err);
+    res.status(500).json({ error: 'Erro ao buscar conversa.' });
+  }
+});
+
+// Criar conversa direta entre dois usuários
+app.post('/api/conversations/direct', authenticateToken, async (req, res) => {
+  try {
+    const { otherUserId } = req.body;
+    const userId = req.user.id;
+
+    if (!otherUserId) {
+      return res.status(400).json({ error: 'ID do outro usuário é obrigatório.' });
+    }
+
+    if (otherUserId === userId) {
+      return res.status(400).json({ error: 'Não é possível criar conversa consigo mesmo.' });
+    }
+
+    // Verificar se o outro usuário existe
+    const userCheck = await pool.query('SELECT 1 FROM profiles WHERE id = $1', [otherUserId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    // Usar função do banco para obter ou criar conversa
+    const { rows } = await pool.query(
+      'SELECT get_or_create_direct_conversation($1, $2) as conversation_id',
+      [userId, otherUserId]
+    );
+
+    const conversationId = rows[0].conversation_id;
+    
+    // Buscar dados da conversa criada/encontrada
+    const conversationData = await pool.query(`
+      SELECT * FROM conversations_with_last_message WHERE id = $1
+    `, [conversationId]);
+
+    res.json(conversationData.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/conversations/direct]', err);
+    res.status(500).json({ error: 'Erro ao criar conversa.' });
+  }
+});
+
+// Enviar mensagem
+app.post('/api/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const { content, type = 'text', reply_to_id = null } = req.body;
+    const userId = req.user.id;
+
+    if (!content || content.trim() === '') {
+      return res.status(400).json({ error: 'Conteúdo da mensagem é obrigatório.' });
+    }
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Verificar se reply_to_id existe na conversa (se fornecido)
+    if (reply_to_id) {
+      const replyCheck = await pool.query(
+        'SELECT 1 FROM messages WHERE id = $1 AND conversation_id = $2',
+        [reply_to_id, conversationId]
+      );
+      if (replyCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Mensagem de resposta não encontrada.' });
+      }
+    }
+
+    // Inserir mensagem
+    const messageResult = await pool.query(`
+      INSERT INTO messages (conversation_id, sender_id, content, type, reply_to_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id
+    `, [conversationId, userId, content.trim(), type, reply_to_id]);
+
+    const messageId = messageResult.rows[0].id;
+
+    // Buscar mensagem completa com dados do remetente
+    const fullMessage = await pool.query(`
+      SELECT * FROM messages_with_sender WHERE id = $1
+    `, [messageId]);
+
+    // Buscar outros participantes para notificar
+    const otherParticipants = await pool.query(`
+      SELECT cp.user_id, p.name
+      FROM conversation_participants cp
+      JOIN profiles p ON cp.user_id = p.id
+      WHERE cp.conversation_id = $1 AND cp.user_id != $2
+    `, [conversationId, userId]);
+
+    // Criar notificações para outros participantes
+    const senderName = await getUserName(userId);
+    for (const participant of otherParticipants.rows) {
+      await createNotification(
+        participant.user_id,
+        'Nova mensagem',
+        `${senderName} enviou uma mensagem`,
+        'new_message',
+        conversationId,
+        'conversation'
+      );
+    }
+
+    res.status(201).json(fullMessage.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/conversations/:id/messages]', err);
+    res.status(500).json({ error: 'Erro ao enviar mensagem.' });
+  }
+});
+
+// Carregar mensagens mais antigas
+app.get('/api/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const { before, limit = 20 } = req.query;
+    const userId = req.user.id;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    let query = `
+      SELECT * FROM messages_with_sender
+      WHERE conversation_id = $1
+    `;
+    const params = [conversationId];
+
+    if (before) {
+      query += ` AND created_at < (SELECT created_at FROM messages WHERE id = $2)`;
+      params.push(before);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
+    params.push(parseInt(limit));
+
+    const { rows } = await pool.query(query, params);
+    
+    res.json({
+      messages: rows.reverse(), // Ordem cronológica
+      hasMore: rows.length === parseInt(limit)
+    });
+  } catch (err) {
+    console.error('[GET /api/conversations/:id/messages]', err);
+    res.status(500).json({ error: 'Erro ao carregar mensagens.' });
+  }
+});
+
+// Marcar conversa como lida
+app.post('/api/conversations/:id/mark-read', authenticateToken, async (req, res) => {
+  try {
+    const { id: conversationId } = req.params;
+    const userId = req.user.id;
+
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Acesso negado a esta conversa.' });
+    }
+
+    // Atualizar timestamp de leitura
+    await pool.query(`
+      UPDATE conversation_participants 
+      SET last_read_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [conversationId, userId]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/conversations/:id/mark-read]', err);
+    res.status(500).json({ error: 'Erro ao marcar como lida.' });
+  }
+});
+
+// Buscar usuários para iniciar conversa
+app.get('/api/users/search', authenticateToken, async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    const userId = req.user.id;
+
+    if (!q || q.trim() === '') {
+      return res.json([]);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT id, name, avatar_url, role
+      FROM profiles
+      WHERE id != $1 
+        AND (name ILIKE $2 OR email ILIKE $2)
+      ORDER BY name
+      LIMIT $3
+    `, [userId, `%${q.trim()}%`, parseInt(limit)]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/users/search]', err);
+    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+  }
+});
+
+// Contar mensagens não lidas
+app.get('/api/conversations/unread-count', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Verificar se as tabelas existem primeiro
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'conversations'
+      ) as conversations_exist,
+      EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'conversation_participants'
+      ) as participants_exist,
+      EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_name = 'messages'
+      ) as messages_exist
+    `);
+
+    const { conversations_exist, participants_exist, messages_exist } = tableCheck.rows[0];
+
+    // Se as tabelas não existem, retornar 0
+    if (!conversations_exist || !participants_exist || !messages_exist) {
+      return res.json({ 
+        unread_count: 0,
+        total_count: 0,
+        message: 'Sistema de mensagens não configurado'
+      });
+    }
+
+    // Query simplificada para evitar erros
+    const { rows } = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT c.id)::int as unread_count,
+        COUNT(DISTINCT c.id)::int as total_count
+      FROM conversations c
+      JOIN conversation_participants cp ON c.id = cp.conversation_id
+      WHERE cp.user_id = $1
+        AND EXISTS (
+          SELECT 1 FROM messages m 
+          WHERE m.conversation_id = c.id 
+            AND m.sender_id != $1
+        )
+    `, [userId]);
+
+    res.json({ 
+      unread_count: rows[0]?.unread_count || 0,
+      total_count: rows[0]?.total_count || 0
+    });
+  } catch (err) {
+    console.error('[GET /api/conversations/unread-count]', err);
+    // Retornar resposta de sucesso com 0 em caso de erro
+    res.json({ 
+      unread_count: 0,
+      total_count: 0,
+      error: 'Erro ao contar mensagens não lidas.'
+    });
   }
 });
 
@@ -2745,9 +3741,9 @@ app.get('/api/users', authenticateToken, async (req, res) => {
   }
 });
 
-// Rota catch-all para SPA (deve ser a última rota)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend rodando na porta ${PORT}`);
 });
 
 // Endpoint para buscar estatísticas de um curso
@@ -2936,91 +3932,169 @@ app.get('/api/debug/tables', authenticateToken, async (req, res) => {
 
 // Listar cursos de uma turma
 app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
-  console.log('[ROTA CURSOS] === ROTA CHAMADA ===');
-  console.log('[ROTA CURSOS] Params:', req.params);
-  console.log('[ROTA CURSOS] User:', req.user);
   try {
+    // Desabilitar cache
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Expires', '0');
+    res.set('Pragma', 'no-cache');
+    
     const { id } = req.params;
-    console.log('[GET /api/classes/:id/courses] === INÍCIO DA REQUISIÇÃO ===');
-    console.log('[GET /api/classes/:id/courses] ID da turma:', id);
-    console.log('[GET /api/classes/:id/courses] Usuário:', req.user);
-    console.log('[GET /api/classes/:id/courses] Headers:', req.headers);
+    process.stdout.write('\n[GET /api/classes/:id/courses] === INÍCIO DA REQUISIÇÃO ===\n');
+    process.stdout.write(`[GET /api/classes/:id/courses] ID da turma: ${id}\n`);
+    process.stdout.write(`[GET /api/classes/:id/courses] Usuário: ${JSON.stringify(req.user)}\n`);
     
     // Primeiro, buscar a turma para verificar se o usuário tem acesso
-    console.log('[GET /api/classes/:id/courses] Buscando turma no banco...');
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
     
-    console.log('[GET /api/classes/:id/courses] Resultado da busca da turma:', classResult.rows);
+    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da busca da turma: ${JSON.stringify(classResult.rows)}\n`);
     
     if (classResult.rows.length === 0) {
-      console.log('[GET /api/classes/:id/courses] Turma não encontrada');
+      process.stdout.write('[GET /api/classes/:id/courses] Turma não encontrada\n');
       return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
     const classData = classResult.rows[0];
-    console.log('[GET /api/classes/:id/courses] Dados da turma:', classData);
+    process.stdout.write(`[GET /api/classes/:id/courses] Dados da turma: ${JSON.stringify(classData)}\n`);
     
     // Verificar se o usuário tem acesso aos cursos
     // 1. Se é o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      console.log('[GET /api/classes/:id/courses] Usuário é o instructor da turma');
-      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      process.stdout.write('[GET /api/classes/:id/courses] Usuário é o instructor da turma\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
-      const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+      // Primeiro, verificar se os cursos existem
+      const coursesCheck = await pool.query(`
+        SELECT id, title FROM courses WHERE id IN (
+          SELECT course_id FROM class_courses WHERE class_id = $1
+        )
       `, [id]);
       
-      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
-      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (instructor) ===');
+      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados na tabela courses: ${JSON.stringify(coursesCheck.rows)}\n`);
+      
+      // Depois, verificar os instrutores
+      const instructorsCheck = await pool.query(`
+        SELECT p.id, p.name FROM profiles p 
+        JOIN courses c ON c.instructor_id = p.id
+        WHERE c.id IN (
+          SELECT course_id FROM class_courses WHERE class_id = $1
+        )
+      `, [id]);
+      
+      process.stdout.write(`[GET /api/classes/:id/courses] Instrutores encontrados: ${JSON.stringify(instructorsCheck.rows)}\n`);
+      
+      // Agora sim, fazer a query completa
+      const query = `
+        SELECT 
+          cc.id,
+          cc.class_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
+      `;
+      
+      process.stdout.write(`[GET /api/classes/:id/courses] Query SQL: ${query}\n`);
+      
+      const { rows } = await pool.query(query, [id]);
+      
+      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
+      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (instructor) ===\n\n');
+      
       return res.json(rows);
     }
     
     // 2. Se a turma é pública, permitir visualizar cursos
     if (classData.is_public) {
-      console.log('[GET /api/classes/:id/courses] Turma é pública, acesso permitido');
-      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      process.stdout.write('[GET /api/classes/:id/courses] Turma é pública, acesso permitido\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
       const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+        SELECT 
+          cc.id,
+          cc.class_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
       `, [id]);
       
-      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
-      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (pública) ===');
+      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
+      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (pública) ===\n\n');
+      
       return res.json(rows);
     }
     
     // 3. Se o usuário está matriculado na turma
-    console.log('[GET /api/classes/:id/courses] Verificando matrícula do usuário...');
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
-    console.log('[GET /api/classes/:id/courses] Resultado da verificação de matrícula:', enrollmentCheck.rows);
+    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da verificação de matrícula: ${JSON.stringify(enrollmentCheck.rows)}\n`);
     
     if (enrollmentCheck.rows.length > 0) {
-      console.log('[GET /api/classes/:id/courses] Usuário está matriculado na turma');
-      console.log('[GET /api/classes/:id/courses] Executando query para buscar cursos...');
+      process.stdout.write('[GET /api/classes/:id/courses] Usuário está matriculado na turma\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
       const { rows } = await pool.query(`
-        SELECT * FROM class_courses_with_details 
-        WHERE class_instance_id = $1
-        ORDER BY order_index ASC, created_at ASC
+        SELECT 
+          cc.id,
+          cc.class_id,
+          cc.course_id,
+          cc.is_required,
+          cc.order_index,
+          cc.created_at,
+          c.title as course_title,
+          c.description as course_description,
+          c.thumbnail_url as course_thumbnail,
+          c.level,
+          c.price,
+          p.name as instructor_name,
+          p.avatar_url as instructor_avatar
+        FROM class_courses cc
+        JOIN courses c ON cc.course_id = c.id
+        JOIN profiles p ON c.instructor_id = p.id
+        WHERE cc.class_id = $1
+        ORDER BY cc.order_index ASC, cc.created_at ASC
       `, [id]);
       
-      console.log('[GET /api/classes/:id/courses] Cursos encontrados:', rows.length);
-      console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (matriculado) ===');
+      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
+      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (matriculado) ===\n\n');
+      
       return res.json(rows);
     }
     
-    console.log('[GET /api/classes/:id/courses] Acesso negado - usuário não tem permissão');
-    console.log('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (acesso negado) ===');
+    process.stdout.write('[GET /api/classes/:id/courses] Acesso negado - usuário não tem permissão\n');
+    process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (acesso negado) ===\n\n');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
@@ -3043,6 +4117,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     console.log('[POST /api/classes/:id/courses] Usuário:', req.user);
     
     if (!course_id) {
+      console.log('[POST /api/classes/:id/courses] Erro: course_id não fornecido');
       return res.status(400).json({ error: 'course_id é obrigatório.' });
     }
     
@@ -3052,25 +4127,33 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (classCheck.rows.length === 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Turma não encontrada');
       return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
+    console.log('[POST /api/classes/:id/courses] Instructor da turma:', classCheck.rows[0].instructor_id);
+    console.log('[POST /api/classes/:id/courses] Usuário atual:', req.user.id);
+    console.log('[POST /api/classes/:id/courses] Role do usuário:', req.user.role);
+    
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
+      console.log('[POST /api/classes/:id/courses] Erro: Acesso negado');
       return res.status(403).json({ error: 'Apenas o instructor da turma pode adicionar cursos.' });
     }
     
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [course_id]);
     if (courseCheck.rows.length === 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Curso não encontrado');
       return res.status(404).json({ error: 'Curso não encontrado.' });
     }
     
     // Verificar se o curso já está na turma
     const existingCheck = await pool.query(`
-      SELECT id FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
+      SELECT id FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, course_id]);
     
     if (existingCheck.rows.length > 0) {
+      console.log('[POST /api/classes/:id/courses] Erro: Curso já está na turma');
       return res.status(400).json({ error: 'Este curso já está associado à turma.' });
     }
     
@@ -3078,19 +4161,21 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     let finalOrderIndex = order_index;
     if (finalOrderIndex === undefined || finalOrderIndex === null) {
       const maxOrderResult = await pool.query(`
-        SELECT COALESCE(MAX(order_index), -1) as max_order FROM class_courses WHERE class_instance_id = $1
+        SELECT COALESCE(MAX(order_index), -1) as max_order FROM class_courses WHERE class_id = $1
       `, [id]);
       finalOrderIndex = maxOrderResult.rows[0].max_order + 1;
     }
     
+    console.log('[POST /api/classes/:id/courses] Ordem final:', finalOrderIndex);
+    
     const courseClassId = crypto.randomUUID();
     const { rows } = await pool.query(`
-      INSERT INTO class_courses (id, class_instance_id, course_id, is_required, order_index)
+      INSERT INTO class_courses (id, class_id, course_id, is_required, order_index)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `, [courseClassId, id, course_id, is_required, finalOrderIndex]);
     
-    console.log('[POST /api/classes/:id/courses] Curso adicionado com sucesso');
+    console.log('[POST /api/classes/:id/courses] Curso adicionado com sucesso:', rows[0]);
     res.status(201).json(rows[0]);
     
   } catch (err) {
@@ -3124,7 +4209,7 @@ app.put('/api/classes/:id/courses/:courseId', authenticateToken, async (req, res
     
     // Verificar se o curso está na turma
     const courseCheck = await pool.query(`
-      SELECT id FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
+      SELECT id FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     if (courseCheck.rows.length === 0) {
@@ -3157,7 +4242,7 @@ app.put('/api/classes/:id/courses/:courseId', authenticateToken, async (req, res
     const { rows } = await pool.query(`
       UPDATE class_courses 
       SET ${updateFields.join(', ')}
-      WHERE class_instance_id = $${paramIndex} AND course_id = $${paramIndex + 1}
+      WHERE class_id = $${paramIndex} AND course_id = $${paramIndex + 1}
       RETURNING *
     `, updateValues);
     
@@ -3193,16 +4278,21 @@ app.delete('/api/classes/:id/courses/:courseId', authenticateToken, async (req, 
     
     // Verificar se o curso está na turma
     const courseCheck = await pool.query(`
-      SELECT id FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
+      SELECT id, is_required FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     if (courseCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Curso não encontrado na turma.' });
     }
     
-    // Remover curso da turma
+    // Não permitir remover o curso obrigatório (primeiro curso)
+    if (courseCheck.rows[0].is_required) {
+      return res.status(400).json({ error: 'Não é possível remover o curso obrigatório da turma.' });
+    }
+    
+    // Remover o curso
     await pool.query(`
-      DELETE FROM class_courses WHERE class_instance_id = $1 AND course_id = $2
+      DELETE FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     console.log('[DELETE /api/classes/:id/courses/:courseId] Curso removido com sucesso');
@@ -3513,182 +4603,7 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
 });
 
 // ===== SISTEMA DE COMENTÁRIOS EM AULAS =====
-
-// Buscar comentários de uma aula
-app.get('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const { rows } = await pool.query(`
-      SELECT 
-        lc.id, lc.lesson_id, lc.user_id, lc.content, lc.parent_id, lc.created_at, lc.updated_at,
-        p.name as user_name, p.avatar_url as user_avatar, p.role as user_role,
-        (SELECT COUNT(*) FROM lesson_comment_likes WHERE comment_id = lc.id) as likes_count,
-        (SELECT COUNT(*) FROM lesson_comments WHERE parent_id = lc.id) as replies_count,
-        EXISTS(SELECT 1 FROM lesson_comment_likes WHERE comment_id = lc.id AND user_id = $1) as is_liked_by_user
-      FROM lesson_comments lc
-      JOIN profiles p ON lc.user_id = p.id
-      WHERE lc.lesson_id = $2 AND lc.parent_id IS NULL
-      ORDER BY lc.created_at DESC
-    `, [req.user.id, lessonId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao buscar comentários.' });
-  }
-});
-
-// Criar comentário
-app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
-  try {
-    const { lessonId } = req.params;
-    const { content, parent_id } = req.body;
-    const userId = req.user.id;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
-    }
-
-    const { rows } = await pool.query(`
-      INSERT INTO lesson_comments (lesson_id, user_id, content, parent_id)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id
-    `, [lessonId, userId, content.trim(), parent_id || null]);
-
-    res.json({ success: true, comment_id: rows[0].id });
-  } catch (err) {
-    console.error('[POST /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao criar comentário.' });
-  }
-});
-
-// Atualizar comentário
-app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const { content } = req.body;
-    const userId = req.user.id;
-
-    if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
-    }
-
-    // Verificar se o comentário existe e pertence ao usuário
-    const commentCheck = await pool.query(
-      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
-    }
-
-    // Atualizar comentário
-    await pool.query(
-      'UPDATE lesson_comments SET content = $1, updated_at = NOW() WHERE id = $2',
-      [content.trim(), commentId]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[PUT /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao atualizar comentário.' });
-  }
-});
-
-// Deletar comentário
-app.delete('/api/comments/:commentId', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const userId = req.user.id;
-
-    // Verificar se o comentário existe e pertence ao usuário
-    const commentCheck = await pool.query(
-      'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
-    }
-
-    // Deletar comentário (cascade irá deletar respostas e curtidas)
-    await pool.query('DELETE FROM lesson_comments WHERE id = $1', [commentId]);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[DELETE /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao deletar comentário.' });
-  }
-});
-
-// Curtir/descurtir comentário
-app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) => {
-  try {
-    const { commentId } = req.params;
-    const userId = req.user.id;
-
-    const likeCheck = await pool.query(
-      'SELECT id FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
-      [commentId, userId]
-    );
-
-    if (likeCheck.rows.length > 0) {
-      await pool.query(
-        'DELETE FROM lesson_comment_likes WHERE comment_id = $1 AND user_id = $2',
-        [commentId, userId]
-      );
-    } else {
-      await pool.query(
-        'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
-        [commentId, userId]
-      );
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[POST /api/comments/:commentId/like]', err);
-    res.status(500).json({ error: 'Erro ao curtir comentário.' });
-  }
-});
-
-// ===== SISTEMA DE NOTIFICAÇÕES =====
-
-// Buscar notificações do usuário
-app.get('/api/notifications', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT id, user_id, title, message, type, reference_id, reference_type, is_read, created_at
-      FROM notifications 
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT 20
-    `, [userId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao buscar notificações.' });
-  }
-});
-
-app.get('/api/notifications/count', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT 
-        COUNT(*) FILTER (WHERE is_read = false) as unread_count,
-        COUNT(*) as total_count
-      FROM notifications 
-      WHERE user_id = $1
-    `, [userId]);
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[GET /api/notifications/count]', err);
-    res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
-  }
-});
-
-// ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
+// (Endpoints implementados anteriormente na linha 2363)
 
 // Buscar avaliações de um curso
 app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) => {
@@ -4069,174 +4984,1358 @@ app.get('/api/test/class-courses', async (req, res) => {
   }
 });
 
-// Endpoint de teste para verificar se o backend está funcionando
-app.get('/api/test', (req, res) => {
-  console.log('[GET /api/test] Endpoint de teste chamado');
-  res.json({ message: 'Backend funcionando!', timestamp: new Date().toISOString() });
-});
-
-// Endpoint para testar a view class_courses_with_details
-app.get('/api/test/view', authenticateToken, async (req, res) => {
+// Endpoint de teste para verificar a view class_courses_with_details
+app.get('/api/test/class-courses-view', authenticateToken, async (req, res) => {
   try {
-    console.log('[GET /api/test/view] Testando view class_courses_with_details');
+    console.log('[GET /api/test/class-courses-view] Testando view class_courses_with_details');
     
+    // Verificar se a view existe
+    const viewCheck = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.views 
+      WHERE table_name = 'class_courses_with_details' AND table_schema = 'public'
+    `);
+    
+    if (viewCheck.rows.length === 0) {
+      return res.status(500).json({ error: 'View class_courses_with_details não existe' });
+    }
+    
+    // Testar a view
     const { rows } = await pool.query('SELECT COUNT(*) as total FROM class_courses_with_details');
-    console.log('[GET /api/test/view] Total de registros na view:', rows[0].total);
     
-    res.json({ 
-      message: 'View funcionando!', 
+    res.json({
+      message: 'View class_courses_with_details está funcionando',
       total_records: rows[0].total,
-      timestamp: new Date().toISOString() 
+      view_exists: true
     });
   } catch (err) {
-    console.error('[GET /api/test/view] Erro ao testar view:', err);
-    res.status(500).json({ error: 'Erro ao testar view: ' + err.message });
+    console.error('[GET /api/test/class-courses-view] Erro:', err);
+    res.status(500).json({ error: 'Erro ao testar view', details: err.message });
   }
 });
 
-// ===== ROTA GENÉRICA DE TURMAS (MOVIDA PARA DEPOIS DAS ROTAS DE CURSOS) =====
-
-// Detalhes de uma turma específica
-app.get('/api/classes/:id', authenticateToken, async (req, res) => {
-  console.log('[ROTA GENÉRICA] === ROTA CHAMADA ===');
-  console.log('[ROTA GENÉRICA] Params:', req.params);
-  console.log('[ROTA GENÉRICA] User:', req.user);
+// Endpoint para verificar status da tabela class_courses
+app.get('/api/test/class-courses-table', authenticateToken, async (req, res) => {
   try {
-    const { id } = req.params;
-    console.log('[GET /api/classes/:id] Buscando turma:', id);
-    console.log('[GET /api/classes/:id] Usuário:', req.user);
+    console.log('[GET /api/test/class-courses-table] Verificando tabela class_courses');
     
-    // Primeiro, buscar a turma
-    const classResult = await pool.query(`
-      SELECT 
-        ci.*,
-        c.title as course_title,
-        p.name as instructor_name,
-        (SELECT COUNT(*) FROM class_instance_enrollments WHERE class_instance_id = ci.id AND status = 'active') as current_students
-      FROM class_instances ci
-      JOIN courses c ON ci.course_id = c.id
-      JOIN profiles p ON ci.instructor_id = p.id
-      WHERE ci.id = $1
-    `, [id]);
+    // Verificar se a tabela existe
+    const tableCheck = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_name = 'class_courses' AND table_schema = 'public'
+    `);
     
-    if (classResult.rows.length === 0) {
-      console.log('[GET /api/classes/:id] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+    if (tableCheck.rows.length === 0) {
+      return res.status(500).json({ error: 'Tabela class_courses não existe' });
     }
     
-    const classData = classResult.rows[0];
-    console.log('[GET /api/classes/:id] Turma encontrada:', classData.instance_name);
+    // Contar registros
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM class_courses');
     
-    // Verificar se o usuário tem acesso à turma
-    // 1. Se é o instructor da turma
-    if (classData.instructor_id === req.user.id) {
-      console.log('[GET /api/classes/:id] Usuário é o instructor da turma');
-      return res.json(classData);
-    }
+    // Verificar estrutura
+    const structureResult = await pool.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns 
+      WHERE table_name = 'class_courses' AND table_schema = 'public'
+      ORDER BY ordinal_position
+    `);
     
-    // 2. Se a turma é pública
-    if (classData.is_public) {
-      console.log('[GET /api/classes/:id] Turma é pública, acesso permitido');
-      return res.json(classData);
-    }
-    
-    // 3. Se o usuário está matriculado na turma
-    const enrollmentCheck = await pool.query(`
-      SELECT * FROM class_instance_enrollments 
-      WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
-    `, [id, req.user.id]);
-    
-    if (enrollmentCheck.rows.length > 0) {
-      console.log('[GET /api/classes/:id] Usuário está matriculado na turma');
-      return res.json(classData);
-    }
-    
-    console.log('[GET /api/classes/:id] Acesso negado - usuário não tem permissão');
-    return res.status(403).json({ error: 'Acesso negado a esta turma.' });
-    
+    res.json({
+      message: 'Tabela class_courses está funcionando',
+      table_exists: true,
+      total_records: countResult.rows[0].total,
+      structure: structureResult.rows
+    });
   } catch (err) {
-    console.error('[GET /api/classes/:id] Erro:', err);
+    console.error('[GET /api/test/class-courses-table] Erro:', err);
+    res.status(500).json({ error: 'Erro ao verificar tabela', details: err.message });
+  }
+});
+
+// Endpoint para testar dados da tabela class_courses
+app.get('/api/test/class-courses-data', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/test/class-courses-data] Testando dados da tabela class_courses');
+    
+    // Verificar se há dados na tabela
+    const countResult = await pool.query('SELECT COUNT(*) as total FROM class_courses');
+    
+    // Buscar alguns registros de exemplo
+    const sampleResult = await pool.query(`
+      SELECT 
+        cc.id,
+        cc.class_instance_id,
+        cc.course_id,
+        cc.is_required,
+        cc.order_index,
+        c.title as course_title,
+        ci.instance_name as class_name
+      FROM class_courses cc
+      JOIN courses c ON cc.course_id = c.id
+      JOIN class_instances ci ON cc.class_instance_id = ci.id
+      LIMIT 5
+    `);
+    
+    res.json({
+      message: 'Dados da tabela class_courses',
+      total_records: countResult.rows[0].total,
+      sample_data: sampleResult.rows
+    });
+  } catch (err) {
+    console.error('[GET /api/test/class-courses-data] Erro:', err);
+    res.status(500).json({ error: 'Erro ao verificar dados', details: err.message });
+  }
+});
+
+// ===== SISTEMA DE FÓRUM =====
+
+// Criar novo tópico (apenas admin/instructor)
+app.post('/api/forum/topics', authenticateToken, async (req, res) => {
+  try {
+    const { title, description, order_index = 0, cover_image_url, banner_image_url } = req.body;
+    
+    console.log('[POST /api/forum/topics] Criando tópico:', title);
+    console.log('[POST /api/forum/topics] Usuário:', req.user);
+    
+    // Verificar permissão
+    if (!['admin', 'instructor'].includes(req.user.role)) {
+      console.log('[POST /api/forum/topics] Acesso negado para role:', req.user.role);
+      return res.status(403).json({ error: 'Apenas administradores e instrutores podem criar tópicos.' });
+    }
+    
+    if (!title || title.trim().length === 0) {
+      return res.status(400).json({ error: 'Título é obrigatório.' });
+    }
+    
+    // Gerar slug único
+    const baseSlug = title.toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim('-');
+    
+    let slug = baseSlug;
+    let counter = 1;
+    
+    // Verificar se slug já existe
+    while (true) {
+      const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1', [slug]);
+      if (existingSlug.rows.length === 0) break;
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+    
+    const id = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO forum_topics (id, title, description, slug, order_index, created_by, cover_image_url, banner_image_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [id, title.trim(), description?.trim() || null, slug, order_index, req.user.id, cover_image_url || null, banner_image_url || null]);
+    
+    console.log('[POST /api/forum/topics] Tópico criado com sucesso:', rows[0].title);
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/forum/topics] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// Endpoint para criar matrícula em curso
-app.post('/api/enrollments', authenticateToken, async (req, res) => {
+// Editar tópico (apenas admin/instructor ou criador)
+app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
   try {
-    const { course_id } = req.body;
+    const { id } = req.params;
+    const { title, description, order_index, cover_image_url, banner_image_url } = req.body;
     
-    console.log('[POST /api/enrollments] Criando matrícula');
-    console.log('[POST /api/enrollments] course_id:', course_id);
-    console.log('[POST /api/enrollments] req.user:', req.user);
+    console.log('[PUT /api/forum/topics/:id] Editando tópico:', id);
+    console.log('[PUT /api/forum/topics/:id] Usuário:', req.user);
     
-    if (!course_id) {
-      return res.status(400).json({ error: 'course_id é obrigatório.' });
+    if (!title || title.trim().length === 0) {
+      return res.status(400).json({ error: 'Título é obrigatório.' });
     }
-
-    // Verifica se já está matriculado
-    const existing = await pool.query(
-      'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
-      [req.user.id, course_id]
-    );
     
-    console.log('[POST /api/enrollments] Verificação de matrícula existente:', existing.rows);
+    // Verificar se o tópico existe
+    const topicCheck = await pool.query(`
+      SELECT * FROM forum_topics WHERE id = $1
+    `, [id]);
     
-    if (existing.rows.length > 0) {
-      console.log('[POST /api/enrollments] Usuário já está matriculado');
-      return res.status(400).json({ error: 'Usuário já está matriculado.' });
+    if (topicCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado.' });
     }
-
-    const id = crypto.randomUUID();
-    console.log('[POST /api/enrollments] Criando matrícula com ID:', id);
     
-    await pool.query(
-      'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
-      [id, req.user.id, course_id, new Date(), 0]
-    );
+    const topic = topicCheck.rows[0];
     
-    // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
-    const classInstances = await pool.query(
-      'SELECT id FROM class_instances WHERE course_id = $1',
-      [course_id]
-    );
-    for (const turma of classInstances.rows) {
-      // Verifica se já está matriculado na turma
-      const alreadyEnrolled = await pool.query(
-        'SELECT 1 FROM class_instance_enrollments WHERE class_instance_id = $1 AND user_id = $2',
-        [turma.id, req.user.id]
-      );
-      if (alreadyEnrolled.rows.length === 0) {
-        await pool.query(
-          `INSERT INTO class_instance_enrollments (id, class_instance_id, user_id, enrolled_at, status, role)
-           VALUES (gen_random_uuid(), $1, $2, NOW(), 'active', 'student')`,
-          [turma.id, req.user.id]
-        );
+    // Verificar permissão (admin, instructor ou criador do tópico)
+    if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Você não tem permissão para editar este tópico.' });
+    }
+    
+    // Gerar novo slug se o título mudou
+    let slug = topic.slug;
+    if (title.trim() !== topic.title) {
+      const baseSlug = title.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .trim('-');
+      
+      slug = baseSlug;
+      let counter = 1;
+      
+      // Verificar se slug já existe (excluindo o tópico atual)
+      while (true) {
+        const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1 AND id != $2', [slug, id]);
+        if (existingSlug.rows.length === 0) break;
+        slug = `${baseSlug}-${counter}`;
+        counter++;
       }
     }
-    // --- FIM DA LÓGICA ---
-
-    console.log('[POST /api/enrollments] Matrícula criada com sucesso');
-    res.status(201).json({ message: 'Matrícula realizada com sucesso.' });
+    
+    const { rows } = await pool.query(`
+      UPDATE forum_topics 
+      SET title = $1, description = $2, slug = $3, order_index = $4, cover_image_url = $5, banner_image_url = $6, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+      RETURNING *
+    `, [title.trim(), description?.trim() || null, slug, order_index || topic.order_index, cover_image_url || null, banner_image_url || null, id]);
+    
+    console.log('[PUT /api/forum/topics/:id] Tópico editado com sucesso:', rows[0].title);
+    res.json(rows[0]);
   } catch (err) {
-    console.error('[POST /api/enrollments] Erro:', err);
-    res.status(500).json({ error: 'Erro ao realizar matrícula.' });
+    console.error('[PUT /api/forum/topics/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// Middleware de erro para capturar erros não tratados
-app.use((err, req, res, next) => {
-  console.error('[MIDDLEWARE DE ERRO] Erro capturado:', err);
-  console.error('[MIDDLEWARE DE ERRO] Stack:', err.stack);
-  console.error('[MIDDLEWARE DE ERRO] Rota:', req.path);
-  console.error('[MIDDLEWARE DE ERRO] Método:', req.method);
-  res.status(500).json({ error: 'Erro interno do servidor.' });
+// Excluir tópico (apenas admin/instructor ou criador)
+app.delete('/api/forum/topics/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[DELETE /api/forum/topics/:id] Excluindo tópico:', id);
+    console.log('[DELETE /api/forum/topics/:id] Usuário:', req.user);
+    
+    // Verificar se o tópico existe
+    const topicCheck = await pool.query(`
+      SELECT * FROM forum_topics WHERE id = $1
+    `, [id]);
+    
+    if (topicCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado.' });
+    }
+    
+    const topic = topicCheck.rows[0];
+    
+    // Verificar permissão (admin, instructor ou criador do tópico)
+    if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Você não tem permissão para excluir este tópico.' });
+    }
+    
+    // Verificar se há posts no tópico
+    const postsCheck = await pool.query(`
+      SELECT COUNT(*) as count FROM forum_posts WHERE topic_id = $1
+    `, [id]);
+    
+    const postsCount = parseInt(postsCheck.rows[0].count);
+    
+    if (postsCount > 0) {
+      return res.status(400).json({ 
+        error: `Não é possível excluir o tópico. Ele possui ${postsCount} post(s). Remova todos os posts primeiro.` 
+      });
+    }
+    
+    await pool.query(`
+      DELETE FROM forum_topics WHERE id = $1
+    `, [id]);
+    
+    console.log('[DELETE /api/forum/topics/:id] Tópico excluído com sucesso:', topic.title);
+    res.json({ message: 'Tópico excluído com sucesso.' });
+  } catch (err) {
+    console.error('[DELETE /api/forum/topics/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
 });
 
-// Middleware para rotas não encontradas
-app.use('*', (req, res) => {
-  console.log('[ROTA NÃO ENCONTRADA] Rota:', req.originalUrl);
-  console.log('[ROTA NÃO ENCONTRADA] Método:', req.method);
-  res.status(404).json({ error: 'Rota não encontrada.' });
+// Listar posts de um tópico
+app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { page = 1, limit = 20, sort = 'latest' } = req.query;
+    
+    console.log('[GET /api/forum/topics/:slug/posts] Buscando posts do tópico:', slug);
+    
+    // Verificar se o tópico existe
+    const topicResult = await pool.query(`
+      SELECT ft.*, p.name as created_by_name
+      FROM forum_topics ft
+      JOIN profiles p ON ft.created_by = p.id
+      WHERE ft.slug = $1 AND ft.is_active = true
+    `, [slug]);
+    
+    if (topicResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado.' });
+    }
+    
+    const topic = topicResult.rows[0];
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Construir query de ordenação
+    let orderClause = 'ORDER BY fp.is_pinned DESC, fp.created_at DESC';
+    if (sort === 'popular') {
+      orderClause = 'ORDER BY fp.is_pinned DESC, fp.view_count DESC, fp.created_at DESC';
+    } else if (sort === 'replies') {
+      orderClause = 'ORDER BY fp.is_pinned DESC, replies_count DESC, fp.created_at DESC';
+    }
+    
+    const { rows } = await pool.query(`
+      SELECT 
+        fp.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        (SELECT COUNT(*) FROM forum_replies WHERE post_id = fp.id) as replies_count,
+        (SELECT COUNT(*) FROM forum_post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM forum_post_favorites WHERE post_id = fp.id) as favorites_count,
+        EXISTS(SELECT 1 FROM forum_post_likes WHERE post_id = fp.id AND user_id = $1) as is_liked_by_user,
+        EXISTS(SELECT 1 FROM forum_post_favorites WHERE post_id = fp.id AND user_id = $1) as is_favorited_by_user,
+        array_agg(DISTINCT ft.name) as tags
+      FROM forum_posts fp
+      JOIN profiles p ON fp.author_id = p.id
+      LEFT JOIN forum_post_tags fpt ON fp.id = fpt.post_id
+      LEFT JOIN forum_tags ft ON fpt.tag_id = ft.id
+      WHERE fp.topic_id = $2
+      GROUP BY fp.id, p.name, p.avatar_url, p.role
+      ${orderClause}
+      LIMIT $3 OFFSET $4
+    `, [req.user.id, topic.id, parseInt(limit), offset]);
+    
+    // Contar total de posts
+    const countResult = await pool.query(`
+      SELECT COUNT(*) as total FROM forum_posts WHERE topic_id = $1
+    `, [topic.id]);
+    
+    console.log('[GET /api/forum/topics/:slug/posts] Posts encontrados:', rows.length);
+    
+    res.json({
+      topic,
+      posts: rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: parseInt(countResult.rows[0].total),
+        pages: Math.ceil(countResult.rows[0].total / parseInt(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[GET /api/forum/topics/:slug/posts] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
 });
 
-const PORT = process.env.PORT || 3000;
+// Criar novo post
+app.post('/api/forum/posts', authenticateToken, async (req, res) => {
+  try {
+    const { topic_id, title, content, tags = [], content_image_url } = req.body;
+    
+    console.log('[POST /api/forum/posts] Criando post:', title);
+    console.log('[POST /api/forum/posts] Usuário:', req.user);
+    
+    if (!topic_id || !title || !content) {
+      return res.status(400).json({ error: 'Tópico, título e conteúdo são obrigatórios.' });
+    }
+    
+    // Verificar se o tópico existe e está ativo
+    const topicCheck = await pool.query(`
+      SELECT id FROM forum_topics WHERE id = $1 AND is_active = true
+    `, [topic_id]);
+    
+    if (topicCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Tópico não encontrado ou inativo.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      const postId = crypto.randomUUID();
+      
+      // Inserir post
+      const postResult = await client.query(`
+        INSERT INTO forum_posts (id, topic_id, title, content, author_id, content_image_url)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `, [postId, topic_id, title.trim(), content.trim(), req.user.id, req.body.content_image_url || null]);
+      
+      // Inserir tags se fornecidas
+      if (tags.length > 0) {
+        for (const tagName of tags) {
+          // Verificar se tag existe, se não, criar
+          let tagResult = await client.query('SELECT id FROM forum_tags WHERE name = $1', [tagName]);
+          let tagId;
+          
+          if (tagResult.rows.length === 0) {
+            const newTagResult = await client.query(`
+              INSERT INTO forum_tags (name) VALUES ($1) RETURNING id
+            `, [tagName]);
+            tagId = newTagResult.rows[0].id;
+          } else {
+            tagId = tagResult.rows[0].id;
+          }
+          
+          // Associar tag ao post
+          await client.query(`
+            INSERT INTO forum_post_tags (post_id, tag_id) VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+          `, [postId, tagId]);
+        }
+      }
+      
+      await client.query('COMMIT');
+      
+      // Criar notificação para moderadores/admins sobre novo post
+      try {
+        const modAdminResult = await pool.query(`
+          SELECT id, name
+          FROM profiles
+          WHERE role IN ('admin', 'instructor') AND id != $1
+        `, [req.user.id]);
+        
+        const topicResult = await pool.query(`
+          SELECT title FROM forum_topics WHERE id = $1
+        `, [topic_id]);
+        
+        if (topicResult.rows.length > 0) {
+          const topicTitle = topicResult.rows[0].title;
+          
+          const userName = await getUserName(req.user.id, req.user.name);
+          for (const moderator of modAdminResult.rows) {
+            await createNotification(
+              moderator.id,
+              'Novo post no fórum',
+              `${userName} criou um novo post "${title}" no tópico "${topicTitle}"`,
+              'forum_new_post',
+              postResult.rows[0].id,
+              'forum_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de novo post:', notificationErr);
+      }
+      
+      console.log('[POST /api/forum/posts] Post criado com sucesso:', postResult.rows[0].title);
+      res.status(201).json(postResult.rows[0]);
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[POST /api/forum/posts] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Buscar post específico com respostas
+app.get('/api/forum/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[GET /api/forum/posts/:id] Buscando post:', id);
+    
+    // Buscar dados do post
+    const postResult = await pool.query(`
+      SELECT 
+        fp.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        ft.title as topic_title,
+        ft.slug as topic_slug,
+        (SELECT COUNT(*) FROM forum_post_likes WHERE post_id = fp.id) as likes_count,
+        (SELECT COUNT(*) FROM forum_post_favorites WHERE post_id = fp.id) as favorites_count,
+        EXISTS(SELECT 1 FROM forum_post_likes WHERE post_id = fp.id AND user_id = $1) as is_liked_by_user,
+        EXISTS(SELECT 1 FROM forum_post_favorites WHERE post_id = fp.id AND user_id = $1) as is_favorited_by_user,
+        array_agg(DISTINCT ftags.name) as tags
+      FROM forum_posts fp
+      JOIN profiles p ON fp.author_id = p.id
+      JOIN forum_topics ft ON fp.topic_id = ft.id
+      LEFT JOIN forum_post_tags fpt ON fp.id = fpt.post_id
+      LEFT JOIN forum_tags ftags ON fpt.tag_id = ftags.id
+      WHERE fp.id = $2
+      GROUP BY fp.id, p.name, p.avatar_url, p.role, ft.title, ft.slug
+    `, [req.user.id, id]);
+    
+    if (postResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = postResult.rows[0];
+    
+    // Incrementar contador de visualizações
+    await pool.query(`
+      UPDATE forum_posts SET view_count = view_count + 1 WHERE id = $1
+    `, [id]);
+    
+    // Buscar respostas
+    const repliesResult = await pool.query(`
+      SELECT 
+        fr.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        (SELECT COUNT(*) FROM forum_reply_likes WHERE reply_id = fr.id) as likes_count,
+        EXISTS(SELECT 1 FROM forum_reply_likes WHERE reply_id = fr.id AND user_id = $1) as is_liked_by_user
+      FROM forum_replies fr
+      JOIN profiles p ON fr.author_id = p.id
+      WHERE fr.post_id = $2
+      ORDER BY fr.is_solution DESC, fr.created_at ASC
+    `, [req.user.id, id]);
+    
+    console.log('[GET /api/forum/posts/:id] Post e respostas encontrados');
+    
+    res.json({
+      post,
+      replies: repliesResult.rows
+    });
+    
+  } catch (err) {
+    console.error('[GET /api/forum/posts/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Criar resposta
+app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const { content, parent_reply_id } = req.body;
+    
+    console.log('[POST /api/forum/posts/:id/replies] Criando resposta');
+    console.log('[POST /api/forum/posts/:id/replies] Usuário:', req.user);
+    
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Conteúdo é obrigatório.' });
+    }
+    
+    // Verificar se o post existe e não está bloqueado
+    const postCheck = await pool.query(`
+      SELECT id, is_locked FROM forum_posts WHERE id = $1
+    `, [postId]);
+    
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    if (postCheck.rows[0].is_locked) {
+      return res.status(400).json({ error: 'Este post está bloqueado para novas respostas.' });
+    }
+    
+    const replyId = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO forum_replies (id, post_id, parent_reply_id, content, author_id)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [replyId, postId, parent_reply_id || null, content.trim(), req.user.id]);
+    
+    // Criar notificação para o autor do post (se não for o mesmo usuário)
+    try {
+      const postAuthorResult = await pool.query(`
+        SELECT fp.author_id, fp.title, p.name as author_name
+        FROM forum_posts fp
+        JOIN profiles p ON fp.author_id = p.id
+        WHERE fp.id = $1
+      `, [postId]);
+      
+      if (postAuthorResult.rows.length > 0) {
+        const { author_id: postAuthorId, title: postTitle, author_name } = postAuthorResult.rows[0];
+        
+        if (postAuthorId !== req.user.id) {
+          const userName = await getUserName(req.user.id, req.user.name);
+          await createNotification(
+            postAuthorId,
+            'Nova resposta no seu post',
+            `${userName} respondeu ao seu post "${postTitle}"`,
+            'forum_reply',
+            postId,
+            'forum_post'
+          );
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de resposta:', notificationErr);
+    }
+    
+    console.log('[POST /api/forum/posts/:id/replies] Resposta criada com sucesso');
+    res.status(201).json(rows[0]);
+    
+  } catch (err) {
+    console.error('[POST /api/forum/posts/:id/replies] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Curtir/descurtir post
+app.post('/api/forum/posts/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    
+    const likeCheck = await pool.query(`
+      SELECT id FROM forum_post_likes WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+    
+    if (likeCheck.rows.length > 0) {
+      // Remover curtida
+      await pool.query(`
+        DELETE FROM forum_post_likes WHERE post_id = $1 AND user_id = $2
+      `, [postId, userId]);
+    } else {
+      // Adicionar curtida
+      await pool.query(`
+        INSERT INTO forum_post_likes (post_id, user_id) VALUES ($1, $2)
+      `, [postId, userId]);
+      
+      // Criar notificação para o autor do post (se não for o mesmo usuário)
+      try {
+        const postAuthorResult = await pool.query(`
+          SELECT fp.author_id, fp.title, p.name as author_name
+          FROM forum_posts fp
+          JOIN profiles p ON fp.author_id = p.id
+          WHERE fp.id = $1
+        `, [postId]);
+        
+        if (postAuthorResult.rows.length > 0) {
+          const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+          
+          if (postAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            await createNotification(
+              postAuthorId,
+              'Curtida no seu post',
+              `${userName} curtiu seu post "${postTitle}"`,
+              'like',
+              postId,
+              'forum_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida:', notificationErr);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/forum/posts/:id/like] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Favoritar/desfavoritar post
+app.post('/api/forum/posts/:id/favorite', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    const userId = req.user.id;
+    
+    const favoriteCheck = await pool.query(`
+      SELECT id FROM forum_post_favorites WHERE post_id = $1 AND user_id = $2
+    `, [postId, userId]);
+    
+    if (favoriteCheck.rows.length > 0) {
+      // Remover dos favoritos
+      await pool.query(`
+        DELETE FROM forum_post_favorites WHERE post_id = $1 AND user_id = $2
+      `, [postId, userId]);
+    } else {
+      // Adicionar aos favoritos
+      await pool.query(`
+        INSERT INTO forum_post_favorites (post_id, user_id) VALUES ($1, $2)
+      `, [postId, userId]);
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/forum/posts/:id/favorite] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Curtir/descurtir resposta
+app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const { id: replyId } = req.params;
+    const userId = req.user.id;
+    
+    const likeCheck = await pool.query(`
+      SELECT id FROM forum_reply_likes WHERE reply_id = $1 AND user_id = $2
+    `, [replyId, userId]);
+    
+    if (likeCheck.rows.length > 0) {
+      // Remover curtida
+      await pool.query(`
+        DELETE FROM forum_reply_likes WHERE reply_id = $1 AND user_id = $2
+      `, [replyId, userId]);
+    } else {
+      // Adicionar curtida
+      await pool.query(`
+        INSERT INTO forum_reply_likes (reply_id, user_id) VALUES ($1, $2)
+      `, [replyId, userId]);
+      
+      // Criar notificação para o autor da resposta (se não for o mesmo usuário)
+      try {
+        const replyAuthorResult = await pool.query(`
+          SELECT fr.author_id, fr.content, p.name as author_name,
+                 fp.title as post_title
+          FROM forum_replies fr
+          JOIN profiles p ON fr.author_id = p.id
+          JOIN forum_posts fp ON fr.post_id = fp.id
+          WHERE fr.id = $1
+        `, [replyId]);
+        
+        if (replyAuthorResult.rows.length > 0) {
+          const { author_id: replyAuthorId, post_title, content } = replyAuthorResult.rows[0];
+          
+          if (replyAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+            await createNotification(
+              replyAuthorId,
+              'Curtida na sua resposta',
+              `${userName} curtiu sua resposta "${shortContent}" no post "${post_title}"`,
+              'like',
+              replyId,
+              'forum_reply'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em resposta:', notificationErr);
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[POST /api/forum/replies/:id/like] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Editar comentário/resposta do fórum
+app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id: replyId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+    
+    console.log('[PUT /api/forum/replies/:id] Editando resposta:', replyId);
+    console.log('[PUT /api/forum/replies/:id] Usuário:', req.user);
+    
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Conteúdo da resposta é obrigatório.' });
+    }
+    
+    // Verificar se a resposta existe e se o usuário tem permissão para editar
+    const replyCheck = await pool.query(`
+      SELECT author_id FROM forum_replies WHERE id = $1
+    `, [replyId]);
+    
+    if (replyCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Resposta não encontrada.' });
+    }
+    
+    const reply = replyCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem editar)
+    if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para editar esta resposta.' });
+    }
+    
+    // Atualizar a resposta
+    await pool.query(`
+      UPDATE forum_replies 
+      SET content = $1, updated_at = NOW() 
+      WHERE id = $2
+    `, [content.trim(), replyId]);
+    
+    console.log('[PUT /api/forum/replies/:id] Resposta editada com sucesso');
+    res.json({ success: true, message: 'Resposta editada com sucesso.' });
+    
+  } catch (err) {
+    console.error('[PUT /api/forum/replies/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Deletar comentário/resposta do fórum
+app.delete('/api/forum/replies/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id: replyId } = req.params;
+    const userId = req.user.id;
+    
+    console.log('[DELETE /api/forum/replies/:id] Deletando resposta:', replyId);
+    console.log('[DELETE /api/forum/replies/:id] Usuário:', req.user);
+    
+    // Verificar se a resposta existe e se o usuário tem permissão para deletar
+    const replyCheck = await pool.query(`
+      SELECT author_id FROM forum_replies WHERE id = $1
+    `, [replyId]);
+    
+    if (replyCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Resposta não encontrada.' });
+    }
+    
+    const reply = replyCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem deletar)
+    if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para deletar esta resposta.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Deletar curtidas da resposta
+      await client.query('DELETE FROM forum_reply_likes WHERE reply_id = $1', [replyId]);
+      
+      // Deletar respostas filhas (se houver)
+      await client.query('DELETE FROM forum_replies WHERE parent_reply_id = $1', [replyId]);
+      
+      // Deletar a resposta
+      await client.query('DELETE FROM forum_replies WHERE id = $1', [replyId]);
+      
+      await client.query('COMMIT');
+      
+      console.log('[DELETE /api/forum/replies/:id] Resposta deletada com sucesso');
+      res.json({ success: true, message: 'Resposta deletada com sucesso.' });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[DELETE /api/forum/replies/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ===== ENDPOINTS DE ADMINISTRAÇÃO PARA MIGRATION =====
+
+// Verificar estrutura da tabela forum_posts
+app.get('/api/admin/check-forum-posts-structure', authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const result = await pool.query(`
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns 
+      WHERE table_name = 'forum_posts' 
+      ORDER BY ordinal_position
+    `);
+
+    res.json({ columns: result.rows });
+  } catch (error) {
+    console.error('Erro ao verificar estrutura:', error);
+    res.status(500).json({ error: 'Erro ao verificar estrutura da tabela.' });
+  }
+});
+
+// Aplicar migration dos posts do fórum
+app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    console.log('[MIGRATION] Aplicando migration dos posts do fórum...');
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Verificar se content_image_url existe
+      const checkContentImageUrl = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' AND column_name = 'content_image_url'
+      `);
+      
+      if (checkContentImageUrl.rows.length === 0) {
+        console.log('[MIGRATION] Adicionando coluna content_image_url...');
+        await client.query('ALTER TABLE forum_posts ADD COLUMN content_image_url TEXT');
+      } else {
+        console.log('[MIGRATION] Coluna content_image_url já existe');
+      }
+      
+      // Verificar se cover_image_url existe
+      const checkCoverImageUrl = await client.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' AND column_name = 'cover_image_url'
+      `);
+      
+      if (checkCoverImageUrl.rows.length > 0) {
+        console.log('[MIGRATION] Migrando dados de cover_image_url para content_image_url...');
+        await client.query(`
+          UPDATE forum_posts 
+          SET content_image_url = cover_image_url 
+          WHERE cover_image_url IS NOT NULL AND content_image_url IS NULL
+        `);
+        
+        console.log('[MIGRATION] Removendo coluna cover_image_url...');
+        await client.query('ALTER TABLE forum_posts DROP COLUMN cover_image_url');
+      } else {
+        console.log('[MIGRATION] Coluna cover_image_url não existe');
+      }
+      
+      await client.query('COMMIT');
+      
+      // Verificar estrutura final
+      const finalStructure = await client.query(`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'forum_posts' 
+        ORDER BY ordinal_position
+      `);
+      
+      console.log('[MIGRATION] Migration aplicada com sucesso!');
+      
+      res.json({ 
+        success: true, 
+        message: 'Migration aplicada com sucesso!',
+        finalStructure: finalStructure.rows
+      });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (error) {
+    console.error('[MIGRATION] Erro ao aplicar migration:', error);
+    res.status(500).json({ error: 'Erro ao aplicar migration: ' + error.message });
+  }
+});
+
+// Editar post do fórum
+app.put('/api/forum/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, tags = [], content_image_url } = req.body;
+    
+    console.log('[PUT /api/forum/posts/:id] Editando post:', id);
+    console.log('[PUT /api/forum/posts/:id] Usuário:', req.user);
+    
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+    }
+    
+    // Verificar se o post existe e se o usuário tem permissão para editar
+    const postCheck = await pool.query(`
+      SELECT author_id FROM forum_posts WHERE id = $1
+    `, [id]);
+    
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = postCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem editar)
+    if (post.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para editar este post.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Atualizar post
+      const updateResult = await client.query(`
+        UPDATE forum_posts 
+        SET title = $1, content = $2, content_image_url = $3, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        RETURNING *
+      `, [title.trim(), content.trim(), content_image_url || null, id]);
+      
+      // Remover tags antigas
+      await client.query('DELETE FROM forum_post_tags WHERE post_id = $1', [id]);
+      
+      // Inserir novas tags se fornecidas
+      if (tags.length > 0) {
+        for (const tagName of tags) {
+          // Verificar se tag existe, se não, criar
+          let tagResult = await client.query('SELECT id FROM forum_tags WHERE name = $1', [tagName]);
+          let tagId;
+          
+          if (tagResult.rows.length === 0) {
+            const newTagResult = await client.query(`
+              INSERT INTO forum_tags (name) VALUES ($1) RETURNING id
+            `, [tagName]);
+            tagId = newTagResult.rows[0].id;
+          } else {
+            tagId = tagResult.rows[0].id;
+          }
+          
+          // Associar tag ao post
+          await client.query(`
+            INSERT INTO forum_post_tags (post_id, tag_id) VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+          `, [id, tagId]);
+        }
+      }
+      
+      await client.query('COMMIT');
+      
+      console.log('[PUT /api/forum/posts/:id] Post atualizado com sucesso');
+      res.json(updateResult.rows[0]);
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[PUT /api/forum/posts/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Excluir post do fórum
+app.delete('/api/forum/posts/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log('[DELETE /api/forum/posts/:id] Excluindo post:', id);
+    console.log('[DELETE /api/forum/posts/:id] Usuário:', req.user);
+    
+    // Verificar se o post existe e se o usuário tem permissão para excluir
+    const postCheck = await pool.query(`
+      SELECT author_id FROM forum_posts WHERE id = $1
+    `, [id]);
+    
+    if (postCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Post não encontrado.' });
+    }
+    
+    const post = postCheck.rows[0];
+    
+    // Verificar permissões (apenas autor ou admin podem excluir)
+    if (post.author_id !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Você não tem permissão para excluir este post.' });
+    }
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Excluir relacionamentos de curtidas
+      await client.query('DELETE FROM forum_post_likes WHERE post_id = $1', [id]);
+      
+      // Excluir relacionamentos de favoritos
+      await client.query('DELETE FROM forum_post_favorites WHERE post_id = $1', [id]);
+      
+      // Excluir relacionamentos de tags
+      await client.query('DELETE FROM forum_post_tags WHERE post_id = $1', [id]);
+      
+      // Excluir curtidas de respostas
+      await client.query(`
+        DELETE FROM forum_reply_likes 
+        WHERE reply_id IN (SELECT id FROM forum_replies WHERE post_id = $1)
+      `, [id]);
+      
+      // Excluir respostas
+      await client.query('DELETE FROM forum_replies WHERE post_id = $1', [id]);
+      
+      // Excluir o post
+      await client.query('DELETE FROM forum_posts WHERE id = $1', [id]);
+      
+      await client.query('COMMIT');
+      
+      console.log('[DELETE /api/forum/posts/:id] Post excluído com sucesso');
+      res.json({ success: true, message: 'Post excluído com sucesso.' });
+      
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    
+  } catch (err) {
+    console.error('[DELETE /api/forum/posts/:id] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Buscar respostas de um post específico
+app.get('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
+  try {
+    const { id: postId } = req.params;
+    
+    console.log('[GET /api/forum/posts/:id/replies] Buscando respostas do post:', postId);
+    
+    const repliesResult = await pool.query(`
+      SELECT 
+        fr.*,
+        p.name as author_name,
+        p.avatar_url as author_avatar,
+        p.role as author_role,
+        (SELECT COUNT(*) FROM forum_reply_likes WHERE reply_id = fr.id) as likes_count,
+        EXISTS(SELECT 1 FROM forum_reply_likes WHERE reply_id = fr.id AND user_id = $1) as is_liked_by_user
+      FROM forum_replies fr
+      JOIN profiles p ON fr.author_id = p.id
+      WHERE fr.post_id = $2
+      ORDER BY fr.is_solution DESC, fr.created_at ASC
+    `, [req.user.id, postId]);
+    
+    console.log('[GET /api/forum/posts/:id/replies] Encontradas', repliesResult.rows.length, 'respostas');
+    
+    res.json(repliesResult.rows);
+    
+  } catch (err) {
+    console.error('[GET /api/forum/posts/:id/replies] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ===== SISTEMA DE WEBHOOKS =====
+
+// Função para enviar webhook
+async function sendWebhook(eventType, payload) {
+  try {
+    // Buscar webhooks ativos que escutam este evento
+    const { rows: webhooks } = await pool.query(`
+      SELECT * FROM webhooks 
+      WHERE is_active = true 
+      AND $1 = ANY(events)
+    `, [eventType]);
+
+    for (const webhook of webhooks) {
+      try {
+        // Preparar payload final
+        const fullPayload = {
+          event: eventType,
+          timestamp: new Date().toISOString(),
+          data: payload
+        };
+
+        // Preparar headers
+        const headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': 'EduCommunity-Webhook/1.0'
+        };
+
+        // Adicionar assinatura HMAC se houver chave secreta
+        if (webhook.secret_key) {
+          const crypto = require('crypto');
+          const signature = crypto
+            .createHmac('sha256', webhook.secret_key)
+            .update(JSON.stringify(fullPayload))
+            .digest('hex');
+          headers['X-Webhook-Signature'] = `sha256=${signature}`;
+        }
+
+        // Fazer requisição
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(webhook.url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fullPayload),
+          timeout: 10000 // 10 segundos
+        });
+
+        const responseText = await response.text();
+        const isSuccess = response.status >= 200 && response.status < 300;
+
+        // Log da tentativa
+        await pool.query(`
+          INSERT INTO webhook_logs (webhook_id, event_type, payload, response_status, response_body, is_success)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          webhook.id,
+          eventType,
+          fullPayload,
+          response.status,
+          responseText.substring(0, 5000), // Limitar tamanho
+          isSuccess
+        ]);
+
+        if (!isSuccess) {
+          console.error(`[WEBHOOK] Erro no webhook ${webhook.name}: ${response.status} ${responseText}`);
+        }
+
+      } catch (webhookError) {
+        // Log do erro
+        await pool.query(`
+          INSERT INTO webhook_logs (webhook_id, event_type, payload, error_message, is_success)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          webhook.id,
+          eventType,
+          { event: eventType, timestamp: new Date().toISOString(), data: payload },
+          webhookError.message,
+          false
+        ]);
+        
+        console.error(`[WEBHOOK] Erro ao enviar webhook ${webhook.name}:`, webhookError);
+      }
+    }
+  } catch (error) {
+    console.error('[WEBHOOK] Erro geral no sistema de webhooks:', error);
+  }
+}
+
+// ===== ROTAS DA API PARA WEBHOOKS =====
+
+// Listar webhooks
+app.get('/api/webhooks', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/webhooks] Usuário:', req.user);
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    console.log('[GET /api/webhooks] Executando query...');
+    const { rows } = await pool.query(`
+      SELECT id, name, url, events, is_active, created_at, updated_at
+      FROM webhooks 
+      ORDER BY created_at DESC
+    `);
+    console.log('[GET /api/webhooks] Resultado:', rows);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/webhooks]', err);
+    res.status(500).json({ error: 'Erro ao buscar webhooks.' });
+  }
+});
+
+// Criar webhook
+app.post('/api/webhooks', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { name, url, events, is_active = true, secret_key } = req.body;
+
+    if (!name || !url || !events || !Array.isArray(events)) {
+      return res.status(400).json({ error: 'Nome, URL e eventos são obrigatórios.' });
+    }
+
+    const id = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO webhooks (id, name, url, events, is_active, secret_key)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, url, events, is_active, created_at, updated_at
+    `, [id, name, url, events, is_active, secret_key || null]);
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/webhooks]', err);
+    res.status(500).json({ error: 'Erro ao criar webhook.' });
+  }
+});
+
+// Atualizar webhook
+app.put('/api/webhooks/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    const { name, url, events, is_active, secret_key } = req.body;
+
+    if (!name || !url || !events || !Array.isArray(events)) {
+      return res.status(400).json({ error: 'Nome, URL e eventos são obrigatórios.' });
+    }
+
+    const { rows } = await pool.query(`
+      UPDATE webhooks 
+      SET name = $1, url = $2, events = $3, is_active = $4, secret_key = $5
+      WHERE id = $6
+      RETURNING id, name, url, events, is_active, created_at, updated_at
+    `, [name, url, events, is_active, secret_key || null, id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Webhook não encontrado.' });
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/webhooks/:id]', err);
+    res.status(500).json({ error: 'Erro ao atualizar webhook.' });
+  }
+});
+
+// Deletar webhook
+app.delete('/api/webhooks/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+
+    const { rowCount } = await pool.query('DELETE FROM webhooks WHERE id = $1', [id]);
+
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Webhook não encontrado.' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/webhooks/:id]', err);
+    res.status(500).json({ error: 'Erro ao deletar webhook.' });
+  }
+});
+
+// Buscar logs de um webhook
+app.get('/api/webhooks/:id/logs', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    const { rows } = await pool.query(`
+      SELECT * FROM webhook_logs 
+      WHERE webhook_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2 OFFSET $3
+    `, [id, parseInt(limit), parseInt(offset)]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/webhooks/:id/logs]', err);
+    res.status(500).json({ error: 'Erro ao buscar logs.' });
+  }
+});
+ 
+ / /   R o t a   c a t c h - a l l   p a r a   S P A   ( d e v e   s e r   a   � l t i m a   r o t a ) 
+ 
+ a p p . g e t ( ' * ' ,   ( r e q ,   r e s )   = >   { 
+ 
+     r e s . s e n d F i l e ( p a t h . j o i n ( _ _ d i r n a m e ,   ' p u b l i c ' ,   ' i n d e x . h t m l ' ) ) ; 
+ 
+ } ) ; 
+ 
+ 

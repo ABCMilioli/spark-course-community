@@ -38,8 +38,8 @@ export function NotificationBell() {
       
       try {
         const response = await axios.get(`${API_URL}/notifications`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        headers: { Authorization: `Bearer ${token}` }
+      });
         console.log('✅ Notificações carregadas:', response.data);
         return response.data as Notification[];
       } catch (error) {
@@ -64,8 +64,8 @@ export function NotificationBell() {
       
       try {
         const response = await axios.get(`${API_URL}/notifications/count`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        headers: { Authorization: `Bearer ${token}` }
+      });
         console.log('✅ Contador carregado:', response.data);
         return response.data;
       } catch (error) {
@@ -295,16 +295,16 @@ export function NotificationBell() {
         <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-semibold">Notificações</h4>
+          <h4 className="font-semibold">Notificações</h4>
               {isSelectionMode && notifications && (
                 <p className="text-sm text-muted-foreground">
                   {selectedNotifications.length} de {notifications.length} selecionada{selectedNotifications.length !== 1 ? 's' : ''}
                 </p>
               )}
               {!isSelectionMode && notificationCount?.unread_count > 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {notificationCount.unread_count} não lida{notificationCount.unread_count > 1 ? 's' : ''}
-                </p>
+            <p className="text-sm text-muted-foreground">
+              {notificationCount.unread_count} não lida{notificationCount.unread_count > 1 ? 's' : ''}
+            </p>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -407,7 +407,7 @@ export function NotificationBell() {
                     className={`p-3 rounded-lg border transition-colors ${
                       isSelectionMode 
                         ? selectedNotifications.includes(notification.id)
-                          ? 'bg-blue-50 border-blue-200' 
+                        ? 'bg-blue-50 border-blue-200' 
                           : 'hover:bg-muted/50 cursor-pointer'
                         : !notification.is_read 
                           ? 'bg-blue-50 border-blue-200 cursor-pointer' 

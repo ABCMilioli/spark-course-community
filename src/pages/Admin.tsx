@@ -9,10 +9,12 @@ import { MoreHorizontal, FileText, Video, UserPlus, Edit, Trash2, Settings } fro
 import { CreateUserModal } from "@/components/Admin/CreateUserModal";
 import { CreateCourseModal } from "@/components/Admin/CreateCourseModal";
 import { CreatePostModal } from "@/components/Admin/CreatePostModal";
+import { CreateWebhookModal } from "@/components/Admin/CreateWebhookModal";
+import { WebhookLogsModal } from "@/components/Admin/WebhookLogsModal";
 import { MinioTest } from "@/components/Admin/MinioTest";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from 'axios';
-import { Profile, Course, Post } from "@/types";
+import { Profile, Course, Post, Webhook } from "@/types";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,16 +49,21 @@ export default function Admin() {
   const [isUserModalOpen, setUserModalOpen] = useState(false);
   const [isCourseModalOpen, setCourseModalOpen] = useState(false);
   const [isPostModalOpen, setPostModalOpen] = useState(false);
+  const [isWebhookModalOpen, setWebhookModalOpen] = useState(false);
+  const [isWebhookLogsModalOpen, setWebhookLogsModalOpen] = useState(false);
   
   // Estados para edição
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
+  const [selectedWebhookForLogs, setSelectedWebhookForLogs] = useState<Webhook | null>(null);
   
   // Estados para confirmação de deleção
   const [deleteUser, setDeleteUser] = useState<Profile | null>(null);
   const [deleteCourse, setDeleteCourse] = useState<Course | null>(null);
   const [deletePost, setDeletePost] = useState<Post | null>(null);
+  const [deleteWebhook, setDeleteWebhook] = useState<Webhook | null>(null);
 
   // Queries
   const { data: users, isLoading: isLoadingUsers } = useQuery({
@@ -89,6 +96,26 @@ export default function Admin() {
         headers: { Authorization: `Bearer ${token}` }
       });
       return data;
+    },
+  });
+
+  const { data: webhooks, isLoading: isLoadingWebhooks, error: webhooksError } = useQuery({
+    queryKey: ['webhooks'],
+    queryFn: async () => {
+      const token = localStorage.getItem('token');
+      console.log('Fazendo requisição para webhooks...');
+      console.log('Token:', token ? 'Presente' : 'Ausente');
+      console.log('API_URL:', API_URL);
+      try {
+        const { data } = await axios.get(`${API_URL}/webhooks`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        console.log('Resposta dos webhooks:', data);
+        return data;
+      } catch (error) {
+        console.error('Erro na requisição de webhooks:', error);
+        throw error;
+      }
     },
   });
 
@@ -144,6 +171,23 @@ export default function Admin() {
     }
   });
 
+  const deleteWebhookMutation = useMutation({
+    mutationFn: async (webhookId: string) => {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_URL}/webhooks/${webhookId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['webhooks'] });
+      toast.success('Webhook deletado com sucesso!');
+      setDeleteWebhook(null);
+    },
+    onError: () => {
+      toast.error('Erro ao deletar webhook');
+    }
+  });
+
   // Handlers para editar
   const handleEditUser = (user: Profile) => {
     console.log('Editando usuário:', user);
@@ -163,6 +207,18 @@ export default function Admin() {
     setPostModalOpen(true);
   };
 
+  const handleEditWebhook = (webhook: Webhook) => {
+    console.log('Editando webhook:', webhook);
+    setEditingWebhook(webhook);
+    setWebhookModalOpen(true);
+  };
+
+  const handleViewWebhookLogs = (webhook: Webhook) => {
+    console.log('Visualizando logs do webhook:', webhook);
+    setSelectedWebhookForLogs(webhook);
+    setWebhookLogsModalOpen(true);
+  };
+
   // Handlers para deletar
   const handleDeleteUser = (user: Profile) => {
     console.log('Deletando usuário:', user);
@@ -177,6 +233,11 @@ export default function Admin() {
   const handleDeletePost = (post: Post) => {
     console.log('Deletando post:', post);
     setDeletePost(post);
+  };
+
+  const handleDeleteWebhook = (webhook: Webhook) => {
+    console.log('Deletando webhook:', webhook);
+    setDeleteWebhook(webhook);
   };
 
   // Handler para gerenciar conteúdo do curso
@@ -201,6 +262,16 @@ export default function Admin() {
     setEditingPost(null);
   };
 
+  const handleCloseWebhookModal = () => {
+    setWebhookModalOpen(false);
+    setEditingWebhook(null);
+  };
+
+  const handleCloseWebhookLogsModal = () => {
+    setWebhookLogsModalOpen(false);
+    setSelectedWebhookForLogs(null);
+  };
+
   // Callback para sucesso das operações
   const handleUserSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['all-users'] });
@@ -212,6 +283,10 @@ export default function Admin() {
 
   const handlePostSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ['all-posts'] });
+  };
+
+  const handleWebhookSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['webhooks'] });
   };
   
   return (
@@ -234,6 +309,7 @@ export default function Admin() {
             <TabsTrigger value="users">Usuários</TabsTrigger>
             <TabsTrigger value="courses">Cursos</TabsTrigger>
             <TabsTrigger value="posts">Posts</TabsTrigger>
+            <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
             <TabsTrigger value="minio">MinIO Test</TabsTrigger>
           </TabsList>
           {/* Add buttons */}
@@ -439,6 +515,111 @@ export default function Admin() {
           </Card>
         </TabsContent>
 
+        {/* Webhooks Tab */}
+        <TabsContent value="webhooks">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Webhooks</CardTitle>
+                <Button onClick={() => setWebhookModalOpen(true)} variant="outline" size="sm">Novo Webhook</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {webhooksError && (
+                <div className="text-center py-4">
+                  <p className="text-destructive">Erro ao carregar webhooks: {webhooksError.message}</p>
+                  <Button 
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ['webhooks'] })}
+                    variant="outline"
+                    className="mt-2"
+                  >
+                    Tentar Novamente
+                  </Button>
+                </div>
+              )}
+              {isLoadingWebhooks ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : !webhooksError && (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>URL</TableHead>
+                      <TableHead>Eventos</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Data de Criação</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.isArray(webhooks) && webhooks.length > 0 ? (
+                      webhooks.map((webhook: Webhook) => (
+                        <TableRow key={webhook.id}>
+                          <TableCell className="font-medium">{webhook.name}</TableCell>
+                          <TableCell className="max-w-xs truncate">{webhook.url}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {Array.isArray(webhook.events) && webhook.events.slice(0, 2).map((event) => (
+                                <Badge key={event} variant="outline" className="text-xs">
+                                  {event}
+                                </Badge>
+                              ))}
+                              {Array.isArray(webhook.events) && webhook.events.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{webhook.events.length - 2}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={webhook.is_active ? "default" : "secondary"}>
+                              {webhook.is_active ? "Ativo" : "Inativo"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{format(new Date(webhook.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleEditWebhook(webhook)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Editar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleViewWebhookLogs(webhook)}>
+                                  <FileText className="w-4 h-4 mr-2" />
+                                  Ver Logs
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDeleteWebhook(webhook)} className="text-destructive">
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Deletar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          Nenhum webhook encontrado. Clique em "Novo Webhook" para criar um.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* MinIO Test Tab */}
         <TabsContent value="minio">
           <MinioTest />
@@ -470,6 +651,22 @@ export default function Admin() {
         initialData={editingPost}
         isEdit={!!editingPost}
       />
+
+      <CreateWebhookModal 
+        open={isWebhookModalOpen} 
+        onOpenChange={handleCloseWebhookModal}
+        onSuccess={handleWebhookSuccess}
+        initialData={editingWebhook}
+        isEdit={!!editingWebhook}
+      />
+
+      {selectedWebhookForLogs && (
+        <WebhookLogsModal 
+          open={isWebhookLogsModalOpen} 
+          onOpenChange={handleCloseWebhookLogsModal}
+          webhook={selectedWebhookForLogs}
+        />
+      )}
 
       {/* Modais de Confirmação de Deleção */}
       <AlertDialog open={!!deleteUser} onOpenChange={() => setDeleteUser(null)}>
@@ -524,6 +721,26 @@ export default function Admin() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => deletePost && deletePostMutation.mutate(deletePost.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteWebhook} onOpenChange={() => setDeleteWebhook(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o webhook "{deleteWebhook?.name}"? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => deleteWebhook && deleteWebhookMutation.mutate(deleteWebhook.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Excluir

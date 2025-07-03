@@ -237,10 +237,10 @@ export default function ForumTopic() {
               />
             )}
             <div>
-              <h1 className="text-3xl font-bold">{topicData.topic.title}</h1>
-              {topicData.topic.description && (
-                <p className="text-muted-foreground mt-2">{topicData.topic.description}</p>
-              )}
+          <h1 className="text-3xl font-bold">{topicData.topic.title}</h1>
+          {topicData.topic.description && (
+            <p className="text-muted-foreground mt-2">{topicData.topic.description}</p>
+          )}
             </div>
           </div>
         </div>
@@ -298,9 +298,9 @@ export default function ForumTopic() {
                       {post.title}
                     </Link>
                     <div className="flex items-center gap-2 ml-2">
-                      {post.is_pinned && (
+                    {post.is_pinned && (
                         <Pin className="w-4 h-4 text-yellow-500 flex-shrink-0" />
-                      )}
+                    )}
                       
                       {/* Menu de ações do post */}
                       {canEditPost(post) && (
@@ -328,7 +328,7 @@ export default function ForumTopic() {
                       )}
                     </div>
                   </div>
-
+                  
                   {/* Preview do conteúdo */}
                   <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
                     {post.content?.substring(0, 120)}...
@@ -370,41 +370,41 @@ export default function ForumTopic() {
                         >
                           {post.author_name}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{formatDate(post.created_at)}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Eye className="w-4 h-4" />
-                        <span>{post.view_count}</span>
-                      </div>
                     </div>
-                    
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-4 h-4" />
+                      <span>{formatDate(post.created_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Eye className="w-4 h-4" />
+                      <span>{post.view_count}</span>
+                    </div>
+                  </div>
+                  
                     {/* Ações */}
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleLike(post.id)}
-                        className={`flex items-center gap-1 ${post.is_liked_by_user ? 'text-primary' : ''}`}
-                      >
-                        <ThumbsUp className="w-4 h-4" />
-                        <span>{post.likes_count}</span>
-                      </Button>
-                      
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleFavorite(post.id)}
-                        className={`flex items-center gap-1 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
-                      >
-                        <Star className="w-4 h-4" />
-                        <span>{post.favorites_count}</span>
-                      </Button>
-                      
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MessageSquare className="w-4 h-4" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleLike(post.id)}
+                      className={`flex items-center gap-1 ${post.is_liked_by_user ? 'text-primary' : ''}`}
+                    >
+                      <ThumbsUp className="w-4 h-4" />
+                      <span>{post.likes_count}</span>
+                    </Button>
+                    
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleFavorite(post.id)}
+                      className={`flex items-center gap-1 ${post.is_favorited_by_user ? 'text-yellow-500' : ''}`}
+                    >
+                      <Star className="w-4 h-4" />
+                      <span>{post.favorites_count}</span>
+                    </Button>
+                    
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <MessageSquare className="w-4 h-4" />
                         <span>{post.replies_count || 0}</span>
                       </div>
                     </div>

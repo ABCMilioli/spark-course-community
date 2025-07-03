@@ -22,14 +22,14 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Adicionar log para todas as requisições
+// Adicionar log para todas as requisi��es
 app.use((req, res, next) => {
   process.stdout.write(`[${new Date().toISOString()}] ${req.method} ${req.path}\n`);
   process.stdout.write(`[DEBUG] Headers: ${JSON.stringify(req.headers)}\n`);
   next();
 });
 
-// Configuração do Postgres
+// Configura��o do Postgres
 const pool = new Pool({
   host: process.env.POSTGRES_HOST,
   port: process.env.POSTGRES_PORT,
@@ -40,7 +40,7 @@ const pool = new Pool({
 
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
 
-// Configuração do Multer para upload de arquivos
+// Configura��o do Multer para upload de arquivos
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -52,7 +52,7 @@ const upload = multer({
   }
 });
 
-// Configuração do MinIO (usando variáveis de ambiente da stack)
+// Configura��o do MinIO (usando vari�veis de ambiente da stack)
 // process.env.MINIO_ENDPOINT = 'mp.iacas.top';
 // process.env.MINIO_PORT = '443';
 // process.env.MINIO_ACCESS_KEY = '1013141255245882';
@@ -62,7 +62,7 @@ const upload = multer({
 // process.env.MINIO_BUCKET = 'community';
 // process.env.MINIO_PUBLIC_URL = 'https://mp.iacas.top';
 
-// Validação das variáveis de ambiente do MinIO
+// Valida��o das vari�veis de ambiente do MinIO
 const requiredMinioVars = [
   'MINIO_ENDPOINT', 'MINIO_PORT', 'MINIO_ACCESS_KEY', 
   'MINIO_SECRET_KEY', 'MINIO_BUCKET', 'MINIO_PUBLIC_URL'
@@ -70,24 +70,24 @@ const requiredMinioVars = [
 
 const missingVars = requiredMinioVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
-  console.warn('[MinIO] Variáveis de ambiente ausentes:', missingVars);
-  console.warn('[MinIO] Upload de arquivos será desabilitado');
+  console.warn('[MinIO] Vari�veis de ambiente ausentes:', missingVars);
+  console.warn('[MinIO] Upload de arquivos ser� desabilitado');
 } else {
-  console.log('[MinIO] Configuração carregada com sucesso');
+  console.log('[MinIO] Configura��o carregada com sucesso');
   console.log('[MinIO] Endpoint:', process.env.MINIO_ENDPOINT);
   console.log('[MinIO] Bucket:', process.env.MINIO_BUCKET);
 }
 
 // Middleware para verificar token
 const authenticateToken = (req, res, next) => {
-  process.stdout.write(`\n[AUTH] === INÍCIO DA AUTENTICAÇÃO ===\n`);
+  process.stdout.write(`\n[AUTH] === IN�CIO DA AUTENTICA��O ===\n`);
   process.stdout.write(`[AUTH] Rota: ${req.method} ${req.path}\n`);
   process.stdout.write(`[AUTH] Headers: ${JSON.stringify(req.headers)}\n`);
   
   const auth = req.headers.authorization;
   if (!auth) {
     process.stdout.write('[AUTH] Token ausente\n');
-    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (erro) ===\n\n');
+    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (erro) ===\n\n');
     return res.status(401).json({ error: 'Token ausente.' });
   }
   
@@ -95,29 +95,29 @@ const authenticateToken = (req, res, next) => {
     const [, token] = auth.split(' ');
     process.stdout.write(`[AUTH] Token recebido: ${token}\n`);
     const decoded = jwt.verify(token, JWT_SECRET);
-    process.stdout.write(`[AUTH] Token válido para usuário: ${JSON.stringify(decoded)}\n`);
-    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (sucesso) ===\n\n');
+    process.stdout.write(`[AUTH] Token v�lido para usu�rio: ${JSON.stringify(decoded)}\n`);
+    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (sucesso) ===\n\n');
     req.user = decoded;
     next();
   } catch (err) {
-    process.stdout.write(`[AUTH] Token inválido: ${err.message}\n`);
+    process.stdout.write(`[AUTH] Token inv�lido: ${err.message}\n`);
     process.stdout.write(`[AUTH] Stack trace: ${err.stack}\n`);
-    process.stdout.write('[AUTH] === FIM DA AUTENTICAÇÃO (erro) ===\n\n');
-    res.status(401).json({ error: 'Token inválido.' });
+    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (erro) ===\n\n');
+    res.status(401).json({ error: 'Token inv�lido.' });
   }
 };
 
 // Endpoint de login
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email e senha obrigatórios.' });
+  if (!email || !password) return res.status(400).json({ error: 'Email e senha obrigat�rios.' });
 
   try {
     const { rows } = await pool.query('SELECT * FROM profiles WHERE email = $1', [email]);
     const user = rows[0];
-    if (!user) return res.status(401).json({ error: 'Usuário não encontrado.' });
+    if (!user) return res.status(401).json({ error: 'Usu�rio n�o encontrado.' });
 
-    // Se não existir campo de senha, aceite qualquer senha para o admin inicial
+    // Se n�o existir campo de senha, aceite qualquer senha para o admin inicial
     if (!user.password_hash) {
       // Opcional: crie o hash agora
       const hash = await bcrypt.hash(password, 10);
@@ -126,7 +126,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Senha inválida.' });
+    if (!valid) return res.status(401).json({ error: 'Senha inv�lida.' });
 
     const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
@@ -146,31 +146,31 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para perfil público de usuário
+// Endpoint para perfil p�blico de usu�rio
 app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
-    console.log('[GET /api/users/:userId/profile] Buscando perfil público para usuário:', userId);
+    console.log('[GET /api/users/:userId/profile] Buscando perfil p�blico para usu�rio:', userId);
     
-    // Buscar dados básicos do usuário (apenas campos públicos)
+    // Buscar dados b�sicos do usu�rio (apenas campos p�blicos)
     const userResult = await pool.query(
       'SELECT id, name, role, bio, avatar_url, created_at FROM profiles WHERE id = $1',
       [userId]
     );
     
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
+      return res.status(404).json({ error: 'Usu�rio n�o encontrado.' });
     }
     
     const user = userResult.rows[0];
     
-    // Buscar estatísticas do usuário
+    // Buscar estat�sticas do usu�rio
     const [postsResult, enrollmentsResult, forumPostsResult] = await Promise.all([
       // Posts criados na comunidade
       pool.query('SELECT COUNT(*) as count FROM posts WHERE author_id = $1', [userId]),
       // Cursos matriculados (apenas contagem)
       pool.query('SELECT COUNT(*) as count FROM enrollments WHERE user_id = $1', [userId]),
-      // Posts no fórum
+      // Posts no f�rum
       pool.query('SELECT COUNT(*) as count FROM forum_posts WHERE author_id = $1', [userId])
     ]);
     
@@ -180,7 +180,7 @@ app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
       forum_posts_count: parseInt(forumPostsResult.rows[0].count),
     };
     
-    // Buscar posts recentes do usuário (últimos 5)
+    // Buscar posts recentes do usu�rio (�ltimos 5)
     const recentPostsResult = await pool.query(`
       SELECT p.*, 
              (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
@@ -197,7 +197,7 @@ app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
       recent_posts: recentPostsResult.rows
     };
     
-    console.log('[GET /api/users/:userId/profile] Perfil público encontrado:', {
+    console.log('[GET /api/users/:userId/profile] Perfil p�blico encontrado:', {
       id: user.id,
       name: user.name,
       stats
@@ -205,12 +205,12 @@ app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
     
     res.json(response);
   } catch (err) {
-    console.error('[GET /api/users/:userId/profile] Erro ao buscar perfil público:', err);
+    console.error('[GET /api/users/:userId/profile] Erro ao buscar perfil p�blico:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// ===== UPLOAD DE IMAGENS DO FÓRUM =====
+// ===== UPLOAD DE IMAGENS DO F�RUM =====
 app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {
     console.log('[POST /api/forum/upload-image] Upload de imagem iniciado');
@@ -222,19 +222,19 @@ app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), a
     // Validar tipo de arquivo
     const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!allowedTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ error: 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP.' });
+      return res.status(400).json({ error: 'Tipo de arquivo n�o permitido. Use JPEG, PNG, GIF ou WebP.' });
     }
 
-    // Validar tamanho (máximo 10MB)
+    // Validar tamanho (m�ximo 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (req.file.size > maxSize) {
-      return res.status(400).json({ error: 'Arquivo muito grande. Tamanho máximo: 10MB.' });
+      return res.status(400).json({ error: 'Arquivo muito grande. Tamanho m�ximo: 10MB.' });
     }
 
     // Fazer upload para MinIO
     const result = await uploadFile(req.file, 'forum-images');
     
-    console.log('[POST /api/forum/upload-image] Upload concluído:', result.url);
+    console.log('[POST /api/forum/upload-image] Upload conclu�do:', result.url);
     
     res.json({
       success: true,
@@ -249,12 +249,12 @@ app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), a
   }
 });
 
-// ===== SISTEMA DE FÓRUM: GET TÓPICOS =====
+// ===== SISTEMA DE F�RUM: GET T�PICOS =====
 app.get('/api/forum/topics', authenticateToken, async (req, res) => {
-  process.stdout.write('\n[DEBUG] ========== Início GET /api/forum/topics ==========\n');
-  process.stdout.write(`[DEBUG] Usuário: ${JSON.stringify(req.user)}\n`);
+  process.stdout.write('\n[DEBUG] ========== In�cio GET /api/forum/topics ==========\n');
+  process.stdout.write(`[DEBUG] Usu�rio: ${JSON.stringify(req.user)}\n`);
   try {
-    process.stdout.write('[GET /api/forum/topics] Iniciando busca de tópicos do fórum...\n');
+    process.stdout.write('[GET /api/forum/topics] Iniciando busca de t�picos do f�rum...\n');
     process.stdout.write('[GET /api/forum/topics] Executando query...\n');
     
     const { rows } = await pool.query(`
@@ -274,11 +274,11 @@ app.get('/api/forum/topics', authenticateToken, async (req, res) => {
     `);
     
     process.stdout.write('[GET /api/forum/topics] Query executada com sucesso\n');
-    process.stdout.write(`[GET /api/forum/topics] Tópicos encontrados: ${rows.length}\n`);
-    process.stdout.write(`[GET /api/forum/topics] IDs dos tópicos: ${rows.map(r => r.id).join(', ')}\n`);
+    process.stdout.write(`[GET /api/forum/topics] T�picos encontrados: ${rows.length}\n`);
+    process.stdout.write(`[GET /api/forum/topics] IDs dos t�picos: ${rows.map(r => r.id).join(', ')}\n`);
     
     if (!Array.isArray(rows)) {
-      process.stdout.write('[GET /api/forum/topics] Erro: rows não é um array\n');
+      process.stdout.write('[GET /api/forum/topics] Erro: rows n�o � um array\n');
       res.json([]);
       return;
     }
@@ -286,9 +286,9 @@ app.get('/api/forum/topics', authenticateToken, async (req, res) => {
     res.json(rows);
     process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics ==========\n\n');
   } catch (err) {
-    process.stdout.write(`[GET /api/forum/topics] Erro ao buscar tópicos: ${err}\n`);
+    process.stdout.write(`[GET /api/forum/topics] Erro ao buscar t�picos: ${err}\n`);
     process.stdout.write(`[GET /api/forum/topics] Stack trace: ${err.stack}\n`);
-    res.status(500).json({ error: 'Erro interno ao buscar tópicos.' });
+    res.status(500).json({ error: 'Erro interno ao buscar t�picos.' });
     process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics (com erro) ==========\n\n');
   }
 });
@@ -298,19 +298,19 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
     const { name, email, bio, avatar_url } = req.body;
     
-    // Validações básicas
+    // Valida��es b�sicas
     if (!name || !email) {
-      return res.status(400).json({ error: 'Nome e email são obrigatórios.' });
+      return res.status(400).json({ error: 'Nome e email s�o obrigat�rios.' });
     }
     
-    // Verificar se o email já existe (exceto para o usuário atual)
+    // Verificar se o email j� existe (exceto para o usu�rio atual)
     const emailCheck = await pool.query(
       'SELECT id FROM profiles WHERE email = $1 AND id != $2',
       [email, req.user.id]
     );
     
     if (emailCheck.rows.length > 0) {
-      return res.status(409).json({ error: 'Este email já está em uso.' });
+      return res.status(409).json({ error: 'Este email j� est� em uso.' });
     }
     
     // Atualizar perfil
@@ -320,7 +320,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
     );
     
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
+      return res.status(404).json({ error: 'Usu�rio n�o encontrado.' });
     }
     
     res.json(rows[0]);
@@ -330,17 +330,17 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint de cadastro de usuário
+// Endpoint de cadastro de usu�rio
 app.post('/api/auth/signup', async (req, res) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ error: 'Nome, email e senha obrigatórios.' });
+  if (!name || !email || !password) return res.status(400).json({ error: 'Nome, email e senha obrigat�rios.' });
   try {
     const { rows } = await pool.query('SELECT * FROM profiles WHERE email = $1', [email]);
-    if (rows.length > 0) return res.status(409).json({ error: 'Email já cadastrado.' });
+    if (rows.length > 0) return res.status(409).json({ error: 'Email j� cadastrado.' });
     const hash = await bcrypt.hash(password, 10);
     const id = crypto.randomUUID();
     await pool.query('INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [id, name, email, hash, 'student']);
-    res.status(201).json({ message: 'Usuário criado com sucesso.' });
+    res.status(201).json({ message: 'Usu�rio criado com sucesso.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno.' });
@@ -384,11 +384,11 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
   try {
     const { title, content, category, cover_image, video_url } = req.body;
     console.log('[POST /api/posts] Dados recebidos:', req.body);
-    console.log('[POST /api/posts] Usuário autenticado:', req.user);
+    console.log('[POST /api/posts] Usu�rio autenticado:', req.user);
 
     if (!title || !content) {
-      console.log('[POST /api/posts] Falha: título ou conteúdo ausente');
-      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+      console.log('[POST /api/posts] Falha: t�tulo ou conte�do ausente');
+      return res.status(400).json({ error: 'T�tulo e conte�do s�o obrigat�rios.' });
     }
     const id = crypto.randomUUID();
     const created_at = new Date();
@@ -397,7 +397,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       [id, title, content, req.user.id, category, cover_image, video_url, created_at]
     );
 
-    // Criar notificação para moderadores/admins sobre novo post na comunidade
+    // Criar notifica��o para moderadores/admins sobre novo post na comunidade
     try {
       const modAdminResult = await pool.query(`
         SELECT id, name
@@ -417,7 +417,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
         );
       }
     } catch (notificationErr) {
-      console.error('[NOTIFICATION] Erro ao criar notificação de novo post da comunidade:', notificationErr);
+      console.error('[NOTIFICATION] Erro ao criar notifica��o de novo post da comunidade:', notificationErr);
     }
 
     console.log('[POST /api/posts] Post criado com sucesso:', { id, title, content, category, cover_image, video_url, author_id: req.user.id, created_at });
@@ -445,7 +445,7 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
       LIMIT $1
     `, [parseInt(limit)]);
 
-    // Para cada curso, buscar módulos e aulas e calcular total_duration
+    // Para cada curso, buscar m�dulos e aulas e calcular total_duration
     const results = await Promise.all(rows.map(async (course) => {
       const modulesQuery = `
         SELECT m.id as module_id, l.id as lesson_id, l.duration
@@ -501,12 +501,12 @@ app.get('/api/courses', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para detalhes de um curso específico
+// Endpoint para detalhes de um curso espec�fico
 app.get('/api/courses/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Buscar dados básicos do curso
+    // Buscar dados b�sicos do curso
     const { rows } = await pool.query(`
       SELECT c.*, pr.name as instructor_name, pr.avatar_url as instructor_avatar, pr.bio as instructor_bio, pr.created_at as instructor_created_at,
              CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
@@ -519,13 +519,13 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
     const course = rows[0];
     console.log('[GET /api/courses/:id] Dados do curso:', course);
     
-    // Buscar módulos e aulas
+    // Buscar m�dulos e aulas
     let modules = [];
     try {
       const modulesResult = await pool.query(`
@@ -537,7 +537,7 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
         WHERE m.course_id = $1 AND m.is_visible = true
         ORDER BY m.module_order, l.lesson_order
       `, [id]);
-      // Estruturar os dados dos módulos
+      // Estruturar os dados dos m�dulos
       modules = [];
       let currentModule = null;
       modulesResult.rows.forEach(row => {
@@ -566,11 +566,11 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
         }
       });
     } catch (err) {
-      console.error('[GET /api/courses/:id] Erro ao calcular módulos/duração:', err);
-      return res.status(500).json({ error: 'Erro ao calcular módulos/duração.' });
+      console.error('[GET /api/courses/:id] Erro ao calcular m�dulos/dura��o:', err);
+      return res.status(500).json({ error: 'Erro ao calcular m�dulos/dura��o.' });
     }
     
-    // Calcular estatísticas
+    // Calcular estat�sticas
     const totalLessons = modules.reduce((total, module) => total + module.lessons.length, 0);
     const totalDuration = modules.reduce((total, module) => {
       return total + module.lessons.reduce((moduleTotal, lesson) => {
@@ -604,16 +604,16 @@ app.get('/api/courses/:id', authenticateToken, async (req, res) => {
 app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`[GET /api/courses/${id}/admin] Requisição recebida`);
-    console.log(`[GET /api/courses/${id}/admin] Usuário:`, req.user);
+    console.log(`[GET /api/courses/${id}/admin] Requisi��o recebida`);
+    console.log(`[GET /api/courses/${id}/admin] Usu�rio:`, req.user);
     
-    // Verificar se o usuário é admin ou instructor
+    // Verificar se o usu�rio � admin ou instructor
     if (!['admin', 'instructor'].includes(req.user.role)) {
       console.log(`[GET /api/courses/${id}/admin] Acesso negado para role:`, req.user.role);
       return res.status(403).json({ error: 'Acesso negado.' });
     }
     
-    // Buscar dados básicos do curso
+    // Buscar dados b�sicos do curso
     const courseResult = await pool.query(`
       SELECT c.*, pr.name as instructor_name,
              (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students,
@@ -628,14 +628,14 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
     console.log(`[GET /api/courses/${id}/admin] Resultado da busca do curso:`, courseResult.rows.length);
     
     if (courseResult.rows.length === 0) {
-      console.log(`[GET /api/courses/${id}/admin] Curso não encontrado`);
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      console.log(`[GET /api/courses/${id}/admin] Curso n�o encontrado`);
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
     const course = courseResult.rows[0];
     console.log(`[GET /api/courses/${id}/admin] Curso encontrado:`, course.title);
     
-    // Buscar módulos e aulas
+    // Buscar m�dulos e aulas
     const modulesResult = await pool.query(`
       SELECT m.id, m.title, m.module_order, m.is_visible,
              l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
@@ -646,7 +646,7 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
       ORDER BY m.module_order, l.lesson_order
     `, [id]);
     
-    console.log(`[GET /api/courses/${id}/admin] Módulos encontrados:`, modulesResult.rows.length);
+    console.log(`[GET /api/courses/${id}/admin] M�dulos encontrados:`, modulesResult.rows.length);
     
     // Estruturar os dados
     const modules = [];
@@ -684,7 +684,7 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
       modules
     };
     
-    console.log(`[GET /api/courses/${id}/admin] Resposta enviada com ${modules.length} módulos`);
+    console.log(`[GET /api/courses/${id}/admin] Resposta enviada com ${modules.length} m�dulos`);
     res.json(response);
   } catch (err) {
     console.error(`[GET /api/courses/${id}/admin] Erro:`, err);
@@ -692,13 +692,13 @@ app.get('/api/courses/:id/admin', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para salvar dados administrativos do curso (incluindo módulos e aulas)
+// Endpoint para salvar dados administrativos do curso (incluindo m�dulos e aulas)
 app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, instructor_id, modules } = req.body;
     
-    // Verificar se o usuário é admin ou instructor
+    // Verificar se o usu�rio � admin ou instructor
     if (!['admin', 'instructor'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
@@ -706,42 +706,42 @@ app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [id]);
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
-    // Iniciar transação
+    // Iniciar transa��o
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       
-      // Atualizar dados básicos do curso
+      // Atualizar dados b�sicos do curso
       await client.query(
         'UPDATE courses SET title = $1, description = $2, instructor_id = $3 WHERE id = $4',
         [title, description, instructor_id, id]
       );
       
-      // Deletar módulos e aulas existentes (cascade vai deletar as aulas automaticamente)
+      // Deletar m�dulos e aulas existentes (cascade vai deletar as aulas automaticamente)
       await client.query('DELETE FROM modules WHERE course_id = $1', [id]);
       
-      // Inserir novos módulos e aulas
+      // Inserir novos m�dulos e aulas
       if (modules && modules.length > 0) {
         for (let i = 0; i < modules.length; i++) {
           const module = modules[i];
           const moduleId = crypto.randomUUID();
           
-          // Inserir módulo
+          // Inserir m�dulo
           await client.query(
             'INSERT INTO modules (id, course_id, title, module_order, is_visible) VALUES ($1, $2, $3, $4, $5)',
             [moduleId, id, module.title, i + 1, module.is_visible]
           );
           
-          // Inserir aulas do módulo
+          // Inserir aulas do m�dulo
           if (module.lessons && module.lessons.length > 0) {
             for (let j = 0; j < module.lessons.length; j++) {
               const lesson = module.lessons[j];
               const lessonId = crypto.randomUUID();
               
-              // Log para depuração do conteúdo da aula
+              // Log para depura��o do conte�do da aula
               console.log('[AULA]', lesson);
               await client.query(
                 'INSERT INTO lessons (id, module_id, title, description, youtube_id, video_url, duration, lesson_order, is_visible, release_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
@@ -779,19 +779,19 @@ app.put('/api/courses/:id/admin', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para dados do player de vídeo
+// Endpoint para dados do player de v�deo
 app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Verificar se o usuário está matriculado no curso
+    // Verificar se o usu�rio est� matriculado no curso
     const enrollmentCheck = await pool.query(
       'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2',
       [req.user.id, id]
     );
     
     if (enrollmentCheck.rows.length === 0 && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Você precisa estar matriculado neste curso.' });
+      return res.status(403).json({ error: 'Voc� precisa estar matriculado neste curso.' });
     }
     
     const { rows } = await pool.query(`
@@ -808,7 +808,7 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
     // Estruturar os dados
@@ -822,7 +822,7 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
     
     let currentModule = null;
     rows.forEach(row => {
-      // Só incluir módulos visíveis
+      // S� incluir m�dulos vis�veis
       if (row.module_id && row.module_is_visible && (!currentModule || currentModule.id !== row.module_id)) {
         currentModule = {
           id: row.module_id,
@@ -834,9 +834,9 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
         course.modules.push(currentModule);
       }
       
-      // Só incluir aulas visíveis
+      // S� incluir aulas vis�veis
       if (row.lesson_id && row.lesson_is_visible && currentModule) {
-        // Verificar se a aula deve ser liberada baseado na data de matrícula
+        // Verificar se a aula deve ser liberada baseado na data de matr�cula
         let shouldShowLesson = true;
         
         if (row.release_days > 0 && enrollmentCheck.rows.length > 0) {
@@ -864,7 +864,7 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
       }
     });
     
-    // Função auxiliar para buscar aulas concluídas
+    // Fun��o auxiliar para buscar aulas conclu�das
     async function getCompletedLessons(userId, lessonIds, pool) {
       if (!lessonIds.length) return [];
       const completed = await pool.query(
@@ -899,16 +899,16 @@ app.get('/api/courses/:id/player', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para buscar matrículas do usuário
+// Endpoint para buscar matr�culas do usu�rio
 app.get('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { user_id, course_id } = req.query;
     
     if (!user_id && !course_id) {
-      return res.status(400).json({ error: 'user_id ou course_id é obrigatório.' });
+      return res.status(400).json({ error: 'user_id ou course_id � obrigat�rio.' });
     }
     
-    // Buscar as matrículas e dados básicos do curso
+    // Buscar as matr�culas e dados b�sicos do curso
     let query = `
       SELECT e.*, 
              c.title as course_title,
@@ -937,9 +937,9 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
     query += ` ORDER BY e.enrolled_at DESC`;
     const { rows } = await pool.query(query, params);
 
-    // Para cada curso, buscar módulos e aulas e calcular total_lessons, total_duration e progresso
+    // Para cada curso, buscar m�dulos e aulas e calcular total_lessons, total_duration e progresso
     const results = await Promise.all(rows.map(async (enrollment) => {
-      // Buscar módulos e aulas do curso
+      // Buscar m�dulos e aulas do curso
       const modulesQuery = `
         SELECT m.id as module_id, m.title as module_title, m.module_order,
                l.id as lesson_id, l.title as lesson_title, l.duration
@@ -949,7 +949,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
         ORDER BY m.module_order, l.lesson_order
       `;
       const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
-      // Montar estrutura de módulos e aulas
+      // Montar estrutura de m�dulos e aulas
       const modulesMap = {};
       const allLessonIds = [];
       moduleRows.forEach(row => {
@@ -967,7 +967,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
         }
       });
       const modules = Object.values(modulesMap);
-      // Calcular total de aulas e duração
+      // Calcular total de aulas e dura��o
       const total_lessons = modules.reduce((total, m) => total + m.lessons.length, 0);
       const total_duration = modules.reduce((total, m) => {
         return total + m.lessons.reduce((sum, lesson) => {
@@ -975,7 +975,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
           return sum + duration;
         }, 0);
       }, 0);
-      // Buscar aulas concluídas pelo usuário
+      // Buscar aulas conclu�das pelo usu�rio
       let completedLessons = 0;
       if (allLessonIds.length > 0) {
         const completedResult = await pool.query(
@@ -996,7 +996,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
+    console.error('[GET /api/enrollments] Erro ao buscar matr�culas:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
@@ -1075,7 +1075,7 @@ app.get('/api/popular-tags', authenticateToken, async (req, res) => {
     
     const popularTags = rows.map(row => row.category);
     
-    // Se não houver tags suficientes, adicionar algumas padrão
+    // Se n�o houver tags suficientes, adicionar algumas padr�o
     if (popularTags.length < 6) {
       const defaultTags = ['javascript', 'react', 'nodejs', 'python', 'docker', 'aws'];
       const existingTags = new Set(popularTags);
@@ -1100,7 +1100,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Servir arquivos estáticos do React
+// Servir arquivos est�ticos do React
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Endpoint para criar novo curso
@@ -1108,14 +1108,14 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
   try {
     const { title, description, category, level, price, thumbnail, demo_video, isPaid } = req.body;
     if (!title || !description || !level) {
-      return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
+      return res.status(400).json({ error: 'Campos obrigat�rios n�o preenchidos.' });
     }
 
-    // Validação do preço baseada no tipo de curso
+    // Valida��o do pre�o baseada no tipo de curso
     let finalPrice = 0;
     if (isPaid) {
       if (!price || parseFloat(price) <= 0) {
-        return res.status(400).json({ error: 'Para cursos pagos, o preço deve ser maior que zero.' });
+        return res.status(400).json({ error: 'Para cursos pagos, o pre�o deve ser maior que zero.' });
       }
       finalPrice = parseFloat(price);
     }
@@ -1161,12 +1161,12 @@ app.get('/api/posts/categories', authenticateToken, async (req, res) => {
   }
 });
 
-// Buscar post específico
+// Buscar post espec�fico
 app.get('/api/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     console.log('[GET /api/posts/:id] Buscando post:', id);
-    console.log('[GET /api/posts/:id] Usuário autenticado:', req.user);
+    console.log('[GET /api/posts/:id] Usu�rio autenticado:', req.user);
     
     const { rows } = await pool.query(`
       SELECT p.*, 
@@ -1183,8 +1183,8 @@ app.get('/api/posts/:id', authenticateToken, async (req, res) => {
     console.log('[GET /api/posts/:id] Resultado da query:', rows);
     
     if (rows.length === 0) {
-      console.log('[GET /api/posts/:id] Post não encontrado:', id);
-      return res.status(404).json({ error: 'Post não encontrado.' });
+      console.log('[GET /api/posts/:id] Post n�o encontrado:', id);
+      return res.status(404).json({ error: 'Post n�o encontrado.' });
     }
     
     const post = rows[0];
@@ -1208,14 +1208,14 @@ app.put('/api/posts/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, content, category, cover_image, video_url } = req.body;
     if (!title || !content) {
-      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+      return res.status(400).json({ error: 'T�tulo e conte�do s�o obrigat�rios.' });
     }
     const result = await pool.query(
       'UPDATE posts SET title = $1, content = $2, category = $3, cover_image = $4, video_url = $5 WHERE id = $6 AND author_id = $7 RETURNING *',
       [title, content, category, cover_image, video_url, id, req.user.id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Post não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Post n�o encontrado ou sem permiss�o.' });
     }
     res.json(result.rows[0]);
   } catch (err) {
@@ -1233,7 +1233,7 @@ app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
       [id, req.user.id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Post não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Post n�o encontrado ou sem permiss�o.' });
     }
     res.json({ message: 'Post deletado com sucesso.' });
   } catch (err) {
@@ -1248,14 +1248,14 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { title, description, category, level, price, thumbnail, demo_video, isPaid } = req.body;
     if (!title || !description || !level) {
-      return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
+      return res.status(400).json({ error: 'Campos obrigat�rios n�o preenchidos.' });
     }
 
-    // Validação do preço baseada no tipo de curso
+    // Valida��o do pre�o baseada no tipo de curso
     let finalPrice = 0;
     if (isPaid) {
       if (!price || parseFloat(price) <= 0) {
-        return res.status(400).json({ error: 'Para cursos pagos, o preço deve ser maior que zero.' });
+        return res.status(400).json({ error: 'Para cursos pagos, o pre�o deve ser maior que zero.' });
       }
       finalPrice = parseFloat(price);
     }
@@ -1268,7 +1268,7 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
       [title, description, level, finalPrice, thumbnailUrl, demoVideoUrl, category ? [category] : [], req.user.id, id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado ou sem permiss�o.' });
     }
     res.json(result.rows[0]);
   } catch (err) {
@@ -1286,7 +1286,7 @@ app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado ou sem permiss�o.' });
     }
     res.json({ message: 'Curso deletado com sucesso.' });
   } catch (err) {
@@ -1295,13 +1295,13 @@ app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Editar usuário
+// Editar usu�rio
 app.put('/api/users/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, password, role } = req.body;
     if (!name || !email || !role) {
-      return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
+      return res.status(400).json({ error: 'Campos obrigat�rios n�o preenchidos.' });
     }
     let query = 'UPDATE profiles SET name = $1, email = $2, role = $3';
     const params = [name, email, role];
@@ -1317,16 +1317,16 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
     }
     const result = await pool.query(query, params);
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Usu�rio n�o encontrado ou sem permiss�o.' });
     }
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('[PUT /api/users/:id] Erro ao editar usuário:', err);
-    res.status(500).json({ error: 'Erro ao editar usuário.' });
+    console.error('[PUT /api/users/:id] Erro ao editar usu�rio:', err);
+    res.status(500).json({ error: 'Erro ao editar usu�rio.' });
   }
 });
 
-// Deletar usuário
+// Deletar usu�rio
 app.delete('/api/users/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1335,12 +1335,12 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
       [id]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Usu�rio n�o encontrado ou sem permiss�o.' });
     }
-    res.json({ message: 'Usuário deletado com sucesso.' });
+    res.json({ message: 'Usu�rio deletado com sucesso.' });
   } catch (err) {
-    console.error('[DELETE /api/users/:id] Erro ao deletar usuário:', err);
-    res.status(500).json({ error: 'Erro ao deletar usuário.' });
+    console.error('[DELETE /api/users/:id] Erro ao deletar usu�rio:', err);
+    res.status(500).json({ error: 'Erro ao deletar usu�rio.' });
   }
 });
 
@@ -1364,9 +1364,9 @@ app.get('/api/test-data', authenticateToken, async (req, res) => {
   try {
     console.log('[GET /api/test-data] Verificando dados no banco...');
     
-    // Verificar usuários
+    // Verificar usu�rios
     const usersResult = await pool.query('SELECT id, name, email FROM profiles LIMIT 5');
-    console.log('[GET /api/test-data] Usuários encontrados:', usersResult.rows);
+    console.log('[GET /api/test-data] Usu�rios encontrados:', usersResult.rows);
     
     // Verificar posts
     const postsResult = await pool.query('SELECT id, title, author_id FROM posts LIMIT 5');
@@ -1376,9 +1376,9 @@ app.get('/api/test-data', authenticateToken, async (req, res) => {
     const coursesResult = await pool.query('SELECT id, title, instructor_id FROM courses LIMIT 5');
     console.log('[GET /api/test-data] Cursos encontrados:', coursesResult.rows);
     
-    // Verificar matrículas
+    // Verificar matr�culas
     const enrollmentsResult = await pool.query('SELECT id, user_id, course_id FROM enrollments LIMIT 5');
-    console.log('[GET /api/test-data] Matrículas encontradas:', enrollmentsResult.rows);
+    console.log('[GET /api/test-data] Matr�culas encontradas:', enrollmentsResult.rows);
     
     res.json({
       users: usersResult.rows,
@@ -1397,7 +1397,7 @@ app.post('/api/test-data', authenticateToken, async (req, res) => {
   try {
     console.log('[POST /api/test-data] Criando dados de teste...');
     
-    // Verificar se já existem posts
+    // Verificar se j� existem posts
     const postsCheck = await pool.query('SELECT COUNT(*) as count FROM posts');
     if (parseInt(postsCheck.rows[0].count) === 0) {
       console.log('[POST /api/test-data] Criando posts de teste...');
@@ -1408,18 +1408,18 @@ app.post('/api/test-data', authenticateToken, async (req, res) => {
       
       await pool.query(
         'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [post1Id, 'Meu primeiro post', 'Este é o conteúdo do meu primeiro post na comunidade!', req.user.id, 'geral', new Date()]
+        [post1Id, 'Meu primeiro post', 'Este � o conte�do do meu primeiro post na comunidade!', req.user.id, 'geral', new Date()]
       );
       
       await pool.query(
         'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [post2Id, 'Dúvida sobre React', 'Alguém pode me ajudar com hooks no React?', req.user.id, 'programação', new Date()]
+        [post2Id, 'D�vida sobre React', 'Algu�m pode me ajudar com hooks no React?', req.user.id, 'programa��o', new Date()]
       );
       
       console.log('[POST /api/test-data] Posts criados com sucesso');
     }
     
-    // Verificar se já existem cursos
+    // Verificar se j� existem cursos
     const coursesCheck = await pool.query('SELECT COUNT(*) as count FROM courses');
     if (parseInt(coursesCheck.rows[0].count) === 0) {
       console.log('[POST /api/test-data] Criando cursos de teste...');
@@ -1428,16 +1428,16 @@ app.post('/api/test-data', authenticateToken, async (req, res) => {
       const courseId = crypto.randomUUID();
       await pool.query(
         'INSERT INTO courses (id, title, description, level, price, instructor_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [courseId, 'Curso de React Básico', 'Aprenda os fundamentos do React', 'Iniciante', 99.99, req.user.id, new Date()]
+        [courseId, 'Curso de React B�sico', 'Aprenda os fundamentos do React', 'Iniciante', 99.99, req.user.id, new Date()]
       );
       
       console.log('[POST /api/test-data] Curso criado com sucesso');
     }
     
-    // Verificar se já existem matrículas
+    // Verificar se j� existem matr�culas
     const enrollmentsCheck = await pool.query('SELECT COUNT(*) as count FROM enrollments');
     if (parseInt(enrollmentsCheck.rows[0].count) === 0) {
-      console.log('[POST /api/test-data] Criando matrículas de teste...');
+      console.log('[POST /api/test-data] Criando matr�culas de teste...');
       
       // Buscar um curso para matricular
       const courseResult = await pool.query('SELECT id FROM courses LIMIT 1');
@@ -1448,7 +1448,7 @@ app.post('/api/test-data', authenticateToken, async (req, res) => {
           [enrollmentId, req.user.id, courseResult.rows[0].id, new Date(), 25]
         );
         
-        console.log('[POST /api/test-data] Matrícula criada com sucesso');
+        console.log('[POST /api/test-data] Matr�cula criada com sucesso');
       }
     }
     
@@ -1470,7 +1470,7 @@ app.get('/api/posts-check', authenticateToken, async (req, res) => {
       const postId = crypto.randomUUID();
       await pool.query(
         'INSERT INTO posts (id, title, content, author_id, category, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [postId, 'Post de Teste', 'Este é um post de teste criado automaticamente.', req.user.id, 'teste', new Date()]
+        [postId, 'Post de Teste', 'Este � um post de teste criado automaticamente.', req.user.id, 'teste', new Date()]
       );
       res.json({ message: 'Post de teste criado', count: 1 });
     } else {
@@ -1488,19 +1488,19 @@ app.post('/api/posts/:id/like', authenticateToken, async (req, res) => {
     const { id: postId } = req.params;
     const userId = req.user.id;
     
-    // Verificar se já curtiu (para notificar apenas na primeira curtida)
+    // Verificar se j� curtiu (para notificar apenas na primeira curtida)
     const existingLike = await pool.query(
       'SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2',
       [postId, userId]
     );
     
-    // Tenta inserir, ignora se já existe
+    // Tenta inserir, ignora se j� existe
     const result = await pool.query(
       'INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
       [postId, userId]
     );
     
-    // Se foi uma nova curtida (não existia antes), criar notificação
+    // Se foi uma nova curtida (n�o existia antes), criar notifica��o
     if (existingLike.rows.length === 0 && result.rows.length > 0) {
       try {
         const postAuthorResult = await pool.query(`
@@ -1526,7 +1526,7 @@ app.post('/api/posts/:id/like', authenticateToken, async (req, res) => {
           }
         }
       } catch (notificationErr) {
-        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em post da comunidade:', notificationErr);
+        console.error('[NOTIFICATION] Erro ao criar notifica��o de curtida em post da comunidade:', notificationErr);
       }
     }
     
@@ -1576,7 +1576,7 @@ app.get('/api/posts/:id/likes', authenticateToken, async (req, res) => {
   }
 });
 
-// Listar comentários de um post
+// Listar coment�rios de um post
 app.get('/api/posts/:id/comments', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
@@ -1590,25 +1590,25 @@ app.get('/api/posts/:id/comments', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/posts/:id/comments] Erro:', err);
-    res.status(500).json({ error: 'Erro ao buscar comentários.' });
+    res.status(500).json({ error: 'Erro ao buscar coment�rios.' });
   }
 });
 
-// Adicionar comentário a um post
+// Adicionar coment�rio a um post
 app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
     const userId = req.user.id;
     const { content } = req.body;
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Comentário não pode ser vazio.' });
+      return res.status(400).json({ error: 'Coment�rio n�o pode ser vazio.' });
     }
     const result = await pool.query(
       'INSERT INTO comments (post_id, user_id, content) VALUES ($1, $2, $3) RETURNING *',
       [postId, userId, content.trim()]
     );
 
-    // Criar notificação para o autor do post sobre novo comentário
+    // Criar notifica��o para o autor do post sobre novo coment�rio
     try {
       const postAuthorResult = await pool.query(`
         SELECT p.author_id, p.title, prof.name as author_name
@@ -1624,7 +1624,7 @@ app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
           const userName = await getUserName(req.user.id, req.user.name);
           await createNotification(
             postAuthorId,
-            'Novo comentário no seu post',
+            'Novo coment�rio no seu post',
             `${userName} comentou no seu post "${postTitle}"`,
             'community_comment',
             postId,
@@ -1633,40 +1633,40 @@ app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
         }
       }
     } catch (notificationErr) {
-      console.error('[NOTIFICATION] Erro ao criar notificação de comentário em post da comunidade:', notificationErr);
+      console.error('[NOTIFICATION] Erro ao criar notifica��o de coment�rio em post da comunidade:', notificationErr);
     }
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('[POST /api/posts/:id/comments] Erro:', err);
-    res.status(500).json({ error: 'Erro ao adicionar comentário.' });
+    res.status(500).json({ error: 'Erro ao adicionar coment�rio.' });
   }
 });
 
-// Editar comentário
+// Editar coment�rio
 app.put('/api/comments/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
     const { content } = req.body;
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Comentário não pode ser vazio.' });
+      return res.status(400).json({ error: 'Coment�rio n�o pode ser vazio.' });
     }
     const result = await pool.query(
       'UPDATE comments SET content = $1 WHERE id = $2 AND user_id = $3 RETURNING *',
       [content.trim(), id, userId]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Coment�rio n�o encontrado ou sem permiss�o.' });
     }
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[PUT /api/comments/:id] Erro:', err);
-    res.status(500).json({ error: 'Erro ao editar comentário.' });
+    res.status(500).json({ error: 'Erro ao editar coment�rio.' });
   }
 });
 
-// Deletar comentário
+// Deletar coment�rio
 app.delete('/api/comments/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1676,12 +1676,12 @@ app.delete('/api/comments/:id', authenticateToken, async (req, res) => {
       [id, userId]
     );
     if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou sem permissão.' });
+      return res.status(404).json({ error: 'Coment�rio n�o encontrado ou sem permiss�o.' });
     }
-    res.json({ message: 'Comentário deletado com sucesso.' });
+    res.json({ message: 'Coment�rio deletado com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/comments/:id] Erro:', err);
-    res.status(500).json({ error: 'Erro ao deletar comentário.' });
+    res.status(500).json({ error: 'Erro ao deletar coment�rio.' });
   }
 });
 
@@ -1717,7 +1717,7 @@ app.delete('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
   }
 });
 
-// Verificar se o usuário favoritou
+// Verificar se o usu�rio favoritou
 app.get('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
@@ -1735,7 +1735,7 @@ app.get('/api/posts/:id/favorite', authenticateToken, async (req, res) => {
 
 // ===== SISTEMA DE TURMAS =====
 
-// Listar turmas do usuário
+// Listar turmas do usu�rio
 app.get('/api/classes', authenticateToken, async (req, res) => {
   try {
     const { user_id } = req.query;
@@ -1769,27 +1769,27 @@ app.get('/api/classes', authenticateToken, async (req, res) => {
 // Criar nova turma
 app.post('/api/classes', authenticateToken, async (req, res) => {
   try {
-    console.log('[POST /api/classes] Requisição recebida');
-    console.log('[POST /api/classes] Usuário autenticado:', req.user);
+    console.log('[POST /api/classes] Requisi��o recebida');
+    console.log('[POST /api/classes] Usu�rio autenticado:', req.user);
     console.log('[POST /api/classes] Dados recebidos:', req.body);
     
     const { course_id, instance_name, instance_description, is_public, max_students, start_date, end_date, schedule, location } = req.body;
     
     if (!course_id || !instance_name) {
-      console.log('[POST /api/classes] Erro: course_id e instance_name são obrigatórios');
-      return res.status(400).json({ error: 'ID do curso e nome da turma são obrigatórios.' });
+      console.log('[POST /api/classes] Erro: course_id e instance_name s�o obrigat�rios');
+      return res.status(400).json({ error: 'ID do curso e nome da turma s�o obrigat�rios.' });
     }
     
-    // Verificar se o usuário é instructor ou admin
+    // Verificar se o usu�rio � instructor ou admin
     if (!['instructor', 'admin'].includes(req.user.role)) {
-      console.log('[POST /api/classes] Erro: usuário não tem permissão, role:', req.user.role);
+      console.log('[POST /api/classes] Erro: usu�rio n�o tem permiss�o, role:', req.user.role);
       return res.status(403).json({ error: 'Apenas instrutores podem criar turmas.' });
     }
     
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [course_id]);
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
     const id = crypto.randomUUID();
@@ -1809,12 +1809,12 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
   }
 });
 
-// Detalhes de uma turma específica
+// Detalhes de uma turma espec�fica
 app.get('/api/classes/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     console.log('[GET /api/classes/:id] Buscando turma:', id);
-    console.log('[GET /api/classes/:id] Usuário:', req.user);
+    console.log('[GET /api/classes/:id] Usu�rio:', req.user);
     
     // Primeiro, buscar a turma
     const classResult = await pool.query(`
@@ -1830,38 +1830,38 @@ app.get('/api/classes/:id', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (classResult.rows.length === 0) {
-      console.log('[GET /api/classes/:id] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[GET /api/classes/:id] Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     const classData = classResult.rows[0];
     console.log('[GET /api/classes/:id] Turma encontrada:', classData.instance_name);
     
-    // Verificar se o usuário tem acesso à turma
-    // 1. Se é o instructor da turma
+    // Verificar se o usu�rio tem acesso � turma
+    // 1. Se � o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      console.log('[GET /api/classes/:id] Usuário é o instructor da turma');
+      console.log('[GET /api/classes/:id] Usu�rio � o instructor da turma');
       return res.json(classData);
     }
     
-    // 2. Se a turma é pública
+    // 2. Se a turma � p�blica
     if (classData.is_public) {
-      console.log('[GET /api/classes/:id] Turma é pública, acesso permitido');
+      console.log('[GET /api/classes/:id] Turma � p�blica, acesso permitido');
       return res.json(classData);
     }
     
-    // 3. Se o usuário está matriculado na turma
+    // 3. Se o usu�rio est� matriculado na turma
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
     if (enrollmentCheck.rows.length > 0) {
-      console.log('[GET /api/classes/:id] Usuário está matriculado na turma');
+      console.log('[GET /api/classes/:id] Usu�rio est� matriculado na turma');
       return res.json(classData);
     }
     
-    console.log('[GET /api/classes/:id] Acesso negado - usuário não tem permissão');
+    console.log('[GET /api/classes/:id] Acesso negado - usu�rio n�o tem permiss�o');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
@@ -1870,19 +1870,19 @@ app.get('/api/classes/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Matricular usuário em turma
+// Matricular usu�rio em turma
 app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { user_id, role = 'student' } = req.body;
     
-    // Verificar se o usuário atual é instructor da turma ou admin
+    // Verificar se o usu�rio atual � instructor da turma ou admin
     const classCheck = await pool.query(`
       SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     // Verificar limite de alunos
@@ -1896,7 +1896,7 @@ app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
     
     if (classInfo.rows[0].max_students && 
         parseInt(enrollmentCount.rows[0].count) >= classInfo.rows[0].max_students) {
-      return res.status(400).json({ error: 'Turma está lotada.' });
+      return res.status(400).json({ error: 'Turma est� lotada.' });
     }
     
     const enrollmentId = crypto.randomUUID();
@@ -1907,36 +1907,36 @@ app.post('/api/classes/:id/enroll', authenticateToken, async (req, res) => {
       DO UPDATE SET status = 'active', role = $4
     `, [enrollmentId, id, user_id, role]);
     
-    res.status(201).json({ message: 'Usuário matriculado com sucesso.' });
+    res.status(201).json({ message: 'Usu�rio matriculado com sucesso.' });
   } catch (err) {
     console.error('[POST /api/classes/:id/enroll] Erro:', err);
-    res.status(500).json({ error: 'Erro ao matricular usuário.' });
+    res.status(500).json({ error: 'Erro ao matricular usu�rio.' });
   }
 });
 
-// Listar matrículas de uma turma
+// Listar matr�culas de uma turma
 app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('[GET /api/classes/:id/enrollments] Buscando matrículas da turma:', id);
-    console.log('[GET /api/classes/:id/enrollments] Usuário:', req.user);
+    console.log('[GET /api/classes/:id/enrollments] Buscando matr�culas da turma:', id);
+    console.log('[GET /api/classes/:id/enrollments] Usu�rio:', req.user);
     
-    // Primeiro, buscar a turma para verificar se o usuário é o instructor
+    // Primeiro, buscar a turma para verificar se o usu�rio � o instructor
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classResult.rows.length === 0) {
-      console.log('[GET /api/classes/:id/enrollments] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[GET /api/classes/:id/enrollments] Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     const classData = classResult.rows[0];
     
-    // Verificar se o usuário tem acesso às matrículas
-    // 1. Se é o instructor da turma
+    // Verificar se o usu�rio tem acesso �s matr�culas
+    // 1. Se � o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      console.log('[GET /api/classes/:id/enrollments] Usuário é o instructor da turma');
+      console.log('[GET /api/classes/:id/enrollments] Usu�rio � o instructor da turma');
       const { rows } = await pool.query(`
         SELECT 
           cie.*,
@@ -1951,9 +1951,9 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    // 2. Se a turma é pública, permitir visualizar matrículas
+    // 2. Se a turma � p�blica, permitir visualizar matr�culas
     if (classData.is_public) {
-      console.log('[GET /api/classes/:id/enrollments] Turma é pública, acesso permitido');
+      console.log('[GET /api/classes/:id/enrollments] Turma � p�blica, acesso permitido');
       const { rows } = await pool.query(`
         SELECT 
           cie.*,
@@ -1968,14 +1968,14 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    // 3. Se o usuário está matriculado na turma
+    // 3. Se o usu�rio est� matriculado na turma
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
     if (enrollmentCheck.rows.length > 0) {
-      console.log('[GET /api/classes/:id/enrollments] Usuário está matriculado na turma');
+      console.log('[GET /api/classes/:id/enrollments] Usu�rio est� matriculado na turma');
       const { rows } = await pool.query(`
         SELECT 
           cie.*,
@@ -1990,7 +1990,7 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    console.log('[GET /api/classes/:id/enrollments] Acesso negado - usuário não tem permissão');
+    console.log('[GET /api/classes/:id/enrollments] Acesso negado - usu�rio n�o tem permiss�o');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
@@ -1999,33 +1999,33 @@ app.get('/api/classes/:id/enrollments', authenticateToken, async (req, res) => {
   }
 });
 
-// Criar conteúdo na turma
+// Criar conte�do na turma
 app.post('/api/classes/:id/content', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, content_type = 'announcement', is_pinned = false } = req.body;
     
     if (!title || (!content && !req.file)) {
-      return res.status(400).json({ error: 'Título e conteúdo ou arquivo são obrigatórios.' });
+      return res.status(400).json({ error: 'T�tulo e conte�do ou arquivo s�o obrigat�rios.' });
     }
     
-    // Verificar se a turma existe e se o usuário tem permissão
+    // Verificar se a turma existe e se o usu�rio tem permiss�o
     const classCheck = await pool.query(`
       SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
-    // Verificar se o usuário é o instructor da turma ou admin
+    // Verificar se o usu�rio � o instructor da turma ou admin
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Apenas o instructor da turma pode criar conteúdo.' });
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode criar conte�do.' });
     }
     
     let fileData = null;
     
-    // Se há um arquivo, fazer upload para o MinIO
+    // Se h� um arquivo, fazer upload para o MinIO
     if (req.file) {
       try {
         const uploadResult = await uploadFile(req.file, 'class-content');
@@ -2059,33 +2059,33 @@ app.post('/api/classes/:id/content', authenticateToken, upload.single('file'), a
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/classes/:id/content] Erro:', err);
-    res.status(500).json({ error: 'Erro ao criar conteúdo.' });
+    res.status(500).json({ error: 'Erro ao criar conte�do.' });
   }
 });
 
-// Listar conteúdo de uma turma
+// Listar conte�do de uma turma
 app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('[GET /api/classes/:id/content] Buscando conteúdo da turma:', id);
-    console.log('[GET /api/classes/:id/content] Usuário:', req.user);
+    console.log('[GET /api/classes/:id/content] Buscando conte�do da turma:', id);
+    console.log('[GET /api/classes/:id/content] Usu�rio:', req.user);
     
-    // Primeiro, buscar a turma para verificar se o usuário é o instructor
+    // Primeiro, buscar a turma para verificar se o usu�rio � o instructor
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classResult.rows.length === 0) {
-      console.log('[GET /api/classes/:id/content] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[GET /api/classes/:id/content] Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     const classData = classResult.rows[0];
     
-    // Verificar se o usuário tem acesso ao conteúdo
-    // 1. Se é o instructor da turma
+    // Verificar se o usu�rio tem acesso ao conte�do
+    // 1. Se � o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      console.log('[GET /api/classes/:id/content] Usuário é o instructor da turma');
+      console.log('[GET /api/classes/:id/content] Usu�rio � o instructor da turma');
       const { rows } = await pool.query(`
         SELECT 
           cic.*,
@@ -2100,9 +2100,9 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    // 2. Se a turma é pública, permitir visualizar conteúdo
+    // 2. Se a turma � p�blica, permitir visualizar conte�do
     if (classData.is_public) {
-      console.log('[GET /api/classes/:id/content] Turma é pública, acesso permitido');
+      console.log('[GET /api/classes/:id/content] Turma � p�blica, acesso permitido');
       const { rows } = await pool.query(`
         SELECT 
           cic.*,
@@ -2117,14 +2117,14 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    // 3. Se o usuário está matriculado na turma
+    // 3. Se o usu�rio est� matriculado na turma
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
     if (enrollmentCheck.rows.length > 0) {
-      console.log('[GET /api/classes/:id/content] Usuário está matriculado na turma');
+      console.log('[GET /api/classes/:id/content] Usu�rio est� matriculado na turma');
       const { rows } = await pool.query(`
         SELECT 
           cic.*,
@@ -2139,7 +2139,7 @@ app.get('/api/classes/:id/content', authenticateToken, async (req, res) => {
       return res.json(rows);
     }
     
-    console.log('[GET /api/classes/:id/content] Acesso negado - usuário não tem permissão');
+    console.log('[GET /api/classes/:id/content] Acesso negado - usu�rio n�o tem permiss�o');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
@@ -2156,7 +2156,7 @@ app.put('/api/classes/:id', authenticateToken, async (req, res) => {
     
     console.log('[PUT /api/classes/:id] Atualizando turma:', id);
     console.log('[PUT /api/classes/:id] Dados recebidos:', req.body);
-    console.log('[PUT /api/classes/:id] Usuário:', req.user);
+    console.log('[PUT /api/classes/:id] Usu�rio:', req.user);
     
     // Verificar se a turma existe
     const classCheck = await pool.query(`
@@ -2164,20 +2164,20 @@ app.put('/api/classes/:id', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      console.log('[PUT /api/classes/:id] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[PUT /api/classes/:id] Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
-    // Verificar se o usuário é o instructor da turma ou admin
+    // Verificar se o usu�rio � o instructor da turma ou admin
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
-      console.log('[PUT /api/classes/:id] Acesso negado - usuário não é instructor da turma');
-      return res.status(403).json({ error: 'Apenas o instructor da turma pode editá-la.' });
+      console.log('[PUT /api/classes/:id] Acesso negado - usu�rio n�o � instructor da turma');
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode edit�-la.' });
     }
     
-    // Validar dados obrigatórios
+    // Validar dados obrigat�rios
     if (!instance_name || instance_name.trim().length === 0) {
-      console.log('[PUT /api/classes/:id] Erro: nome da turma não fornecido');
-      return res.status(400).json({ error: 'Nome da turma é obrigatório.' });
+      console.log('[PUT /api/classes/:id] Erro: nome da turma n�o fornecido');
+      return res.status(400).json({ error: 'Nome da turma � obrigat�rio.' });
     }
     
     // Atualizar turma
@@ -2205,7 +2205,7 @@ app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     
     console.log('[DELETE /api/classes/:id] Excluindo turma:', id);
-    console.log('[DELETE /api/classes/:id] Usuário:', req.user);
+    console.log('[DELETE /api/classes/:id] Usu�rio:', req.user);
     
     // Verificar se a turma existe
     const classCheck = await pool.query(`
@@ -2213,25 +2213,25 @@ app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      console.log('[DELETE /api/classes/:id] Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[DELETE /api/classes/:id] Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
-    // Verificar se o usuário é o instructor da turma ou admin
+    // Verificar se o usu�rio � o instructor da turma ou admin
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
-      console.log('[DELETE /api/classes/:id] Acesso negado - usuário não é instructor da turma');
-      return res.status(403).json({ error: 'Apenas o instructor da turma pode excluí-la.' });
+      console.log('[DELETE /api/classes/:id] Acesso negado - usu�rio n�o � instructor da turma');
+      return res.status(403).json({ error: 'Apenas o instructor da turma pode exclu�-la.' });
     }
     
     const className = classCheck.rows[0].instance_name;
     
-    // Excluir turma (as tabelas relacionadas serão excluídas automaticamente devido ao CASCADE)
+    // Excluir turma (as tabelas relacionadas ser�o exclu�das automaticamente devido ao CASCADE)
     await pool.query(`
       DELETE FROM class_instances WHERE id = $1
     `, [id]);
     
-    console.log('[DELETE /api/classes/:id] Turma excluída com sucesso:', className);
-    res.json({ message: 'Turma excluída com sucesso.' });
+    console.log('[DELETE /api/classes/:id] Turma exclu�da com sucesso:', className);
+    res.json({ message: 'Turma exclu�da com sucesso.' });
     
   } catch (err) {
     console.error('[DELETE /api/classes/:id] Erro:', err);
@@ -2239,47 +2239,47 @@ app.delete('/api/classes/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para criar matrícula em curso
+// Endpoint para criar matr�cula em curso
 app.post('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { course_id } = req.body;
     
-    console.log('[POST /api/enrollments] Criando matrícula');
+    console.log('[POST /api/enrollments] Criando matr�cula');
     console.log('[POST /api/enrollments] course_id:', course_id);
     console.log('[POST /api/enrollments] req.user:', req.user);
     
     if (!course_id) {
-      return res.status(400).json({ error: 'course_id é obrigatório.' });
+      return res.status(400).json({ error: 'course_id � obrigat�rio.' });
     }
 
-    // Verifica se já está matriculado
+    // Verifica se j� est� matriculado
     const existing = await pool.query(
       'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
       [req.user.id, course_id]
     );
     
-    console.log('[POST /api/enrollments] Verificação de matrícula existente:', existing.rows);
+    console.log('[POST /api/enrollments] Verifica��o de matr�cula existente:', existing.rows);
     
     if (existing.rows.length > 0) {
-      console.log('[POST /api/enrollments] Usuário já está matriculado');
-      return res.status(400).json({ error: 'Usuário já está matriculado.' });
+      console.log('[POST /api/enrollments] Usu�rio j� est� matriculado');
+      return res.status(400).json({ error: 'Usu�rio j� est� matriculado.' });
     }
 
     const id = crypto.randomUUID();
-    console.log('[POST /api/enrollments] Criando matrícula com ID:', id);
+    console.log('[POST /api/enrollments] Criando matr�cula com ID:', id);
     
     await pool.query(
       'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
       [id, req.user.id, course_id, new Date(), 0]
     );
     
-    // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
+    // --- NOVA L�GICA: Matricular automaticamente em todas as turmas do curso ---
     const classInstances = await pool.query(
       'SELECT id FROM class_instances WHERE course_id = $1',
       [course_id]
     );
     for (const turma of classInstances.rows) {
-      // Verifica se já está matriculado na turma
+      // Verifica se j� est� matriculado na turma
       const alreadyEnrolled = await pool.query(
         'SELECT 1 FROM class_instance_enrollments WHERE class_instance_id = $1 AND user_id = $2',
         [turma.id, req.user.id]
@@ -2292,13 +2292,13 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
         );
       }
     }
-    // --- FIM DA LÓGICA ---
+    // --- FIM DA L�GICA ---
 
-    console.log('[POST /api/enrollments] Matrícula criada com sucesso');
-    res.status(201).json({ message: 'Matrícula realizada com sucesso.' });
+    console.log('[POST /api/enrollments] Matr�cula criada com sucesso');
+    res.status(201).json({ message: 'Matr�cula realizada com sucesso.' });
   } catch (err) {
     console.error('[POST /api/enrollments] Erro:', err);
-    res.status(500).json({ error: 'Erro ao realizar matrícula.' });
+    res.status(500).json({ error: 'Erro ao realizar matr�cula.' });
   }
 });
 
@@ -2338,9 +2338,9 @@ app.post('/api/upload/thumbnail', authenticateToken, upload.single('file'), asyn
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é uma imagem
+    // Verificar se � uma imagem
     if (!req.file.mimetype.startsWith('image/')) {
-      return res.status(400).json({ error: 'Apenas imagens são permitidas para thumbnail' });
+      return res.status(400).json({ error: 'Apenas imagens s�o permitidas para thumbnail' });
     }
 
     const result = await uploadFile(req.file, 'thumbnails');
@@ -2363,18 +2363,18 @@ app.post('/api/upload/thumbnail', authenticateToken, upload.single('file'), asyn
   }
 });
 
-// Upload de vídeo para aula
+// Upload de v�deo para aula
 app.post('/api/upload/video', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    console.log('[POST /api/upload/video] Upload de vídeo iniciado');
+    console.log('[POST /api/upload/video] Upload de v�deo iniciado');
     
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é um vídeo
+    // Verificar se � um v�deo
     if (!req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ error: 'Apenas vídeos são permitidos' });
+      return res.status(400).json({ error: 'Apenas v�deos s�o permitidos' });
     }
 
     const result = await uploadFile(req.file, 'videos');
@@ -2386,12 +2386,12 @@ app.post('/api/upload/video', authenticateToken, upload.single('file'), async (r
       url: result.url,
       fileName: result.fileName,
       size: result.size,
-      message: 'Vídeo enviado com sucesso!'
+      message: 'V�deo enviado com sucesso!'
     });
   } catch (error) {
     console.error('[POST /api/upload/video] Erro:', error);
     res.status(500).json({ 
-      error: 'Erro no upload do vídeo',
+      error: 'Erro no upload do v�deo',
       details: error.message 
     });
   }
@@ -2426,7 +2426,7 @@ app.post('/api/upload/material', authenticateToken, upload.single('file'), async
   }
 });
 
-// Upload de avatar do usuário
+// Upload de avatar do usu�rio
 app.post('/api/upload/avatar', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     console.log('[POST /api/upload/avatar] Upload de avatar iniciado');
@@ -2435,9 +2435,9 @@ app.post('/api/upload/avatar', authenticateToken, upload.single('file'), async (
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é uma imagem
+    // Verificar se � uma imagem
     if (!req.file.mimetype.startsWith('image/')) {
-      return res.status(400).json({ error: 'Apenas imagens são permitidas para avatar' });
+      return res.status(400).json({ error: 'Apenas imagens s�o permitidas para avatar' });
     }
 
     const result = await uploadFile(req.file, 'avatars');
@@ -2482,32 +2482,32 @@ app.delete('/api/upload/:fileName', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para upload de vídeo de aula
+// Endpoint para upload de v�deo de aula
 app.post('/api/upload/lesson-video', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'Arquivo não enviado.' });
+      return res.status(400).json({ error: 'Arquivo n�o enviado.' });
     }
-    // Apenas vídeos
+    // Apenas v�deos
     if (!req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ error: 'Apenas arquivos de vídeo são permitidos.' });
+      return res.status(400).json({ error: 'Apenas arquivos de v�deo s�o permitidos.' });
     }
     const result = await uploadFile(req.file, 'lessons');
     res.json({ url: result.url });
   } catch (err) {
     console.error('[POST /api/upload/lesson-video] Erro:', err);
-    res.status(500).json({ error: 'Erro ao fazer upload do vídeo.' });
+    res.status(500).json({ error: 'Erro ao fazer upload do v�deo.' });
   }
 });
 
-// Endpoint para obter URL assinada do vídeo da aula
+// Endpoint para obter URL assinada do v�deo da aula
 app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) => {
   const { lessonId } = req.params;
   try {
     // Buscar a aula no banco
     const { rows } = await pool.query('SELECT video_url FROM lessons WHERE id = $1', [lessonId]);
     if (!rows.length || !rows[0].video_url) {
-      return res.status(404).json({ error: 'Vídeo não encontrado para esta aula.' });
+      return res.status(404).json({ error: 'V�deo n�o encontrado para esta aula.' });
     }
     // Extrair o caminho do arquivo no bucket
     const videoPath = rows[0].video_url.replace(/^https?:\/\/[^/]+\/[a-zA-Z0-9_-]+\//, '');
@@ -2520,12 +2520,12 @@ app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) 
   }
 });
 
-// Endpoint para marcar aula como concluída
+// Endpoint para marcar aula como conclu�da
 app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user.id;
-    // Verifica se já existe
+    // Verifica se j� existe
     const check = await pool.query('SELECT * FROM lesson_completions WHERE user_id = $1 AND lesson_id = $2', [userId, lessonId]);
     if (check.rows.length === 0) {
       await pool.query('INSERT INTO lesson_completions (user_id, lesson_id, completed_at) VALUES ($1, $2, NOW())', [userId, lessonId]);
@@ -2533,13 +2533,13 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
     res.json({ success: true });
   } catch (err) {
     console.error('[POST /api/lessons/:lessonId/complete]', err);
-    res.status(500).json({ error: 'Erro ao marcar aula como concluída.' });
+    res.status(500).json({ error: 'Erro ao marcar aula como conclu�da.' });
   }
 });
 
-// ===== SISTEMA DE COMENTÁRIOS EM AULAS =====
+// ===== SISTEMA DE COMENT�RIOS EM AULAS =====
 
-// Buscar comentários de uma aula
+// Buscar coment�rios de uma aula
 app.get('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -2558,11 +2558,11 @@ app.get('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) =
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao buscar comentários.' });
+    res.status(500).json({ error: 'Erro ao buscar coment�rios.' });
   }
 });
 
-// Criar comentário
+// Criar coment�rio
 app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
@@ -2570,7 +2570,7 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
     const userId = req.user.id;
 
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
+      return res.status(400).json({ error: 'Conte�do do coment�rio � obrigat�rio.' });
     }
 
     const { rows } = await pool.query(`
@@ -2579,10 +2579,10 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
       RETURNING id
     `, [lessonId, userId, content.trim(), parent_id || null]);
 
-    // Criar notificações
+    // Criar notifica��es
     try {
       if (parent_id) {
-        // É uma resposta a um comentário - notificar autor do comentário pai
+        // � uma resposta a um coment�rio - notificar autor do coment�rio pai
         const parentCommentResult = await pool.query(`
           SELECT lc.user_id, p.name as author_name, l.title as lesson_title
           FROM lesson_comments lc
@@ -2598,8 +2598,8 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
             const userName = await getUserName(req.user.id, req.user.name);
             await createNotification(
               parentAuthorId,
-              'Resposta ao seu comentário',
-              `${userName} respondeu ao seu comentário na aula "${lesson_title}"`,
+              'Resposta ao seu coment�rio',
+              `${userName} respondeu ao seu coment�rio na aula "${lesson_title}"`,
               'reply',
               lessonId,
               'lesson'
@@ -2607,7 +2607,7 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
           }
         }
       } else {
-        // É um comentário novo - notificar instrutor da aula
+        // � um coment�rio novo - notificar instrutor da aula
         const lessonInstructorResult = await pool.query(`
           SELECT c.instructor_id, p.name as instructor_name, l.title as lesson_title
           FROM lessons l
@@ -2624,7 +2624,7 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
             const userName = await getUserName(req.user.id, req.user.name);
             await createNotification(
               instructorId,
-              'Novo comentário na sua aula',
+              'Novo coment�rio na sua aula',
               `${userName} comentou na aula "${lesson_title}"`,
               'comment',
               lessonId,
@@ -2634,17 +2634,17 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
         }
       }
     } catch (notificationErr) {
-      console.error('[NOTIFICATION] Erro ao criar notificação de comentário:', notificationErr);
+      console.error('[NOTIFICATION] Erro ao criar notifica��o de coment�rio:', notificationErr);
     }
 
     res.json({ success: true, comment_id: rows[0].id });
   } catch (err) {
     console.error('[POST /api/lessons/:lessonId/comments]', err);
-    res.status(500).json({ error: 'Erro ao criar comentário.' });
+    res.status(500).json({ error: 'Erro ao criar coment�rio.' });
   }
 });
 
-// Atualizar comentário
+// Atualizar coment�rio
 app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -2652,20 +2652,20 @@ app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
     const userId = req.user.id;
 
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo do comentário é obrigatório.' });
+      return res.status(400).json({ error: 'Conte�do do coment�rio � obrigat�rio.' });
     }
 
-    // Verificar se o comentário existe e pertence ao usuário
+    // Verificar se o coment�rio existe e pertence ao usu�rio
     const commentCheck = await pool.query(
       'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
       [commentId, userId]
     );
 
     if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
+      return res.status(404).json({ error: 'Coment�rio n�o encontrado ou n�o autorizado.' });
     }
 
-    // Atualizar comentário
+    // Atualizar coment�rio
     await pool.query(
       'UPDATE lesson_comments SET content = $1, updated_at = NOW() WHERE id = $2',
       [content.trim(), commentId]
@@ -2674,37 +2674,37 @@ app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[PUT /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao atualizar comentário.' });
+    res.status(500).json({ error: 'Erro ao atualizar coment�rio.' });
   }
 });
 
-// Deletar comentário
+// Deletar coment�rio
 app.delete('/api/comments/:commentId', authenticateToken, async (req, res) => {
   try {
     const { commentId } = req.params;
     const userId = req.user.id;
 
-    // Verificar se o comentário existe e pertence ao usuário
+    // Verificar se o coment�rio existe e pertence ao usu�rio
     const commentCheck = await pool.query(
       'SELECT id FROM lesson_comments WHERE id = $1 AND user_id = $2',
       [commentId, userId]
     );
 
     if (commentCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Comentário não encontrado ou não autorizado.' });
+      return res.status(404).json({ error: 'Coment�rio n�o encontrado ou n�o autorizado.' });
     }
 
-    // Deletar comentário (cascade irá deletar respostas e curtidas)
+    // Deletar coment�rio (cascade ir� deletar respostas e curtidas)
     await pool.query('DELETE FROM lesson_comments WHERE id = $1', [commentId]);
 
     res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /api/comments/:commentId]', err);
-    res.status(500).json({ error: 'Erro ao deletar comentário.' });
+    res.status(500).json({ error: 'Erro ao deletar coment�rio.' });
   }
 });
 
-// Curtir/descurtir comentário
+// Curtir/descurtir coment�rio
 app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -2726,7 +2726,7 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
         [commentId, userId]
       );
       
-      // Criar notificação para o autor do comentário (se não for o mesmo usuário)
+      // Criar notifica��o para o autor do coment�rio (se n�o for o mesmo usu�rio)
       try {
         const commentAuthorResult = await pool.query(`
           SELECT lc.user_id, p.name as author_name, l.title as lesson_title, lc.content
@@ -2744,8 +2744,8 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
             const shortContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
             await createNotification(
               commentAuthorId,
-              'Curtida no seu comentário',
-              `${userName} curtiu seu comentário "${shortContent}" na aula "${lesson_title}"`,
+              'Curtida no seu coment�rio',
+              `${userName} curtiu seu coment�rio "${shortContent}" na aula "${lesson_title}"`,
               'like',
               commentId,
               'lesson_comment'
@@ -2753,23 +2753,23 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
           }
         }
       } catch (notificationErr) {
-        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em comentário:', notificationErr);
+        console.error('[NOTIFICATION] Erro ao criar notifica��o de curtida em coment�rio:', notificationErr);
       }
     }
 
     res.json({ success: true });
   } catch (err) {
     console.error('[POST /api/comments/:commentId/like]', err);
-    res.status(500).json({ error: 'Erro ao curtir comentário.' });
+    res.status(500).json({ error: 'Erro ao curtir coment�rio.' });
   }
 });
 
-// ===== SISTEMA DE NOTIFICAÇÕES =====
+// ===== SISTEMA DE NOTIFICA��ES =====
 
-// Função helper para criar notificações
+// Fun��o helper para criar notifica��es
 async function createNotification(userId, title, message, type, referenceId = null, referenceType = null) {
   try {
-    console.log('[CREATE NOTIFICATION] Tentando criar notificação:', {
+    console.log('[CREATE NOTIFICATION] Tentando criar notifica��o:', {
       userId, title, message, type, referenceId, referenceType
     });
     
@@ -2779,33 +2779,33 @@ async function createNotification(userId, title, message, type, referenceId = nu
       RETURNING id
     `, [userId, title, message, type, referenceId, referenceType]);
     
-    console.log('[CREATE NOTIFICATION] Notificação criada com sucesso! ID:', result.rows[0].id);
+    console.log('[CREATE NOTIFICATION] Notifica��o criada com sucesso! ID:', result.rows[0].id);
   } catch (err) {
-    console.error('[CREATE NOTIFICATION] ERRO ao criar notificação:', err);
-    console.error('[CREATE NOTIFICATION] Parâmetros:', {
+    console.error('[CREATE NOTIFICATION] ERRO ao criar notifica��o:', err);
+    console.error('[CREATE NOTIFICATION] Par�metros:', {
       userId, title, message, type, referenceId, referenceType
     });
   }
 }
 
-// Função helper para obter nome do usuário
+// Fun��o helper para obter nome do usu�rio
 async function getUserName(userId, currentUserName = null) {
-  // Se já temos o nome, usar ele
+  // Se j� temos o nome, usar ele
   if (currentUserName) {
     return currentUserName;
   }
   
-  // Caso contrário, buscar no banco
+  // Caso contr�rio, buscar no banco
   try {
     const { rows } = await pool.query('SELECT name FROM profiles WHERE id = $1', [userId]);
-    return rows.length > 0 ? rows[0].name : 'Usuário';
+    return rows.length > 0 ? rows[0].name : 'Usu�rio';
   } catch (err) {
     console.error('[GET USER NAME] Erro ao buscar nome:', err);
-    return 'Usuário';
+    return 'Usu�rio';
   }
 }
 
-// Buscar notificações do usuário
+// Buscar notifica��es do usu�rio
 app.get('/api/notifications', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2819,7 +2819,7 @@ app.get('/api/notifications', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao buscar notificações.' });
+    res.status(500).json({ error: 'Erro ao buscar notifica��es.' });
   }
 });
 
@@ -2836,11 +2836,11 @@ app.get('/api/notifications/count', authenticateToken, async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error('[GET /api/notifications/count]', err);
-    res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
+    res.status(500).json({ error: 'Erro ao buscar contador de notifica��es.' });
   }
 });
 
-// Marcar notificação como lida
+// Marcar notifica��o como lida
 app.put('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -2855,11 +2855,11 @@ app.put('/api/notifications/:notificationId/read', authenticateToken, async (req
     res.json({ success: true });
   } catch (err) {
     console.error('[PUT /api/notifications/:id/read]', err);
-    res.status(500).json({ error: 'Erro ao marcar notificação como lida.' });
+    res.status(500).json({ error: 'Erro ao marcar notifica��o como lida.' });
   }
 });
 
-// Marcar todas as notificações como lidas
+// Marcar todas as notifica��es como lidas
 app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2873,11 +2873,11 @@ app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[PUT /api/notifications/read-all]', err);
-    res.status(500).json({ error: 'Erro ao marcar todas as notificações como lidas.' });
+    res.status(500).json({ error: 'Erro ao marcar todas as notifica��es como lidas.' });
   }
 });
 
-// Deletar notificação específica
+// Deletar notifica��o espec�fica
 app.delete('/api/notifications/:notificationId', authenticateToken, async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -2890,24 +2890,24 @@ app.delete('/api/notifications/:notificationId', authenticateToken, async (req, 
     `, [notificationId, userId]);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Notificação não encontrada.' });
+      return res.status(404).json({ error: 'Notifica��o n�o encontrada.' });
     }
     
     res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /api/notifications/:id]', err);
-    res.status(500).json({ error: 'Erro ao deletar notificação.' });
+    res.status(500).json({ error: 'Erro ao deletar notifica��o.' });
   }
 });
 
-// Deletar múltiplas notificações
+// Deletar m�ltiplas notifica��es
 app.delete('/api/notifications', authenticateToken, async (req, res) => {
   try {
     const { notificationIds } = req.body;
     const userId = req.user.id;
     
     if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
-      return res.status(400).json({ error: 'IDs das notificações são obrigatórios.' });
+      return res.status(400).json({ error: 'IDs das notifica��es s�o obrigat�rios.' });
     }
     
     const placeholders = notificationIds.map((_, index) => `$${index + 2}`).join(', ');
@@ -2920,11 +2920,11 @@ app.delete('/api/notifications', authenticateToken, async (req, res) => {
     res.json({ success: true, deletedCount: result.rows.length });
   } catch (err) {
     console.error('[DELETE /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao deletar notificações.' });
+    res.status(500).json({ error: 'Erro ao deletar notifica��es.' });
   }
 });
 
-// Deletar todas as notificações
+// Deletar todas as notifica��es
 app.delete('/api/notifications/all', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -2938,11 +2938,11 @@ app.delete('/api/notifications/all', authenticateToken, async (req, res) => {
     res.json({ success: true, deletedCount: result.rows.length });
   } catch (err) {
     console.error('[DELETE /api/notifications/all]', err);
-    res.status(500).json({ error: 'Erro ao deletar todas as notificações.' });
+    res.status(500).json({ error: 'Erro ao deletar todas as notifica��es.' });
   }
 });
 
-// Navegação inteligente
+// Navega��o inteligente
 app.get('/api/notifications/:notificationId/navigate', authenticateToken, async (req, res) => {
   try {
     const { notificationId } = req.params;
@@ -2955,7 +2955,7 @@ app.get('/api/notifications/:notificationId/navigate', authenticateToken, async 
     `, [notificationId, userId]);
     
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Notificação não encontrada.' });
+      return res.status(404).json({ error: 'Notifica��o n�o encontrada.' });
     }
     
     const { type, reference_id, reference_type } = rows[0];
@@ -2969,7 +2969,7 @@ app.get('/api/notifications/:notificationId/navigate', authenticateToken, async 
         url = `/forum/topic/${reference_id}`;
         break;
       case 'forum_reply':
-        // Para respostas do fórum, navegar para o post pai
+        // Para respostas do f�rum, navegar para o post pai
         const forumReplyResult = await pool.query(`
           SELECT post_id FROM forum_replies WHERE id = $1
         `, [reference_id]);
@@ -2996,7 +2996,7 @@ app.get('/api/notifications/:notificationId/navigate', authenticateToken, async 
         }
         break;
       case 'lesson_comment':
-        // Para comentários de aula, navegar para a aula
+        // Para coment�rios de aula, navegar para a aula
         const lessonCommentResult = await pool.query(`
           SELECT lc.lesson_id, m.course_id 
           FROM lesson_comments lc
@@ -3031,14 +3031,14 @@ app.get('/api/notifications/:notificationId/navigate', authenticateToken, async 
     res.json({ url });
   } catch (err) {
     console.error('[GET /api/notifications/:id/navigate]', err);
-    res.status(500).json({ error: 'Erro ao navegar pela notificação.' });
+    res.status(500).json({ error: 'Erro ao navegar pela notifica��o.' });
   }
 });
 
 
-// ===== SISTEMA DE AVALIAÇÕES DE CURSOS =====
+// ===== SISTEMA DE AVALIA��ES DE CURSOS =====
 
-// Buscar avaliações de um curso
+// Buscar avalia��es de um curso
 app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -3054,11 +3054,11 @@ app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) =>
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/courses/:courseId/ratings]', err);
-    res.status(500).json({ error: 'Erro ao buscar avaliações.' });
+    res.status(500).json({ error: 'Erro ao buscar avalia��es.' });
   }
 });
 
-// Buscar estatísticas de avaliações de um curso
+// Buscar estat�sticas de avalia��es de um curso
 app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -3093,11 +3093,11 @@ app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, re
     });
   } catch (err) {
     console.error('[GET /api/courses/:courseId/rating-stats]', err);
-    res.status(500).json({ error: 'Erro ao buscar estatísticas de avaliação.' });
+    res.status(500).json({ error: 'Erro ao buscar estat�sticas de avalia��o.' });
   }
 });
 
-// Buscar avaliação do usuário atual para um curso
+// Buscar avalia��o do usu�rio atual para um curso
 app.get('/api/courses/:courseId/my-rating', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -3115,42 +3115,42 @@ app.get('/api/courses/:courseId/my-rating', authenticateToken, async (req, res) 
     res.json(rows[0] || null);
   } catch (err) {
     console.error('[GET /api/courses/:courseId/my-rating]', err);
-    res.status(500).json({ error: 'Erro ao buscar avaliação do usuário.' });
+    res.status(500).json({ error: 'Erro ao buscar avalia��o do usu�rio.' });
   }
 });
 
-// Criar ou atualizar avaliação de um curso
+// Criar ou atualizar avalia��o de um curso
 app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
     const { rating, review } = req.body;
     const userId = req.user.id;
 
-    // Validações
+    // Valida��es
     if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: 'Avaliação deve ser entre 1 e 5 estrelas.' });
+      return res.status(400).json({ error: 'Avalia��o deve ser entre 1 e 5 estrelas.' });
     }
 
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
 
-    // Verificar se já existe uma avaliação do usuário
+    // Verificar se j� existe uma avalia��o do usu�rio
     const existingRating = await pool.query(
       'SELECT id FROM course_ratings WHERE course_id = $1 AND user_id = $2',
       [courseId, userId]
     );
 
     if (existingRating.rows.length > 0) {
-      // Atualizar avaliação existente
+      // Atualizar avalia��o existente
       await pool.query(
         'UPDATE course_ratings SET rating = $1, review = $2, updated_at = NOW() WHERE course_id = $3 AND user_id = $4',
         [rating, review || null, courseId, userId]
       );
     } else {
-      // Criar nova avaliação
+      // Criar nova avalia��o
       await pool.query(
         'INSERT INTO course_ratings (course_id, user_id, rating, review) VALUES ($1, $2, $3, $4)',
         [courseId, userId, rating, review || null]
@@ -3164,7 +3164,7 @@ app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   }
 });
 
-// Deletar avaliação do usuário
+// Deletar avalia��o do usu�rio
 app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -3176,19 +3176,19 @@ app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) =>
     );
 
     if (rowCount === 0) {
-      return res.status(404).json({ error: 'Avaliação não encontrada.' });
+      return res.status(404).json({ error: 'Avalia��o n�o encontrada.' });
     }
 
     res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /api/courses/:courseId/rate]', err);
-    res.status(500).json({ error: 'Erro ao deletar avaliação.' });
+    res.status(500).json({ error: 'Erro ao deletar avalia��o.' });
   }
 });
 
 // ===== SISTEMA DE MENSAGENS =====
 
-// Buscar conversas do usuário
+// Buscar conversas do usu�rio
 app.get('/api/conversations', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -3210,14 +3210,14 @@ app.get('/api/conversations', authenticateToken, async (req, res) => {
   }
 });
 
-// Buscar conversa específica com mensagens
+// Buscar conversa espec�fica com mensagens
 app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
     const { limit = 50, offset = 0 } = req.query;
 
-    // Verificar se o usuário é participante da conversa
+    // Verificar se o usu�rio � participante da conversa
     const participantCheck = await pool.query(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
       [id, userId]
@@ -3234,7 +3234,7 @@ app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
     );
 
     if (conversationResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Conversa não encontrada.' });
+      return res.status(404).json({ error: 'Conversa n�o encontrada.' });
     }
 
     // Buscar participantes
@@ -3263,7 +3263,7 @@ app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
     res.json({
       conversation: conversationResult.rows[0],
       participants: participantsResult.rows,
-      messages: messagesResult.rows.reverse(), // Ordem cronológica
+      messages: messagesResult.rows.reverse(), // Ordem cronol�gica
       hasMore: messagesResult.rows.length === parseInt(limit)
     });
   } catch (err) {
@@ -3272,27 +3272,27 @@ app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Criar conversa direta entre dois usuários
+// Criar conversa direta entre dois usu�rios
 app.post('/api/conversations/direct', authenticateToken, async (req, res) => {
   try {
     const { otherUserId } = req.body;
     const userId = req.user.id;
 
     if (!otherUserId) {
-      return res.status(400).json({ error: 'ID do outro usuário é obrigatório.' });
+      return res.status(400).json({ error: 'ID do outro usu�rio � obrigat�rio.' });
     }
 
     if (otherUserId === userId) {
-      return res.status(400).json({ error: 'Não é possível criar conversa consigo mesmo.' });
+      return res.status(400).json({ error: 'N�o � poss�vel criar conversa consigo mesmo.' });
     }
 
-    // Verificar se o outro usuário existe
+    // Verificar se o outro usu�rio existe
     const userCheck = await pool.query('SELECT 1 FROM profiles WHERE id = $1', [otherUserId]);
     if (userCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
+      return res.status(404).json({ error: 'Usu�rio n�o encontrado.' });
     }
 
-    // Usar função do banco para obter ou criar conversa
+    // Usar fun��o do banco para obter ou criar conversa
     const { rows } = await pool.query(
       'SELECT get_or_create_direct_conversation($1, $2) as conversation_id',
       [userId, otherUserId]
@@ -3320,10 +3320,10 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req, res) 
     const userId = req.user.id;
 
     if (!content || content.trim() === '') {
-      return res.status(400).json({ error: 'Conteúdo da mensagem é obrigatório.' });
+      return res.status(400).json({ error: 'Conte�do da mensagem � obrigat�rio.' });
     }
 
-    // Verificar se o usuário é participante da conversa
+    // Verificar se o usu�rio � participante da conversa
     const participantCheck = await pool.query(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
       [conversationId, userId]
@@ -3340,7 +3340,7 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req, res) 
         [reply_to_id, conversationId]
       );
       if (replyCheck.rows.length === 0) {
-        return res.status(400).json({ error: 'Mensagem de resposta não encontrada.' });
+        return res.status(400).json({ error: 'Mensagem de resposta n�o encontrada.' });
       }
     }
 
@@ -3366,7 +3366,7 @@ app.post('/api/conversations/:id/messages', authenticateToken, async (req, res) 
       WHERE cp.conversation_id = $1 AND cp.user_id != $2
     `, [conversationId, userId]);
 
-    // Criar notificações para outros participantes
+    // Criar notifica��es para outros participantes
     const senderName = await getUserName(userId);
     for (const participant of otherParticipants.rows) {
       await createNotification(
@@ -3393,7 +3393,7 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req, res) =
     const { before, limit = 20 } = req.query;
     const userId = req.user.id;
 
-    // Verificar se o usuário é participante da conversa
+    // Verificar se o usu�rio � participante da conversa
     const participantCheck = await pool.query(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
       [conversationId, userId]
@@ -3420,7 +3420,7 @@ app.get('/api/conversations/:id/messages', authenticateToken, async (req, res) =
     const { rows } = await pool.query(query, params);
     
     res.json({
-      messages: rows.reverse(), // Ordem cronológica
+      messages: rows.reverse(), // Ordem cronol�gica
       hasMore: rows.length === parseInt(limit)
     });
   } catch (err) {
@@ -3435,7 +3435,7 @@ app.post('/api/conversations/:id/mark-read', authenticateToken, async (req, res)
     const { id: conversationId } = req.params;
     const userId = req.user.id;
 
-    // Verificar se o usuário é participante da conversa
+    // Verificar se o usu�rio � participante da conversa
     const participantCheck = await pool.query(
       'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
       [conversationId, userId]
@@ -3459,7 +3459,7 @@ app.post('/api/conversations/:id/mark-read', authenticateToken, async (req, res)
   }
 });
 
-// Buscar usuários para iniciar conversa
+// Buscar usu�rios para iniciar conversa
 app.get('/api/users/search', authenticateToken, async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
@@ -3481,11 +3481,11 @@ app.get('/api/users/search', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/users/search]', err);
-    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+    res.status(500).json({ error: 'Erro ao buscar usu�rios.' });
   }
 });
 
-// Contar mensagens não lidas
+// Contar mensagens n�o lidas
 app.get('/api/conversations/unread-count', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -3508,12 +3508,12 @@ app.get('/api/conversations/unread-count', authenticateToken, async (req, res) =
 
     const { conversations_exist, participants_exist, messages_exist } = tableCheck.rows[0];
 
-    // Se as tabelas não existem, retornar 0
+    // Se as tabelas n�o existem, retornar 0
     if (!conversations_exist || !participants_exist || !messages_exist) {
       return res.json({ 
         unread_count: 0,
         total_count: 0,
-        message: 'Sistema de mensagens não configurado'
+        message: 'Sistema de mensagens n�o configurado'
       });
     }
 
@@ -3542,7 +3542,7 @@ app.get('/api/conversations/unread-count', authenticateToken, async (req, res) =
     res.json({ 
       unread_count: 0,
       total_count: 0,
-      error: 'Erro ao contar mensagens não lidas.'
+      error: 'Erro ao contar mensagens n�o lidas.'
     });
   }
 });
@@ -3699,7 +3699,7 @@ app.get('/api/explore/categories', authenticateToken, async (req, res) => {
   }
 });
 
-// Usuários por role
+// Usu�rios por role
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const { role, limit = 10 } = req.query;
@@ -3723,21 +3723,21 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/users]', err);
-    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+    res.status(500).json({ error: 'Erro ao buscar usu�rios.' });
   }
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend rodando na porta ${PORT}`);
 });
 
-// Endpoint para buscar estatísticas de um curso
+// Endpoint para buscar estat�sticas de um curso
 app.get('/api/courses/:courseId/stats', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
     
-    console.log('[GET /api/courses/:courseId/stats] Buscando estatísticas do curso:', courseId);
+    console.log('[GET /api/courses/:courseId/stats] Buscando estat�sticas do curso:', courseId);
     
     const query = `
       SELECT 
@@ -3753,21 +3753,21 @@ app.get('/api/courses/:courseId/stats', authenticateToken, async (req, res) => {
     
     res.json(rows[0] || { total_lessons: 0, total_duration: 0, enrolled_students_count: 0 });
   } catch (err) {
-    console.error('[GET /api/courses/:courseId/stats] Erro ao buscar estatísticas:', err);
+    console.error('[GET /api/courses/:courseId/stats] Erro ao buscar estat�sticas:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// Endpoint para buscar matrículas do usuário
+// Endpoint para buscar matr�culas do usu�rio
 app.get('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { user_id, course_id } = req.query;
     
     if (!user_id && !course_id) {
-      return res.status(400).json({ error: 'user_id ou course_id é obrigatório.' });
+      return res.status(400).json({ error: 'user_id ou course_id � obrigat�rio.' });
     }
     
-    // Buscar as matrículas e dados básicos do curso
+    // Buscar as matr�culas e dados b�sicos do curso
     let query = `
       SELECT e.*, 
              c.title as course_title,
@@ -3796,9 +3796,9 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
     query += ` ORDER BY e.enrolled_at DESC`;
     const { rows } = await pool.query(query, params);
 
-    // Para cada curso, buscar módulos e aulas e calcular total_lessons, total_duration e progresso
+    // Para cada curso, buscar m�dulos e aulas e calcular total_lessons, total_duration e progresso
     const results = await Promise.all(rows.map(async (enrollment) => {
-      // Buscar módulos e aulas do curso
+      // Buscar m�dulos e aulas do curso
       const modulesQuery = `
         SELECT m.id as module_id, m.title as module_title, m.module_order,
                l.id as lesson_id, l.title as lesson_title, l.duration
@@ -3808,7 +3808,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
         ORDER BY m.module_order, l.lesson_order
       `;
       const { rows: moduleRows } = await pool.query(modulesQuery, [enrollment.course_id]);
-      // Montar estrutura de módulos e aulas
+      // Montar estrutura de m�dulos e aulas
       const modulesMap = {};
       const allLessonIds = [];
       moduleRows.forEach(row => {
@@ -3826,7 +3826,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
         }
       });
       const modules = Object.values(modulesMap);
-      // Calcular total de aulas e duração
+      // Calcular total de aulas e dura��o
       const total_lessons = modules.reduce((total, m) => total + m.lessons.length, 0);
       const total_duration = modules.reduce((total, m) => {
         return total + m.lessons.reduce((sum, lesson) => {
@@ -3834,7 +3834,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
           return sum + duration;
         }, 0);
       }, 0);
-      // Buscar aulas concluídas pelo usuário
+      // Buscar aulas conclu�das pelo usu�rio
       let completedLessons = 0;
       if (allLessonIds.length > 0) {
         const completedResult = await pool.query(
@@ -3855,7 +3855,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
 
     res.json(results);
   } catch (err) {
-    console.error('[GET /api/enrollments] Erro ao buscar matrículas:', err);
+    console.error('[GET /api/enrollments] Erro ao buscar matr�culas:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
@@ -3889,7 +3889,7 @@ app.get('/api/debug/tables', authenticateToken, async (req, res) => {
       ORDER BY ordinal_position
     `);
     
-    // Verificar se há dados nas tabelas
+    // Verificar se h� dados nas tabelas
     const enrollmentsCount = await pool.query('SELECT COUNT(*) as count FROM enrollments');
     const coursesCount = await pool.query('SELECT COUNT(*) as count FROM courses');
     const profilesCount = await pool.query('SELECT COUNT(*) as count FROM profiles');
@@ -3925,11 +3925,11 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     res.set('Pragma', 'no-cache');
     
     const { id } = req.params;
-    process.stdout.write('\n[GET /api/classes/:id/courses] === INÍCIO DA REQUISIÇÃO ===\n');
+    process.stdout.write('\n[GET /api/classes/:id/courses] === IN�CIO DA REQUISI��O ===\n');
     process.stdout.write(`[GET /api/classes/:id/courses] ID da turma: ${id}\n`);
-    process.stdout.write(`[GET /api/classes/:id/courses] Usuário: ${JSON.stringify(req.user)}\n`);
+    process.stdout.write(`[GET /api/classes/:id/courses] Usu�rio: ${JSON.stringify(req.user)}\n`);
     
-    // Primeiro, buscar a turma para verificar se o usuário tem acesso
+    // Primeiro, buscar a turma para verificar se o usu�rio tem acesso
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
@@ -3937,17 +3937,17 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     process.stdout.write(`[GET /api/classes/:id/courses] Resultado da busca da turma: ${JSON.stringify(classResult.rows)}\n`);
     
     if (classResult.rows.length === 0) {
-      process.stdout.write('[GET /api/classes/:id/courses] Turma não encontrada\n');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      process.stdout.write('[GET /api/classes/:id/courses] Turma n�o encontrada\n');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     const classData = classResult.rows[0];
     process.stdout.write(`[GET /api/classes/:id/courses] Dados da turma: ${JSON.stringify(classData)}\n`);
     
-    // Verificar se o usuário tem acesso aos cursos
-    // 1. Se é o instructor da turma
+    // Verificar se o usu�rio tem acesso aos cursos
+    // 1. Se � o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      process.stdout.write('[GET /api/classes/:id/courses] Usuário é o instructor da turma\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Usu�rio � o instructor da turma\n');
       process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
       // Primeiro, verificar se os cursos existem
@@ -3999,14 +3999,14 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
       
       process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
       process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (instructor) ===\n\n');
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (instructor) ===\n\n');
       
       return res.json(rows);
     }
     
-    // 2. Se a turma é pública, permitir visualizar cursos
+    // 2. Se a turma � p�blica, permitir visualizar cursos
     if (classData.is_public) {
-      process.stdout.write('[GET /api/classes/:id/courses] Turma é pública, acesso permitido\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Turma � p�blica, acesso permitido\n');
       process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
       const { rows } = await pool.query(`
@@ -4033,21 +4033,21 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
       
       process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
       process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (pública) ===\n\n');
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (p�blica) ===\n\n');
       
       return res.json(rows);
     }
     
-    // 3. Se o usuário está matriculado na turma
+    // 3. Se o usu�rio est� matriculado na turma
     const enrollmentCheck = await pool.query(`
       SELECT * FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
-    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da verificação de matrícula: ${JSON.stringify(enrollmentCheck.rows)}\n`);
+    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da verifica��o de matr�cula: ${JSON.stringify(enrollmentCheck.rows)}\n`);
     
     if (enrollmentCheck.rows.length > 0) {
-      process.stdout.write('[GET /api/classes/:id/courses] Usuário está matriculado na turma\n');
+      process.stdout.write('[GET /api/classes/:id/courses] Usu�rio est� matriculado na turma\n');
       process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
       
       const { rows } = await pool.query(`
@@ -4074,13 +4074,13 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
       
       process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
       process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (matriculado) ===\n\n');
+      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (matriculado) ===\n\n');
       
       return res.json(rows);
     }
     
-    process.stdout.write('[GET /api/classes/:id/courses] Acesso negado - usuário não tem permissão\n');
-    process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISIÇÃO (acesso negado) ===\n\n');
+    process.stdout.write('[GET /api/classes/:id/courses] Acesso negado - usu�rio n�o tem permiss�o\n');
+    process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (acesso negado) ===\n\n');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
@@ -4092,34 +4092,34 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
   }
 });
 
-// Adicionar curso à turma
+// Adicionar curso � turma
 app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { course_id, is_required = false, order_index } = req.body;
     
-    console.log('[POST /api/classes/:id/courses] Adicionando curso à turma:', id);
+    console.log('[POST /api/classes/:id/courses] Adicionando curso � turma:', id);
     console.log('[POST /api/classes/:id/courses] Dados recebidos:', req.body);
-    console.log('[POST /api/classes/:id/courses] Usuário:', req.user);
+    console.log('[POST /api/classes/:id/courses] Usu�rio:', req.user);
     
     if (!course_id) {
-      console.log('[POST /api/classes/:id/courses] Erro: course_id não fornecido');
-      return res.status(400).json({ error: 'course_id é obrigatório.' });
+      console.log('[POST /api/classes/:id/courses] Erro: course_id n�o fornecido');
+      return res.status(400).json({ error: 'course_id � obrigat�rio.' });
     }
     
-    // Verificar se o usuário é instructor da turma ou admin
+    // Verificar se o usu�rio � instructor da turma ou admin
     const classCheck = await pool.query(`
       SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      console.log('[POST /api/classes/:id/courses] Erro: Turma não encontrada');
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      console.log('[POST /api/classes/:id/courses] Erro: Turma n�o encontrada');
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     console.log('[POST /api/classes/:id/courses] Instructor da turma:', classCheck.rows[0].instructor_id);
-    console.log('[POST /api/classes/:id/courses] Usuário atual:', req.user.id);
-    console.log('[POST /api/classes/:id/courses] Role do usuário:', req.user.role);
+    console.log('[POST /api/classes/:id/courses] Usu�rio atual:', req.user.id);
+    console.log('[POST /api/classes/:id/courses] Role do usu�rio:', req.user.role);
     
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
       console.log('[POST /api/classes/:id/courses] Erro: Acesso negado');
@@ -4129,18 +4129,18 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [course_id]);
     if (courseCheck.rows.length === 0) {
-      console.log('[POST /api/classes/:id/courses] Erro: Curso não encontrado');
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      console.log('[POST /api/classes/:id/courses] Erro: Curso n�o encontrado');
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
     
-    // Verificar se o curso já está na turma
+    // Verificar se o curso j� est� na turma
     const existingCheck = await pool.query(`
       SELECT id FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, course_id]);
     
     if (existingCheck.rows.length > 0) {
-      console.log('[POST /api/classes/:id/courses] Erro: Curso já está na turma');
-      return res.status(400).json({ error: 'Este curso já está associado à turma.' });
+      console.log('[POST /api/classes/:id/courses] Erro: Curso j� est� na turma');
+      return res.status(400).json({ error: 'Este curso j� est� associado � turma.' });
     }
     
     // Determinar a ordem do curso
@@ -4170,7 +4170,7 @@ app.post('/api/classes/:id/courses', authenticateToken, async (req, res) => {
   }
 });
 
-// Atualizar configurações de um curso na turma
+// Atualizar configura��es de um curso na turma
 app.put('/api/classes/:id/courses/:courseId', authenticateToken, async (req, res) => {
   try {
     const { id, courseId } = req.params;
@@ -4178,31 +4178,31 @@ app.put('/api/classes/:id/courses/:courseId', authenticateToken, async (req, res
     
     console.log('[PUT /api/classes/:id/courses/:courseId] Atualizando curso da turma');
     console.log('[PUT /api/classes/:id/courses/:courseId] Dados recebidos:', req.body);
-    console.log('[PUT /api/classes/:id/courses/:courseId] Usuário:', req.user);
+    console.log('[PUT /api/classes/:id/courses/:courseId] Usu�rio:', req.user);
     
-    // Verificar se o usuário é instructor da turma ou admin
+    // Verificar se o usu�rio � instructor da turma ou admin
     const classCheck = await pool.query(`
       SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Apenas o instructor da turma pode editar cursos.' });
     }
     
-    // Verificar se o curso está na turma
+    // Verificar se o curso est� na turma
     const courseCheck = await pool.query(`
       SELECT id FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado na turma.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado na turma.' });
     }
     
-    // Atualizar configurações
+    // Atualizar configura��es
     const updateFields = [];
     const updateValues = [];
     let paramIndex = 1;
@@ -4247,33 +4247,33 @@ app.delete('/api/classes/:id/courses/:courseId', authenticateToken, async (req, 
     const { id, courseId } = req.params;
     
     console.log('[DELETE /api/classes/:id/courses/:courseId] Removendo curso da turma');
-    console.log('[DELETE /api/classes/:id/courses/:courseId] Usuário:', req.user);
+    console.log('[DELETE /api/classes/:id/courses/:courseId] Usu�rio:', req.user);
     
-    // Verificar se o usuário é instructor da turma ou admin
+    // Verificar se o usu�rio � instructor da turma ou admin
     const classCheck = await pool.query(`
       SELECT instructor_id FROM class_instances WHERE id = $1
     `, [id]);
     
     if (classCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Turma não encontrada.' });
+      return res.status(404).json({ error: 'Turma n�o encontrada.' });
     }
     
     if (classCheck.rows[0].instructor_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Apenas o instructor da turma pode remover cursos.' });
     }
     
-    // Verificar se o curso está na turma
+    // Verificar se o curso est� na turma
     const courseCheck = await pool.query(`
       SELECT id, is_required FROM class_courses WHERE class_id = $1 AND course_id = $2
     `, [id, courseId]);
     
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado na turma.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado na turma.' });
     }
     
-    // Não permitir remover o curso obrigatório (primeiro curso)
+    // N�o permitir remover o curso obrigat�rio (primeiro curso)
     if (courseCheck.rows[0].is_required) {
-      return res.status(400).json({ error: 'Não é possível remover o curso obrigatório da turma.' });
+      return res.status(400).json({ error: 'N�o � poss�vel remover o curso obrigat�rio da turma.' });
     }
     
     // Remover o curso
@@ -4290,47 +4290,47 @@ app.delete('/api/classes/:id/courses/:courseId', authenticateToken, async (req, 
   }
 });
 
-// Endpoint para criar matrícula em curso
+// Endpoint para criar matr�cula em curso
 app.post('/api/enrollments', authenticateToken, async (req, res) => {
   try {
     const { course_id } = req.body;
     
-    console.log('[POST /api/enrollments] Criando matrícula');
+    console.log('[POST /api/enrollments] Criando matr�cula');
     console.log('[POST /api/enrollments] course_id:', course_id);
     console.log('[POST /api/enrollments] req.user:', req.user);
     
     if (!course_id) {
-      return res.status(400).json({ error: 'course_id é obrigatório.' });
+      return res.status(400).json({ error: 'course_id � obrigat�rio.' });
     }
 
-    // Verifica se já está matriculado
+    // Verifica se j� est� matriculado
     const existing = await pool.query(
       'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
       [req.user.id, course_id]
     );
     
-    console.log('[POST /api/enrollments] Verificação de matrícula existente:', existing.rows);
+    console.log('[POST /api/enrollments] Verifica��o de matr�cula existente:', existing.rows);
     
     if (existing.rows.length > 0) {
-      console.log('[POST /api/enrollments] Usuário já está matriculado');
-      return res.status(400).json({ error: 'Usuário já está matriculado.' });
+      console.log('[POST /api/enrollments] Usu�rio j� est� matriculado');
+      return res.status(400).json({ error: 'Usu�rio j� est� matriculado.' });
     }
 
     const id = crypto.randomUUID();
-    console.log('[POST /api/enrollments] Criando matrícula com ID:', id);
+    console.log('[POST /api/enrollments] Criando matr�cula com ID:', id);
     
     await pool.query(
       'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
       [id, req.user.id, course_id, new Date(), 0]
     );
     
-    // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
+    // --- NOVA L�GICA: Matricular automaticamente em todas as turmas do curso ---
     const classInstances = await pool.query(
       'SELECT id FROM class_instances WHERE course_id = $1',
       [course_id]
     );
     for (const turma of classInstances.rows) {
-      // Verifica se já está matriculado na turma
+      // Verifica se j� est� matriculado na turma
       const alreadyEnrolled = await pool.query(
         'SELECT 1 FROM class_instance_enrollments WHERE class_instance_id = $1 AND user_id = $2',
         [turma.id, req.user.id]
@@ -4343,13 +4343,13 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
         );
       }
     }
-    // --- FIM DA LÓGICA ---
+    // --- FIM DA L�GICA ---
 
-    console.log('[POST /api/enrollments] Matrícula criada com sucesso');
-    res.status(201).json({ message: 'Matrícula realizada com sucesso.' });
+    console.log('[POST /api/enrollments] Matr�cula criada com sucesso');
+    res.status(201).json({ message: 'Matr�cula realizada com sucesso.' });
   } catch (err) {
     console.error('[POST /api/enrollments] Erro:', err);
-    res.status(500).json({ error: 'Erro ao realizar matrícula.' });
+    res.status(500).json({ error: 'Erro ao realizar matr�cula.' });
   }
 });
 
@@ -4389,9 +4389,9 @@ app.post('/api/upload/thumbnail', authenticateToken, upload.single('file'), asyn
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é uma imagem
+    // Verificar se � uma imagem
     if (!req.file.mimetype.startsWith('image/')) {
-      return res.status(400).json({ error: 'Apenas imagens são permitidas para thumbnail' });
+      return res.status(400).json({ error: 'Apenas imagens s�o permitidas para thumbnail' });
     }
 
     const result = await uploadFile(req.file, 'thumbnails');
@@ -4414,18 +4414,18 @@ app.post('/api/upload/thumbnail', authenticateToken, upload.single('file'), asyn
   }
 });
 
-// Upload de vídeo para aula
+// Upload de v�deo para aula
 app.post('/api/upload/video', authenticateToken, upload.single('file'), async (req, res) => {
   try {
-    console.log('[POST /api/upload/video] Upload de vídeo iniciado');
+    console.log('[POST /api/upload/video] Upload de v�deo iniciado');
     
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é um vídeo
+    // Verificar se � um v�deo
     if (!req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ error: 'Apenas vídeos são permitidos' });
+      return res.status(400).json({ error: 'Apenas v�deos s�o permitidos' });
     }
 
     const result = await uploadFile(req.file, 'videos');
@@ -4437,12 +4437,12 @@ app.post('/api/upload/video', authenticateToken, upload.single('file'), async (r
       url: result.url,
       fileName: result.fileName,
       size: result.size,
-      message: 'Vídeo enviado com sucesso!'
+      message: 'V�deo enviado com sucesso!'
     });
   } catch (error) {
     console.error('[POST /api/upload/video] Erro:', error);
     res.status(500).json({ 
-      error: 'Erro no upload do vídeo',
+      error: 'Erro no upload do v�deo',
       details: error.message 
     });
   }
@@ -4477,7 +4477,7 @@ app.post('/api/upload/material', authenticateToken, upload.single('file'), async
   }
 });
 
-// Upload de avatar do usuário
+// Upload de avatar do usu�rio
 app.post('/api/upload/avatar', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     console.log('[POST /api/upload/avatar] Upload de avatar iniciado');
@@ -4486,9 +4486,9 @@ app.post('/api/upload/avatar', authenticateToken, upload.single('file'), async (
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
     }
 
-    // Verificar se é uma imagem
+    // Verificar se � uma imagem
     if (!req.file.mimetype.startsWith('image/')) {
-      return res.status(400).json({ error: 'Apenas imagens são permitidas para avatar' });
+      return res.status(400).json({ error: 'Apenas imagens s�o permitidas para avatar' });
     }
 
     const result = await uploadFile(req.file, 'avatars');
@@ -4533,32 +4533,32 @@ app.delete('/api/upload/:fileName', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para upload de vídeo de aula
+// Endpoint para upload de v�deo de aula
 app.post('/api/upload/lesson-video', authenticateToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'Arquivo não enviado.' });
+      return res.status(400).json({ error: 'Arquivo n�o enviado.' });
     }
-    // Apenas vídeos
+    // Apenas v�deos
     if (!req.file.mimetype.startsWith('video/')) {
-      return res.status(400).json({ error: 'Apenas arquivos de vídeo são permitidos.' });
+      return res.status(400).json({ error: 'Apenas arquivos de v�deo s�o permitidos.' });
     }
     const result = await uploadFile(req.file, 'lessons');
     res.json({ url: result.url });
   } catch (err) {
     console.error('[POST /api/upload/lesson-video] Erro:', err);
-    res.status(500).json({ error: 'Erro ao fazer upload do vídeo.' });
+    res.status(500).json({ error: 'Erro ao fazer upload do v�deo.' });
   }
 });
 
-// Endpoint para obter URL assinada do vídeo da aula
+// Endpoint para obter URL assinada do v�deo da aula
 app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) => {
   const { lessonId } = req.params;
   try {
     // Buscar a aula no banco
     const { rows } = await pool.query('SELECT video_url FROM lessons WHERE id = $1', [lessonId]);
     if (!rows.length || !rows[0].video_url) {
-      return res.status(404).json({ error: 'Vídeo não encontrado para esta aula.' });
+      return res.status(404).json({ error: 'V�deo n�o encontrado para esta aula.' });
     }
     // Extrair o caminho do arquivo no bucket
     const videoPath = rows[0].video_url.replace(/^https?:\/\/[^/]+\/[a-zA-Z0-9_-]+\//, '');
@@ -4571,12 +4571,12 @@ app.get('/api/lessons/:lessonId/video-url', authenticateToken, async (req, res) 
   }
 });
 
-// Endpoint para marcar aula como concluída
+// Endpoint para marcar aula como conclu�da
 app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) => {
   try {
     const { lessonId } = req.params;
     const userId = req.user.id;
-    // Verifica se já existe
+    // Verifica se j� existe
     const check = await pool.query('SELECT * FROM lesson_completions WHERE user_id = $1 AND lesson_id = $2', [userId, lessonId]);
     if (check.rows.length === 0) {
       await pool.query('INSERT INTO lesson_completions (user_id, lesson_id, completed_at) VALUES ($1, $2, NOW())', [userId, lessonId]);
@@ -4584,14 +4584,14 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
     res.json({ success: true });
   } catch (err) {
     console.error('[POST /api/lessons/:lessonId/complete]', err);
-    res.status(500).json({ error: 'Erro ao marcar aula como concluída.' });
+    res.status(500).json({ error: 'Erro ao marcar aula como conclu�da.' });
   }
 });
 
-// ===== SISTEMA DE COMENTÁRIOS EM AULAS =====
+// ===== SISTEMA DE COMENT�RIOS EM AULAS =====
 // (Endpoints implementados anteriormente na linha 2363)
 
-// Buscar avaliações de um curso
+// Buscar avalia��es de um curso
 app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -4607,11 +4607,11 @@ app.get('/api/courses/:courseId/ratings', authenticateToken, async (req, res) =>
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/courses/:courseId/ratings]', err);
-    res.status(500).json({ error: 'Erro ao buscar avaliações.' });
+    res.status(500).json({ error: 'Erro ao buscar avalia��es.' });
   }
 });
 
-// Buscar estatísticas de avaliações de um curso
+// Buscar estat�sticas de avalia��es de um curso
 app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -4646,11 +4646,11 @@ app.get('/api/courses/:courseId/rating-stats', authenticateToken, async (req, re
     });
   } catch (err) {
     console.error('[GET /api/courses/:courseId/rating-stats]', err);
-    res.status(500).json({ error: 'Erro ao buscar estatísticas de avaliação.' });
+    res.status(500).json({ error: 'Erro ao buscar estat�sticas de avalia��o.' });
   }
 });
 
-// Buscar avaliação do usuário atual para um curso
+// Buscar avalia��o do usu�rio atual para um curso
 app.get('/api/courses/:courseId/my-rating', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -4668,42 +4668,42 @@ app.get('/api/courses/:courseId/my-rating', authenticateToken, async (req, res) 
     res.json(rows[0] || null);
   } catch (err) {
     console.error('[GET /api/courses/:courseId/my-rating]', err);
-    res.status(500).json({ error: 'Erro ao buscar avaliação do usuário.' });
+    res.status(500).json({ error: 'Erro ao buscar avalia��o do usu�rio.' });
   }
 });
 
-// Criar ou atualizar avaliação de um curso
+// Criar ou atualizar avalia��o de um curso
 app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
     const { rating, review } = req.body;
     const userId = req.user.id;
 
-    // Validações
+    // Valida��es
     if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: 'Avaliação deve ser entre 1 e 5 estrelas.' });
+      return res.status(400).json({ error: 'Avalia��o deve ser entre 1 e 5 estrelas.' });
     }
 
     // Verificar se o curso existe
     const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
     if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
+      return res.status(404).json({ error: 'Curso n�o encontrado.' });
     }
 
-    // Verificar se já existe uma avaliação do usuário
+    // Verificar se j� existe uma avalia��o do usu�rio
     const existingRating = await pool.query(
       'SELECT id FROM course_ratings WHERE course_id = $1 AND user_id = $2',
       [courseId, userId]
     );
 
     if (existingRating.rows.length > 0) {
-      // Atualizar avaliação existente
+      // Atualizar avalia��o existente
       await pool.query(
         'UPDATE course_ratings SET rating = $1, review = $2, updated_at = NOW() WHERE course_id = $3 AND user_id = $4',
         [rating, review || null, courseId, userId]
       );
     } else {
-      // Criar nova avaliação
+      // Criar nova avalia��o
       await pool.query(
         'INSERT INTO course_ratings (course_id, user_id, rating, review) VALUES ($1, $2, $3, $4)',
         [courseId, userId, rating, review || null]
@@ -4717,7 +4717,7 @@ app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   }
 });
 
-// Deletar avaliação do usuário
+// Deletar avalia��o do usu�rio
 app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
   try {
     const { courseId } = req.params;
@@ -4729,13 +4729,13 @@ app.delete('/api/courses/:courseId/rate', authenticateToken, async (req, res) =>
     );
 
     if (rowCount === 0) {
-      return res.status(404).json({ error: 'Avaliação não encontrada.' });
+      return res.status(404).json({ error: 'Avalia��o n�o encontrada.' });
     }
 
     res.json({ success: true });
   } catch (err) {
     console.error('[DELETE /api/courses/:courseId/rate]', err);
-    res.status(500).json({ error: 'Erro ao deletar avaliação.' });
+    res.status(500).json({ error: 'Erro ao deletar avalia��o.' });
   }
 });
 
@@ -4891,7 +4891,7 @@ app.get('/api/explore/categories', authenticateToken, async (req, res) => {
   }
 });
 
-// Usuários por role
+// Usu�rios por role
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const { role, limit = 10 } = req.query;
@@ -4915,7 +4915,7 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('[GET /api/users]', err);
-    res.status(500).json({ error: 'Erro ao buscar usuários.' });
+    res.status(500).json({ error: 'Erro ao buscar usu�rios.' });
   }
 });
 
@@ -4938,7 +4938,7 @@ app.get('/api/test/class-courses', async (req, res) => {
       WHERE table_name = 'class_courses_with_details' AND table_schema = 'public'
     `);
     
-    // Verificar se a função existe
+    // Verificar se a fun��o existe
     const functionCheck = await pool.query(`
       SELECT COUNT(*) as count 
       FROM information_schema.routines 
@@ -4983,14 +4983,14 @@ app.get('/api/test/class-courses-view', authenticateToken, async (req, res) => {
     `);
     
     if (viewCheck.rows.length === 0) {
-      return res.status(500).json({ error: 'View class_courses_with_details não existe' });
+      return res.status(500).json({ error: 'View class_courses_with_details n�o existe' });
     }
     
     // Testar a view
     const { rows } = await pool.query('SELECT COUNT(*) as total FROM class_courses_with_details');
     
     res.json({
-      message: 'View class_courses_with_details está funcionando',
+      message: 'View class_courses_with_details est� funcionando',
       total_records: rows[0].total,
       view_exists: true
     });
@@ -5013,7 +5013,7 @@ app.get('/api/test/class-courses-table', authenticateToken, async (req, res) => 
     `);
     
     if (tableCheck.rows.length === 0) {
-      return res.status(500).json({ error: 'Tabela class_courses não existe' });
+      return res.status(500).json({ error: 'Tabela class_courses n�o existe' });
     }
     
     // Contar registros
@@ -5028,7 +5028,7 @@ app.get('/api/test/class-courses-table', authenticateToken, async (req, res) => 
     `);
     
     res.json({
-      message: 'Tabela class_courses está funcionando',
+      message: 'Tabela class_courses est� funcionando',
       table_exists: true,
       total_records: countResult.rows[0].total,
       structure: structureResult.rows
@@ -5044,7 +5044,7 @@ app.get('/api/test/class-courses-data', authenticateToken, async (req, res) => {
   try {
     console.log('[GET /api/test/class-courses-data] Testando dados da tabela class_courses');
     
-    // Verificar se há dados na tabela
+    // Verificar se h� dados na tabela
     const countResult = await pool.query('SELECT COUNT(*) as total FROM class_courses');
     
     // Buscar alguns registros de exemplo
@@ -5074,27 +5074,27 @@ app.get('/api/test/class-courses-data', authenticateToken, async (req, res) => {
   }
 });
 
-// ===== SISTEMA DE FÓRUM =====
+// ===== SISTEMA DE F�RUM =====
 
-// Criar novo tópico (apenas admin/instructor)
+// Criar novo t�pico (apenas admin/instructor)
 app.post('/api/forum/topics', authenticateToken, async (req, res) => {
   try {
     const { title, description, order_index = 0, cover_image_url, banner_image_url } = req.body;
     
-    console.log('[POST /api/forum/topics] Criando tópico:', title);
-    console.log('[POST /api/forum/topics] Usuário:', req.user);
+    console.log('[POST /api/forum/topics] Criando t�pico:', title);
+    console.log('[POST /api/forum/topics] Usu�rio:', req.user);
     
-    // Verificar permissão
+    // Verificar permiss�o
     if (!['admin', 'instructor'].includes(req.user.role)) {
       console.log('[POST /api/forum/topics] Acesso negado para role:', req.user.role);
-      return res.status(403).json({ error: 'Apenas administradores e instrutores podem criar tópicos.' });
+      return res.status(403).json({ error: 'Apenas administradores e instrutores podem criar t�picos.' });
     }
     
     if (!title || title.trim().length === 0) {
-      return res.status(400).json({ error: 'Título é obrigatório.' });
+      return res.status(400).json({ error: 'T�tulo � obrigat�rio.' });
     }
     
-    // Gerar slug único
+    // Gerar slug �nico
     const baseSlug = title.toLowerCase()
       .replace(/[^a-z0-9\s-]/g, '')
       .replace(/\s+/g, '-')
@@ -5104,7 +5104,7 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
     let slug = baseSlug;
     let counter = 1;
     
-    // Verificar se slug já existe
+    // Verificar se slug j� existe
     while (true) {
       const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1', [slug]);
       if (existingSlug.rows.length === 0) break;
@@ -5119,7 +5119,7 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
       RETURNING *
     `, [id, title.trim(), description?.trim() || null, slug, order_index, req.user.id, cover_image_url || null, banner_image_url || null]);
     
-    console.log('[POST /api/forum/topics] Tópico criado com sucesso:', rows[0].title);
+    console.log('[POST /api/forum/topics] T�pico criado com sucesso:', rows[0].title);
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[POST /api/forum/topics] Erro:', err);
@@ -5127,36 +5127,36 @@ app.post('/api/forum/topics', authenticateToken, async (req, res) => {
   }
 });
 
-// Editar tópico (apenas admin/instructor ou criador)
+// Editar t�pico (apenas admin/instructor ou criador)
 app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, order_index, cover_image_url, banner_image_url } = req.body;
     
-    console.log('[PUT /api/forum/topics/:id] Editando tópico:', id);
-    console.log('[PUT /api/forum/topics/:id] Usuário:', req.user);
+    console.log('[PUT /api/forum/topics/:id] Editando t�pico:', id);
+    console.log('[PUT /api/forum/topics/:id] Usu�rio:', req.user);
     
     if (!title || title.trim().length === 0) {
-      return res.status(400).json({ error: 'Título é obrigatório.' });
+      return res.status(400).json({ error: 'T�tulo � obrigat�rio.' });
     }
     
-    // Verificar se o tópico existe
+    // Verificar se o t�pico existe
     const topicCheck = await pool.query(`
       SELECT * FROM forum_topics WHERE id = $1
     `, [id]);
     
     if (topicCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Tópico não encontrado.' });
+      return res.status(404).json({ error: 'T�pico n�o encontrado.' });
     }
     
     const topic = topicCheck.rows[0];
     
-    // Verificar permissão (admin, instructor ou criador do tópico)
+    // Verificar permiss�o (admin, instructor ou criador do t�pico)
     if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Você não tem permissão para editar este tópico.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para editar este t�pico.' });
     }
     
-    // Gerar novo slug se o título mudou
+    // Gerar novo slug se o t�tulo mudou
     let slug = topic.slug;
     if (title.trim() !== topic.title) {
       const baseSlug = title.toLowerCase()
@@ -5168,7 +5168,7 @@ app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
       slug = baseSlug;
       let counter = 1;
       
-      // Verificar se slug já existe (excluindo o tópico atual)
+      // Verificar se slug j� existe (excluindo o t�pico atual)
       while (true) {
         const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1 AND id != $2', [slug, id]);
         if (existingSlug.rows.length === 0) break;
@@ -5184,7 +5184,7 @@ app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
       RETURNING *
     `, [title.trim(), description?.trim() || null, slug, order_index || topic.order_index, cover_image_url || null, banner_image_url || null, id]);
     
-    console.log('[PUT /api/forum/topics/:id] Tópico editado com sucesso:', rows[0].title);
+    console.log('[PUT /api/forum/topics/:id] T�pico editado com sucesso:', rows[0].title);
     res.json(rows[0]);
   } catch (err) {
     console.error('[PUT /api/forum/topics/:id] Erro:', err);
@@ -5192,31 +5192,31 @@ app.put('/api/forum/topics/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Excluir tópico (apenas admin/instructor ou criador)
+// Excluir t�pico (apenas admin/instructor ou criador)
 app.delete('/api/forum/topics/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
-    console.log('[DELETE /api/forum/topics/:id] Excluindo tópico:', id);
-    console.log('[DELETE /api/forum/topics/:id] Usuário:', req.user);
+    console.log('[DELETE /api/forum/topics/:id] Excluindo t�pico:', id);
+    console.log('[DELETE /api/forum/topics/:id] Usu�rio:', req.user);
     
-    // Verificar se o tópico existe
+    // Verificar se o t�pico existe
     const topicCheck = await pool.query(`
       SELECT * FROM forum_topics WHERE id = $1
     `, [id]);
     
     if (topicCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Tópico não encontrado.' });
+      return res.status(404).json({ error: 'T�pico n�o encontrado.' });
     }
     
     const topic = topicCheck.rows[0];
     
-    // Verificar permissão (admin, instructor ou criador do tópico)
+    // Verificar permiss�o (admin, instructor ou criador do t�pico)
     if (!['admin', 'instructor'].includes(req.user.role) && topic.created_by !== req.user.id) {
-      return res.status(403).json({ error: 'Você não tem permissão para excluir este tópico.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para excluir este t�pico.' });
     }
     
-    // Verificar se há posts no tópico
+    // Verificar se h� posts no t�pico
     const postsCheck = await pool.query(`
       SELECT COUNT(*) as count FROM forum_posts WHERE topic_id = $1
     `, [id]);
@@ -5225,7 +5225,7 @@ app.delete('/api/forum/topics/:id', authenticateToken, async (req, res) => {
     
     if (postsCount > 0) {
       return res.status(400).json({ 
-        error: `Não é possível excluir o tópico. Ele possui ${postsCount} post(s). Remova todos os posts primeiro.` 
+        error: `N�o � poss�vel excluir o t�pico. Ele possui ${postsCount} post(s). Remova todos os posts primeiro.` 
       });
     }
     
@@ -5233,23 +5233,23 @@ app.delete('/api/forum/topics/:id', authenticateToken, async (req, res) => {
       DELETE FROM forum_topics WHERE id = $1
     `, [id]);
     
-    console.log('[DELETE /api/forum/topics/:id] Tópico excluído com sucesso:', topic.title);
-    res.json({ message: 'Tópico excluído com sucesso.' });
+    console.log('[DELETE /api/forum/topics/:id] T�pico exclu�do com sucesso:', topic.title);
+    res.json({ message: 'T�pico exclu�do com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/forum/topics/:id] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// Listar posts de um tópico
+// Listar posts de um t�pico
 app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => {
   try {
     const { slug } = req.params;
     const { page = 1, limit = 20, sort = 'latest' } = req.query;
     
-    console.log('[GET /api/forum/topics/:slug/posts] Buscando posts do tópico:', slug);
+    console.log('[GET /api/forum/topics/:slug/posts] Buscando posts do t�pico:', slug);
     
-    // Verificar se o tópico existe
+    // Verificar se o t�pico existe
     const topicResult = await pool.query(`
       SELECT ft.*, p.name as created_by_name
       FROM forum_topics ft
@@ -5258,13 +5258,13 @@ app.get('/api/forum/topics/:slug/posts', authenticateToken, async (req, res) => 
     `, [slug]);
     
     if (topicResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Tópico não encontrado.' });
+      return res.status(404).json({ error: 'T�pico n�o encontrado.' });
     }
     
     const topic = topicResult.rows[0];
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Construir query de ordenação
+    // Construir query de ordena��o
     let orderClause = 'ORDER BY fp.is_pinned DESC, fp.created_at DESC';
     if (sort === 'popular') {
       orderClause = 'ORDER BY fp.is_pinned DESC, fp.view_count DESC, fp.created_at DESC';
@@ -5323,19 +5323,19 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
     const { topic_id, title, content, tags = [], content_image_url } = req.body;
     
     console.log('[POST /api/forum/posts] Criando post:', title);
-    console.log('[POST /api/forum/posts] Usuário:', req.user);
+    console.log('[POST /api/forum/posts] Usu�rio:', req.user);
     
     if (!topic_id || !title || !content) {
-      return res.status(400).json({ error: 'Tópico, título e conteúdo são obrigatórios.' });
+      return res.status(400).json({ error: 'T�pico, t�tulo e conte�do s�o obrigat�rios.' });
     }
     
-    // Verificar se o tópico existe e está ativo
+    // Verificar se o t�pico existe e est� ativo
     const topicCheck = await pool.query(`
       SELECT id FROM forum_topics WHERE id = $1 AND is_active = true
     `, [topic_id]);
     
     if (topicCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Tópico não encontrado ou inativo.' });
+      return res.status(404).json({ error: 'T�pico n�o encontrado ou inativo.' });
     }
     
     const client = await pool.connect();
@@ -5354,7 +5354,7 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       // Inserir tags se fornecidas
       if (tags.length > 0) {
         for (const tagName of tags) {
-          // Verificar se tag existe, se não, criar
+          // Verificar se tag existe, se n�o, criar
           let tagResult = await client.query('SELECT id FROM forum_tags WHERE name = $1', [tagName]);
           let tagId;
           
@@ -5377,7 +5377,7 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       
       await client.query('COMMIT');
       
-      // Criar notificação para moderadores/admins sobre novo post
+      // Criar notifica��o para moderadores/admins sobre novo post
       try {
         const modAdminResult = await pool.query(`
           SELECT id, name
@@ -5396,8 +5396,8 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
           for (const moderator of modAdminResult.rows) {
             await createNotification(
               moderator.id,
-              'Novo post no fórum',
-              `${userName} criou um novo post "${title}" no tópico "${topicTitle}"`,
+              'Novo post no f�rum',
+              `${userName} criou um novo post "${title}" no t�pico "${topicTitle}"`,
               'forum_new_post',
               postResult.rows[0].id,
               'forum_post'
@@ -5405,7 +5405,7 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
           }
         }
       } catch (notificationErr) {
-        console.error('[NOTIFICATION] Erro ao criar notificação de novo post:', notificationErr);
+        console.error('[NOTIFICATION] Erro ao criar notifica��o de novo post:', notificationErr);
       }
       
       console.log('[POST /api/forum/posts] Post criado com sucesso:', postResult.rows[0].title);
@@ -5424,7 +5424,7 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
   }
 });
 
-// Buscar post específico com respostas
+// Buscar post espec�fico com respostas
 app.get('/api/forum/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -5455,12 +5455,12 @@ app.get('/api/forum/posts/:id', authenticateToken, async (req, res) => {
     `, [req.user.id, id]);
     
     if (postResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Post não encontrado.' });
+      return res.status(404).json({ error: 'Post n�o encontrado.' });
     }
     
     const post = postResult.rows[0];
     
-    // Incrementar contador de visualizações
+    // Incrementar contador de visualiza��es
     await pool.query(`
       UPDATE forum_posts SET view_count = view_count + 1 WHERE id = $1
     `, [id]);
@@ -5500,23 +5500,23 @@ app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => 
     const { content, parent_reply_id } = req.body;
     
     console.log('[POST /api/forum/posts/:id/replies] Criando resposta');
-    console.log('[POST /api/forum/posts/:id/replies] Usuário:', req.user);
+    console.log('[POST /api/forum/posts/:id/replies] Usu�rio:', req.user);
     
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo é obrigatório.' });
+      return res.status(400).json({ error: 'Conte�do � obrigat�rio.' });
     }
     
-    // Verificar se o post existe e não está bloqueado
+    // Verificar se o post existe e n�o est� bloqueado
     const postCheck = await pool.query(`
       SELECT id, is_locked FROM forum_posts WHERE id = $1
     `, [postId]);
     
     if (postCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Post não encontrado.' });
+      return res.status(404).json({ error: 'Post n�o encontrado.' });
     }
     
     if (postCheck.rows[0].is_locked) {
-      return res.status(400).json({ error: 'Este post está bloqueado para novas respostas.' });
+      return res.status(400).json({ error: 'Este post est� bloqueado para novas respostas.' });
     }
     
     const replyId = crypto.randomUUID();
@@ -5526,7 +5526,7 @@ app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => 
       RETURNING *
     `, [replyId, postId, parent_reply_id || null, content.trim(), req.user.id]);
     
-    // Criar notificação para o autor do post (se não for o mesmo usuário)
+    // Criar notifica��o para o autor do post (se n�o for o mesmo usu�rio)
     try {
       const postAuthorResult = await pool.query(`
         SELECT fp.author_id, fp.title, p.name as author_name
@@ -5551,7 +5551,7 @@ app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => 
         }
       }
     } catch (notificationErr) {
-      console.error('[NOTIFICATION] Erro ao criar notificação de resposta:', notificationErr);
+      console.error('[NOTIFICATION] Erro ao criar notifica��o de resposta:', notificationErr);
     }
     
     console.log('[POST /api/forum/posts/:id/replies] Resposta criada com sucesso');
@@ -5584,7 +5584,7 @@ app.post('/api/forum/posts/:id/like', authenticateToken, async (req, res) => {
         INSERT INTO forum_post_likes (post_id, user_id) VALUES ($1, $2)
       `, [postId, userId]);
       
-      // Criar notificação para o autor do post (se não for o mesmo usuário)
+      // Criar notifica��o para o autor do post (se n�o for o mesmo usu�rio)
       try {
         const postAuthorResult = await pool.query(`
           SELECT fp.author_id, fp.title, p.name as author_name
@@ -5609,7 +5609,7 @@ app.post('/api/forum/posts/:id/like', authenticateToken, async (req, res) => {
           }
         }
       } catch (notificationErr) {
-        console.error('[NOTIFICATION] Erro ao criar notificação de curtida:', notificationErr);
+        console.error('[NOTIFICATION] Erro ao criar notifica��o de curtida:', notificationErr);
       }
     }
     
@@ -5670,7 +5670,7 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
         INSERT INTO forum_reply_likes (reply_id, user_id) VALUES ($1, $2)
       `, [replyId, userId]);
       
-      // Criar notificação para o autor da resposta (se não for o mesmo usuário)
+      // Criar notifica��o para o autor da resposta (se n�o for o mesmo usu�rio)
       try {
         const replyAuthorResult = await pool.query(`
           SELECT fr.author_id, fr.content, p.name as author_name,
@@ -5698,7 +5698,7 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
           }
         }
       } catch (notificationErr) {
-        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em resposta:', notificationErr);
+        console.error('[NOTIFICATION] Erro ao criar notifica��o de curtida em resposta:', notificationErr);
       }
     }
     
@@ -5709,7 +5709,7 @@ app.post('/api/forum/replies/:id/like', authenticateToken, async (req, res) => {
   }
 });
 
-// Editar comentário/resposta do fórum
+// Editar coment�rio/resposta do f�rum
 app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
   try {
     const { id: replyId } = req.params;
@@ -5717,26 +5717,26 @@ app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     
     console.log('[PUT /api/forum/replies/:id] Editando resposta:', replyId);
-    console.log('[PUT /api/forum/replies/:id] Usuário:', req.user);
+    console.log('[PUT /api/forum/replies/:id] Usu�rio:', req.user);
     
     if (!content || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Conteúdo da resposta é obrigatório.' });
+      return res.status(400).json({ error: 'Conte�do da resposta � obrigat�rio.' });
     }
     
-    // Verificar se a resposta existe e se o usuário tem permissão para editar
+    // Verificar se a resposta existe e se o usu�rio tem permiss�o para editar
     const replyCheck = await pool.query(`
       SELECT author_id FROM forum_replies WHERE id = $1
     `, [replyId]);
     
     if (replyCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Resposta não encontrada.' });
+      return res.status(404).json({ error: 'Resposta n�o encontrada.' });
     }
     
     const reply = replyCheck.rows[0];
     
-    // Verificar permissões (apenas autor ou admin podem editar)
+    // Verificar permiss�es (apenas autor ou admin podem editar)
     if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Você não tem permissão para editar esta resposta.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para editar esta resposta.' });
     }
     
     // Atualizar a resposta
@@ -5755,29 +5755,29 @@ app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Deletar comentário/resposta do fórum
+// Deletar coment�rio/resposta do f�rum
 app.delete('/api/forum/replies/:id', authenticateToken, async (req, res) => {
   try {
     const { id: replyId } = req.params;
     const userId = req.user.id;
     
     console.log('[DELETE /api/forum/replies/:id] Deletando resposta:', replyId);
-    console.log('[DELETE /api/forum/replies/:id] Usuário:', req.user);
+    console.log('[DELETE /api/forum/replies/:id] Usu�rio:', req.user);
     
-    // Verificar se a resposta existe e se o usuário tem permissão para deletar
+    // Verificar se a resposta existe e se o usu�rio tem permiss�o para deletar
     const replyCheck = await pool.query(`
       SELECT author_id FROM forum_replies WHERE id = $1
     `, [replyId]);
     
     if (replyCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Resposta não encontrada.' });
+      return res.status(404).json({ error: 'Resposta n�o encontrada.' });
     }
     
     const reply = replyCheck.rows[0];
     
-    // Verificar permissões (apenas autor ou admin podem deletar)
+    // Verificar permiss�es (apenas autor ou admin podem deletar)
     if (reply.author_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Você não tem permissão para deletar esta resposta.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para deletar esta resposta.' });
     }
     
     const client = await pool.connect();
@@ -5811,17 +5811,12 @@ app.delete('/api/forum/replies/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Rota catch-all para SPA (deve ser a última rota)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ===== ENDPOINTS DE ADMINISTRAÇÃO PARA MIGRATION =====
+// ===== ENDPOINTS DE ADMINISTRA��O PARA MIGRATION =====
 
 // Verificar estrutura da tabela forum_posts
 app.get('/api/admin/check-forum-posts-structure', authenticateToken, async (req, res) => {
   try {
-    // Verificar se é admin
+    // Verificar se � admin
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
@@ -5840,15 +5835,15 @@ app.get('/api/admin/check-forum-posts-structure', authenticateToken, async (req,
   }
 });
 
-// Aplicar migration dos posts do fórum
+// Aplicar migration dos posts do f�rum
 app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req, res) => {
   try {
-    // Verificar se é admin
+    // Verificar se � admin
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
 
-    console.log('[MIGRATION] Aplicando migration dos posts do fórum...');
+    console.log('[MIGRATION] Aplicando migration dos posts do f�rum...');
     
     const client = await pool.connect();
     try {
@@ -5865,7 +5860,7 @@ app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req
         console.log('[MIGRATION] Adicionando coluna content_image_url...');
         await client.query('ALTER TABLE forum_posts ADD COLUMN content_image_url TEXT');
       } else {
-        console.log('[MIGRATION] Coluna content_image_url já existe');
+        console.log('[MIGRATION] Coluna content_image_url j� existe');
       }
       
       // Verificar se cover_image_url existe
@@ -5886,7 +5881,7 @@ app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req
         console.log('[MIGRATION] Removendo coluna cover_image_url...');
         await client.query('ALTER TABLE forum_posts DROP COLUMN cover_image_url');
       } else {
-        console.log('[MIGRATION] Coluna cover_image_url não existe');
+        console.log('[MIGRATION] Coluna cover_image_url n�o existe');
       }
       
       await client.query('COMMIT');
@@ -5920,33 +5915,33 @@ app.post('/api/admin/apply-forum-posts-migration', authenticateToken, async (req
   }
 });
 
-// Editar post do fórum
+// Editar post do f�rum
 app.put('/api/forum/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, tags = [], content_image_url } = req.body;
     
     console.log('[PUT /api/forum/posts/:id] Editando post:', id);
-    console.log('[PUT /api/forum/posts/:id] Usuário:', req.user);
+    console.log('[PUT /api/forum/posts/:id] Usu�rio:', req.user);
     
     if (!title || !content) {
-      return res.status(400).json({ error: 'Título e conteúdo são obrigatórios.' });
+      return res.status(400).json({ error: 'T�tulo e conte�do s�o obrigat�rios.' });
     }
     
-    // Verificar se o post existe e se o usuário tem permissão para editar
+    // Verificar se o post existe e se o usu�rio tem permiss�o para editar
     const postCheck = await pool.query(`
       SELECT author_id FROM forum_posts WHERE id = $1
     `, [id]);
     
     if (postCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Post não encontrado.' });
+      return res.status(404).json({ error: 'Post n�o encontrado.' });
     }
     
     const post = postCheck.rows[0];
     
-    // Verificar permissões (apenas autor ou admin podem editar)
+    // Verificar permiss�es (apenas autor ou admin podem editar)
     if (post.author_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Você não tem permissão para editar este post.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para editar este post.' });
     }
     
     const client = await pool.connect();
@@ -5967,7 +5962,7 @@ app.put('/api/forum/posts/:id', authenticateToken, async (req, res) => {
       // Inserir novas tags se fornecidas
       if (tags.length > 0) {
         for (const tagName of tags) {
-          // Verificar se tag existe, se não, criar
+          // Verificar se tag existe, se n�o, criar
           let tagResult = await client.query('SELECT id FROM forum_tags WHERE name = $1', [tagName]);
           let tagId;
           
@@ -6006,28 +6001,28 @@ app.put('/api/forum/posts/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Excluir post do fórum
+// Excluir post do f�rum
 app.delete('/api/forum/posts/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
     console.log('[DELETE /api/forum/posts/:id] Excluindo post:', id);
-    console.log('[DELETE /api/forum/posts/:id] Usuário:', req.user);
+    console.log('[DELETE /api/forum/posts/:id] Usu�rio:', req.user);
     
-    // Verificar se o post existe e se o usuário tem permissão para excluir
+    // Verificar se o post existe e se o usu�rio tem permiss�o para excluir
     const postCheck = await pool.query(`
       SELECT author_id FROM forum_posts WHERE id = $1
     `, [id]);
     
     if (postCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Post não encontrado.' });
+      return res.status(404).json({ error: 'Post n�o encontrado.' });
     }
     
     const post = postCheck.rows[0];
     
-    // Verificar permissões (apenas autor ou admin podem excluir)
+    // Verificar permiss�es (apenas autor ou admin podem excluir)
     if (post.author_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Você não tem permissão para excluir este post.' });
+      return res.status(403).json({ error: 'Voc� n�o tem permiss�o para excluir este post.' });
     }
     
     const client = await pool.connect();
@@ -6057,8 +6052,8 @@ app.delete('/api/forum/posts/:id', authenticateToken, async (req, res) => {
       
       await client.query('COMMIT');
       
-      console.log('[DELETE /api/forum/posts/:id] Post excluído com sucesso');
-      res.json({ success: true, message: 'Post excluído com sucesso.' });
+      console.log('[DELETE /api/forum/posts/:id] Post exclu�do com sucesso');
+      res.json({ success: true, message: 'Post exclu�do com sucesso.' });
       
     } catch (err) {
       await client.query('ROLLBACK');
@@ -6073,7 +6068,7 @@ app.delete('/api/forum/posts/:id', authenticateToken, async (req, res) => {
   }
 });
 
-// Buscar respostas de um post específico
+// Buscar respostas de um post espec�fico
 app.get('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
   try {
     const { id: postId } = req.params;
@@ -6102,4 +6097,226 @@ app.get('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
     console.error('[GET /api/forum/posts/:id/replies] Erro:', err);
     res.status(500).json({ error: 'Erro interno.' });
   }
+});
+
+// ===== SISTEMA DE WEBHOOKS =====
+
+// Fun��o para enviar webhook
+async function sendWebhook(eventType, payload) {
+  try {
+    // Buscar webhooks ativos que escutam este evento
+    const { rows: webhooks } = await pool.query(`
+      SELECT * FROM webhooks 
+      WHERE is_active = true 
+      AND $1 = ANY(events)
+    `, [eventType]);
+
+    for (const webhook of webhooks) {
+      try {
+        // Preparar payload final
+        const fullPayload = {
+          event: eventType,
+          timestamp: new Date().toISOString(),
+          data: payload
+        };
+
+        // Preparar headers
+        const headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': 'EduCommunity-Webhook/1.0'
+        };
+
+        // Adicionar assinatura HMAC se houver chave secreta
+        if (webhook.secret_key) {
+          const crypto = require('crypto');
+          const signature = crypto
+            .createHmac('sha256', webhook.secret_key)
+            .update(JSON.stringify(fullPayload))
+            .digest('hex');
+          headers['X-Webhook-Signature'] = `sha256=${signature}`;
+        }
+
+        // Fazer requisi��o
+        const fetch = (await import('node-fetch')).default;
+        const response = await fetch(webhook.url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fullPayload),
+          timeout: 10000 // 10 segundos
+        });
+
+        const responseText = await response.text();
+        const isSuccess = response.status >= 200 && response.status < 300;
+
+        // Log da tentativa
+        await pool.query(`
+          INSERT INTO webhook_logs (webhook_id, event_type, payload, response_status, response_body, is_success)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          webhook.id,
+          eventType,
+          fullPayload,
+          response.status,
+          responseText.substring(0, 5000), // Limitar tamanho
+          isSuccess
+        ]);
+
+        if (!isSuccess) {
+          console.error(`[WEBHOOK] Erro no webhook ${webhook.name}: ${response.status} ${responseText}`);
+        }
+
+      } catch (webhookError) {
+        // Log do erro
+        await pool.query(`
+          INSERT INTO webhook_logs (webhook_id, event_type, payload, error_message, is_success)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          webhook.id,
+          eventType,
+          { event: eventType, timestamp: new Date().toISOString(), data: payload },
+          webhookError.message,
+          false
+        ]);
+        
+        console.error(`[WEBHOOK] Erro ao enviar webhook ${webhook.name}:`, webhookError);
+      }
+    }
+  } catch (error) {
+    console.error('[WEBHOOK] Erro geral no sistema de webhooks:', error);
+  }
+}
+
+// ===== ROTAS DA API PARA WEBHOOKS =====
+
+// Listar webhooks
+app.get('/api/webhooks', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/webhooks] Usu�rio:', req.user);
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    console.log('[GET /api/webhooks] Executando query...');
+    const { rows } = await pool.query(`
+      SELECT id, name, url, events, is_active, created_at, updated_at
+      FROM webhooks 
+      ORDER BY created_at DESC
+    `);
+    console.log('[GET /api/webhooks] Resultado:', rows);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/webhooks]', err);
+    res.status(500).json({ error: 'Erro ao buscar webhooks.' });
+  }
+});
+
+// Criar webhook
+app.post('/api/webhooks', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { name, url, events, is_active = true, secret_key } = req.body;
+
+    if (!name || !url || !events || !Array.isArray(events)) {
+      return res.status(400).json({ error: 'Nome, URL e eventos s�o obrigat�rios.' });
+    }
+
+    const id = crypto.randomUUID();
+    const { rows } = await pool.query(`
+      INSERT INTO webhooks (id, name, url, events, is_active, secret_key)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, url, events, is_active, created_at, updated_at
+    `, [id, name, url, events, is_active, secret_key || null]);
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/webhooks]', err);
+    res.status(500).json({ error: 'Erro ao criar webhook.' });
+  }
+});
+
+// Atualizar webhook
+app.put('/api/webhooks/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    const { name, url, events, is_active, secret_key } = req.body;
+
+    if (!name || !url || !events || !Array.isArray(events)) {
+      return res.status(400).json({ error: 'Nome, URL e eventos s�o obrigat�rios.' });
+    }
+
+    const { rows } = await pool.query(`
+      UPDATE webhooks 
+      SET name = $1, url = $2, events = $3, is_active = $4, secret_key = $5
+      WHERE id = $6
+      RETURNING id, name, url, events, is_active, created_at, updated_at
+    `, [name, url, events, is_active, secret_key || null, id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Webhook n�o encontrado.' });
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/webhooks/:id]', err);
+    res.status(500).json({ error: 'Erro ao atualizar webhook.' });
+  }
+});
+
+// Deletar webhook
+app.delete('/api/webhooks/:id', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+
+    const { rowCount } = await pool.query('DELETE FROM webhooks WHERE id = $1', [id]);
+
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Webhook n�o encontrado.' });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/webhooks/:id]', err);
+    res.status(500).json({ error: 'Erro ao deletar webhook.' });
+  }
+});
+
+// Buscar logs de um webhook
+app.get('/api/webhooks/:id/logs', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+
+    const { rows } = await pool.query(`
+      SELECT * FROM webhook_logs 
+      WHERE webhook_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2 OFFSET $3
+    `, [id, parseInt(limit), parseInt(offset)]);
+
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/webhooks/:id/logs]', err);
+    res.status(500).json({ error: 'Erro ao buscar logs.' });
+  }
+});
+
+// Rota catch-all para SPA (deve ser a �ltima rota)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

@@ -548,3 +548,103 @@ export interface ConversationWithMessages {
   messages: Message[];
   participants: ConversationParticipant[];
 }
+
+// Sistema de Webhooks
+export interface Webhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  is_active: boolean;
+  secret_key?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookLog {
+  id: string;
+  webhook_id: string;
+  event_type: string;
+  payload: any;
+  response_status?: number;
+  response_body?: string;
+  error_message?: string;
+  attempt_count: number;
+  is_success: boolean;
+  created_at: string;
+}
+
+export interface CreateWebhookData {
+  name: string;
+  url: string;
+  events: string[];
+  is_active?: boolean;
+  secret_key?: string;
+}
+
+export interface UpdateWebhookData {
+  name?: string;
+  url?: string;
+  events?: string[];
+  is_active?: boolean;
+  secret_key?: string;
+}
+
+// Tipos de eventos disponíveis
+export const WEBHOOK_EVENTS = {
+  USER_CREATED: 'user.created',
+  USER_UPDATED: 'user.updated',
+  USER_DELETED: 'user.deleted',
+  COURSE_CREATED: 'course.created',
+  COURSE_UPDATED: 'course.updated',
+  COURSE_DELETED: 'course.deleted',
+  POST_CREATED: 'post.created',
+  POST_UPDATED: 'post.updated',
+  POST_DELETED: 'post.deleted',
+  ENROLLMENT_CREATED: 'enrollment.created',
+  ENROLLMENT_COMPLETED: 'enrollment.completed',
+  CLASS_CREATED: 'class.created',
+  CLASS_UPDATED: 'class.updated',
+  CLASS_DELETED: 'class.deleted',
+  LESSON_COMPLETED: 'lesson.completed',
+  COMMENT_CREATED: 'comment.created',
+  COMMENT_UPDATED: 'comment.updated',
+  COMMENT_DELETED: 'comment.deleted',
+  LESSON_COMMENT_CREATED: 'lesson_comment.created',
+  LESSON_COMMENT_UPDATED: 'lesson_comment.updated',
+  LESSON_COMMENT_DELETED: 'lesson_comment.deleted',
+  FORUM_REPLY_CREATED: 'forum_reply.created',
+  FORUM_REPLY_UPDATED: 'forum_reply.updated',
+  FORUM_REPLY_DELETED: 'forum_reply.deleted',
+  NOTIFICATION_CREATED: 'notification.created',
+} as const;
+
+export type WebhookEventType = typeof WEBHOOK_EVENTS[keyof typeof WEBHOOK_EVENTS];
+
+export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
+  [WEBHOOK_EVENTS.USER_CREATED]: 'Usuário Criado',
+  [WEBHOOK_EVENTS.USER_UPDATED]: 'Usuário Atualizado',
+  [WEBHOOK_EVENTS.USER_DELETED]: 'Usuário Deletado',
+  [WEBHOOK_EVENTS.COURSE_CREATED]: 'Curso Criado',
+  [WEBHOOK_EVENTS.COURSE_UPDATED]: 'Curso Atualizado',
+  [WEBHOOK_EVENTS.COURSE_DELETED]: 'Curso Deletado',
+  [WEBHOOK_EVENTS.POST_CREATED]: 'Post Criado',
+  [WEBHOOK_EVENTS.POST_UPDATED]: 'Post Atualizado',
+  [WEBHOOK_EVENTS.POST_DELETED]: 'Post Deletado',
+  [WEBHOOK_EVENTS.ENROLLMENT_CREATED]: 'Matrícula Criada',
+  [WEBHOOK_EVENTS.ENROLLMENT_COMPLETED]: 'Matrícula Concluída',
+  [WEBHOOK_EVENTS.CLASS_CREATED]: 'Turma Criada',
+  [WEBHOOK_EVENTS.CLASS_UPDATED]: 'Turma Atualizada',
+  [WEBHOOK_EVENTS.CLASS_DELETED]: 'Turma Deletada',
+  [WEBHOOK_EVENTS.LESSON_COMPLETED]: 'Aula Concluída',
+  [WEBHOOK_EVENTS.COMMENT_CREATED]: 'Comentário Criado',
+  [WEBHOOK_EVENTS.COMMENT_UPDATED]: 'Comentário Atualizado',
+  [WEBHOOK_EVENTS.COMMENT_DELETED]: 'Comentário Deletado',
+  [WEBHOOK_EVENTS.LESSON_COMMENT_CREATED]: 'Comentário de Aula Criado',
+  [WEBHOOK_EVENTS.LESSON_COMMENT_UPDATED]: 'Comentário de Aula Atualizado',
+  [WEBHOOK_EVENTS.LESSON_COMMENT_DELETED]: 'Comentário de Aula Deletado',
+  [WEBHOOK_EVENTS.FORUM_REPLY_CREATED]: 'Resposta do Fórum Criada',
+  [WEBHOOK_EVENTS.FORUM_REPLY_UPDATED]: 'Resposta do Fórum Atualizada',
+  [WEBHOOK_EVENTS.FORUM_REPLY_DELETED]: 'Resposta do Fórum Deletada',
+  [WEBHOOK_EVENTS.NOTIFICATION_CREATED]: 'Notificação Criada',
+};
