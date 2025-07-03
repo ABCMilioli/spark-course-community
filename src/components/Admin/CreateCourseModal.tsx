@@ -34,12 +34,8 @@ const courseSchema = z.object({
   level: z.string().min(3, { message: 'O nível é obrigatório.' }),
   isPaid: z.boolean(),
   price: z.string(),
-  thumbnail: z.string().refine((val) => !val || val === '' || /^https?:\/\/.+/.test(val), {
-    message: 'URL da imagem inválida.'
-  }).optional(),
-  demo_video: z.string().refine((val) => !val || val === '' || /^https?:\/\/.+/.test(val), {
-    message: 'URL do vídeo inválida.'
-  }).optional(),
+  thumbnail: z.string().optional(),
+  demo_video: z.string().optional(),
 });
 
 type CourseFormValues = z.infer<typeof courseSchema>;
@@ -204,10 +200,13 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
     try {
       setIsUploading(true);
       
-      // Validação adicional do preço
-      if (data.isPaid && (!data.price || parseFloat(data.price) <= 0)) {
-        sonnerToast.error('Para cursos pagos, o preço deve ser maior que zero.');
-        return;
+      // Validação do preço
+      if (data.isPaid) {
+        const price = parseFloat(data.price);
+        if (isNaN(price) || price <= 0) {
+          sonnerToast.error('Para cursos pagos, o preço deve ser maior que zero.');
+          return;
+        }
       }
 
       // Upload de thumbnail se selecionado
@@ -349,7 +348,10 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="level">Nível</Label>
-              <Select onValueChange={(value) => form.setValue("level", value)}>
+              <Select 
+                value={form.watch("level")} 
+                onValueChange={(value) => form.setValue("level", value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione o nível" />
                 </SelectTrigger>
@@ -366,16 +368,63 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
 
             <div className="space-y-2">
               <Label htmlFor="price">Preço (R$)</Label>
-              <Input
-                id="price"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                {...form.register("price")}
-              />
+              <div className="relative">
+                <Input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder={isPaid ? "0.00" : "Gratuito"}
+                  disabled={!isPaid}
+                  className={!isPaid ? "bg-muted text-muted-foreground" : ""}
+                  {...form.register("price")}
+                  onBlur={(e) => {
+                    if (isPaid && e.target.value) {
+                      const price = parseFloat(e.target.value);
+                      if (isNaN(price) || price <= 0) {
+                        form.setError("price", {
+                          type: "manual",
+                          message: "Para cursos pagos, o preço deve ser maior que zero."
+                        });
+                      } else {
+                        form.clearErrors("price");
+                      }
+                    }
+                  }}
+                />
+                {!isPaid && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="text-sm text-muted-foreground">Gratuito</span>
+                  </div>
+                )}
+              </div>
               {form.formState.errors.price && (
                 <p className="text-sm text-destructive">{form.formState.errors.price.message}</p>
               )}
+              {isPaid && (
+                <p className="text-xs text-muted-foreground">
+                  Digite o valor em reais (ex: 99.90)
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="isPaid"
+                  checked={isPaid}
+                  onCheckedChange={(checked) => {
+                    form.setValue("isPaid", checked);
+                    if (!checked) {
+                      form.setValue("price", "0");
+                    }
+                  }}
+                />
+                <Label htmlFor="isPaid">Curso Pago</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {isPaid ? "Ative para definir um preço" : "Desative para curso gratuito"}
+              </p>
             </div>
           </div>
 
