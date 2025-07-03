@@ -1063,11 +1063,35 @@ app.get('/api/dashboard-stats', authenticateToken, async (req, res) => {
 // Endpoint para popular tags
 app.get('/api/popular-tags', authenticateToken, async (req, res) => {
   try {
-    // Por enquanto, retornar tags fixas
-    res.json(['javascript', 'react', 'nodejs', 'python', 'docker', 'aws']);
+    // Buscar categorias mais populares baseadas nos posts existentes
+    const { rows } = await pool.query(`
+      SELECT category, COUNT(*) as count
+      FROM posts 
+      WHERE category IS NOT NULL AND category <> ''
+      GROUP BY category 
+      ORDER BY count DESC 
+      LIMIT 8
+    `);
+    
+    const popularTags = rows.map(row => row.category);
+    
+    // Se não houver tags suficientes, adicionar algumas padrão
+    if (popularTags.length < 6) {
+      const defaultTags = ['javascript', 'react', 'nodejs', 'python', 'docker', 'aws'];
+      const existingTags = new Set(popularTags);
+      
+      for (const tag of defaultTags) {
+        if (!existingTags.has(tag) && popularTags.length < 8) {
+          popularTags.push(tag);
+        }
+      }
+    }
+    
+    res.json(popularTags);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erro interno.' });
+    console.error('[GET /api/popular-tags] Erro:', err);
+    // Fallback para tags fixas em caso de erro
+    res.json(['javascript', 'react', 'nodejs', 'python', 'docker', 'aws']);
   }
 });
 

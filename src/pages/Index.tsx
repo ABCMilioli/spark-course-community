@@ -12,6 +12,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CourseWithInstructor } from '@/types';
 import { useEffect, useState } from 'react';
+import { CreatePostModal } from '@/components/Admin/CreatePostModal';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -89,10 +90,11 @@ const LoadingSkeleton = () => (
 export default function Index() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   
   console.log('Index component rendering, user:', user?.name, 'role:', user?.role);
   
-  const { data: posts, isLoading: isLoadingPosts, error: postsError } = useQuery({
+  const { data: posts, isLoading: isLoadingPosts, error: postsError, refetch: refetchPosts } = useQuery({
     queryKey: ['posts'],
     queryFn: fetchPosts,
   });
@@ -324,13 +326,21 @@ export default function Index() {
                 <p className="text-muted-foreground mb-4">
                   Faça perguntas, compartilhe conhecimento e conecte-se com outros desenvolvedores.
                 </p>
-                <Button className="w-full">Criar Post</Button>
+                <Button className="w-full" onClick={() => setCreateModalOpen(true)}>
+                  Criar Post
+                </Button>
               </CardContent>
             </Card>
 
             <Card className="glass-effect">
               <CardHeader>
-                <CardTitle>Tópicos Populares</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Tópicos Populares
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Clique em um tópico para ver posts relacionados
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
@@ -338,7 +348,14 @@ export default function Index() {
                     Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-6 w-24 rounded-full" />)
                   ) : (
                     popularTags?.map((tag) => (
-                      <Badge key={tag} variant="outline">#{tag}</Badge>
+                      <Badge 
+                        key={tag} 
+                        variant="outline" 
+                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                        onClick={() => navigate(`/community?search=${encodeURIComponent(tag)}`)}
+                      >
+                        #{tag}
+                      </Badge>
                     ))
                   )}
                 </div>
@@ -393,6 +410,14 @@ export default function Index() {
           )}
         </TabsContent>
       </Tabs>
+      
+      <CreatePostModal
+        open={isCreateModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={() => {
+          refetchPosts();
+        }}
+      />
     </div>
   );
 }

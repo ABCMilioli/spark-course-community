@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/Community/PostCard";
 import { CreatePostModal } from "@/components/Admin/CreatePostModal";
@@ -80,11 +80,43 @@ export default function Community() {
 
       {error && <div className="text-red-500">Erro ao carregar os posts: {error.message}</div>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredPosts?.map((post) => (
-          <PostCard key={post.id} post={post} onClick={handlePostClick} />
-        ))}
-      </div>
+      {!isLoading && !error && (
+        <>
+          {searchTerm && (
+            <div className="mb-4 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                Buscando por: <span className="font-medium text-foreground">"{searchTerm}"</span>
+                {filteredPosts && (
+                  <span className="ml-2">
+                    ({filteredPosts.length} resultado{filteredPosts.length !== 1 ? 's' : ''})
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {filteredPosts && filteredPosts.length === 0 && searchTerm && (
+            <div className="text-center py-8">
+              <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Nenhum resultado encontrado</h3>
+              <p className="text-muted-foreground mb-4">
+                Não encontramos posts com o termo "{searchTerm}". Tente uma busca diferente.
+              </p>
+              <Button variant="outline" onClick={() => navigate('/community')}>
+                Limpar Busca
+              </Button>
+            </div>
+          )}
+
+          {filteredPosts && filteredPosts.length > 0 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredPosts.map((post) => (
+                <PostCard key={post.id} post={post} onClick={handlePostClick} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       <CreatePostModal
         open={isCreateModalOpen}
