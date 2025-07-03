@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/Community/PostCard";
@@ -21,12 +21,23 @@ async function fetchPosts() {
 
 export default function Community() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
 
   const { data: posts, isLoading, error } = useQuery({
     queryKey: ['posts'],
     queryFn: fetchPosts,
   });
+
+  // Pega o termo de busca da URL
+  const searchParams = new URLSearchParams(location.search);
+  const searchTerm = searchParams.get('search')?.toLowerCase() || '';
+
+  // Filtra os posts pelo termo buscado (título ou conteúdo)
+  const filteredPosts = posts?.filter(post =>
+    post.title.toLowerCase().includes(searchTerm) ||
+    post.content?.toLowerCase().includes(searchTerm)
+  );
 
   // Função para lidar com clique no post
   const handlePostClick = (postId: string) => {
@@ -70,7 +81,7 @@ export default function Community() {
       {error && <div className="text-red-500">Erro ao carregar os posts: {error.message}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {posts?.map((post) => (
+        {filteredPosts?.map((post) => (
           <PostCard key={post.id} post={post} onClick={handlePostClick} />
         ))}
       </div>

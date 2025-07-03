@@ -5,9 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { NotificationBell } from "./NotificationBell";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 
 export function Header() {
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
   // Log para debug
   console.log('Header - Current user:', user);
@@ -29,6 +33,13 @@ export function Header() {
             <Input
               placeholder="Buscar posts, cursos, usuários..."
               className="pl-10 bg-muted/50 border-none focus:bg-background"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && search.trim()) {
+                  navigate(`/community?search=${encodeURIComponent(search.trim())}`);
+                }
+              }}
             />
           </div>
         </div>
