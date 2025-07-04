@@ -4,9 +4,10 @@ import { Plus, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PostCard } from "@/components/Community/PostCard";
 import { CreatePostModal } from "@/components/Admin/CreatePostModal";
-import { useQuery } from "@tanstack/react-query";
+import { EditPostModal } from "@/components/Profile/EditPostModal";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from 'axios';
-import { PostWithAuthor } from "@/types";
+import { PostWithAuthor, Post } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
@@ -22,7 +23,10 @@ async function fetchPosts() {
 export default function Community() {
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setEditModalOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
 
   const { data: posts, isLoading, error } = useQuery({
     queryKey: ['posts'],
@@ -42,6 +46,18 @@ export default function Community() {
   // Função para lidar com clique no post
   const handlePostClick = (postId: string) => {
     navigate(`/post/${postId}`);
+  };
+
+  // Função para editar post
+  const handleEditPost = (post: Post) => {
+    setEditingPost(post);
+    setEditModalOpen(true);
+  };
+
+  // Função para deletar post
+  const handleDeletePost = (postId: string) => {
+    // Invalidar queries para atualizar a lista
+    queryClient.invalidateQueries({ queryKey: ['posts'] });
   };
 
   return (
@@ -111,7 +127,13 @@ export default function Community() {
           {filteredPosts && filteredPosts.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredPosts.map((post) => (
-                <PostCard key={post.id} post={post} onClick={handlePostClick} />
+                <PostCard 
+                  key={post.id} 
+                  post={post} 
+                  onClick={handlePostClick}
+                  onEdit={handleEditPost}
+                  onDelete={handleDeletePost}
+                />
               ))}
             </div>
           )}
@@ -122,6 +144,14 @@ export default function Community() {
         open={isCreateModalOpen}
         onOpenChange={setCreateModalOpen}
       />
+
+      {editingPost && (
+        <EditPostModal
+          open={isEditModalOpen}
+          onOpenChange={setEditModalOpen}
+          post={editingPost}
+        />
+      )}
     </div>
   );
 }

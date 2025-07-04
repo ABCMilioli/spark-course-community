@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -13,11 +13,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { toast as sonnerToast } from 'sonner';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Image, Video, X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { Post } from '@/types';
 
@@ -41,23 +39,8 @@ const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) {
   const queryClient = useQueryClient();
-  const [customCategory, setCustomCategory] = useState('');
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string>('');
-  const [previewVideo, setPreviewVideo] = useState<string>('');
 
-  // Buscar categorias existentes
-  const { data: categories, isLoading: isCategoriesLoading } = useQuery({
-    queryKey: ['post-categories'],
-    queryFn: async () => {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/posts/categories`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      return response.data;
-    },
-    enabled: open
-  });
+
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postSchema),
@@ -72,8 +55,6 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
 
   // Reset form when post changes
   useEffect(() => {
-    setCustomCategory('');
-    setShowCustomInput(false);
     if (post && open) {
       form.reset({
         title: post.title,
@@ -82,8 +63,6 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
         cover_image: post.cover_image || '',
         video_url: post.video_url || '',
       });
-      setPreviewImage(post.cover_image || '');
-      setPreviewVideo(post.video_url || '');
     }
   }, [post, open, form]);
 
@@ -114,45 +93,22 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
   });
 
   const onSubmit = (data: PostFormValues) => {
-    const category = showCustomInput ? customCategory.trim() : data.category;
-    updatePostMutation.mutate({ ...data, category });
+    updatePostMutation.mutate(data);
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    form.setValue('cover_image', value);
-    setPreviewImage(value);
-  };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    form.setValue('video_url', value);
-    setPreviewVideo(value);
-  };
 
-  const clearImage = () => {
-    form.setValue('cover_image', '');
-    setPreviewImage('');
-  };
 
-  const clearVideo = () => {
-    form.setValue('video_url', '');
-    setPreviewVideo('');
-  };
 
-  useEffect(() => {
-    if (categories) {
-      console.log('[EditPostModal] Categorias carregadas:', categories);
-    }
-  }, [categories]);
-
-  if (!post) return null;
+  if (!post) {
+    return null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Editar Post</DialogTitle>
+          <DialogTitle>Editar Post: {post.title}</DialogTitle>
           <DialogDescription>
             Atualize o conteúdo do seu post. Clique em salvar quando terminar.
           </DialogDescription>
@@ -173,51 +129,6 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Categoria</Label>
-              <Select
-                value={showCustomInput ? 'outra' : form.watch('category') || ''}
-                onValueChange={(value) => {
-                  if (value === 'outra') {
-                    setShowCustomInput(true);
-                    setCustomCategory('');
-                    form.setValue('category', '');
-                  } else {
-                    setShowCustomInput(false);
-                    form.setValue('category', value);
-                  }
-                }}
-                disabled={isCategoriesLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={isCategoriesLoading ? 'Carregando...' : 'Selecione uma categoria'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories && categories.length > 0 ? (
-                    categories
-                      .filter((cat: string) => !!cat && cat.trim() !== '')
-                      .map((cat: string) => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))
-                  ) : (
-                    <SelectItem value="no-categories" disabled>Nenhuma categoria encontrada</SelectItem>
-                  )}
-                  <SelectItem value="outra">Outra...</SelectItem>
-                </SelectContent>
-              </Select>
-              {showCustomInput && (
-                <Input
-                  className="mt-2"
-                  placeholder="Digite uma nova categoria"
-                  value={customCategory}
-                  onChange={e => setCustomCategory(e.target.value)}
-                  maxLength={40}
-                  required
-                  autoFocus
-                />
-              )}
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="content">Conteúdo</Label>
               <Textarea
                 id="content"
@@ -228,69 +139,33 @@ export function EditPostModal({ open, onOpenChange, post }: EditPostModalProps) 
               {form.formState.errors.content && (
                 <span className="text-xs text-destructive">{form.formState.errors.content.message}</span>
               )}
-              <div className="text-xs text-muted-foreground text-right">
-                {form.watch('content')?.length || 0} caracteres
-              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="cover_image" className="flex items-center gap-2">
-                <Image className="w-4 h-4" />
-                Imagem de Capa (URL)
-              </Label>
-              <div className="flex gap-2">
-                <Input 
-                  id="cover_image" 
-                  placeholder="https://exemplo.com/imagem.jpg" 
-                  value={form.watch('cover_image') || ''}
-                  onChange={handleImageChange}
-                />
-                {previewImage && (
-                  <Button type="button" variant="outline" size="icon" onClick={clearImage}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-              {previewImage && (
-                <div className="mt-2">
-                  <img 
-                    src={previewImage} 
-                    alt="Preview" 
-                    className="w-full h-32 object-cover rounded-lg border"
-                    onError={() => setPreviewImage('')}
-                  />
-                </div>
-              )}
-              <span className="text-xs text-destructive">{form.formState.errors.cover_image?.message}</span>
+              <Label htmlFor="category">Categoria</Label>
+              <Input
+                id="category"
+                {...form.register('category')}
+                placeholder="Categoria (opcional)"
+              />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="video_url" className="flex items-center gap-2">
-                <Video className="w-4 h-4" />
-                Vídeo (URL)
-              </Label>
-              <div className="flex gap-2">
-                <Input 
-                  id="video_url" 
-                  placeholder="https://youtube.com/watch?v=..." 
-                  value={form.watch('video_url') || ''}
-                  onChange={handleVideoChange}
-                />
-                {previewVideo && (
-                  <Button type="button" variant="outline" size="icon" onClick={clearVideo}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-              {previewVideo && (
-                <div className="mt-2">
-                  <div className="text-xs text-muted-foreground mb-1">Preview do vídeo:</div>
-                  <div className="w-full h-32 bg-muted rounded-lg flex items-center justify-center">
-                    <Video className="w-8 h-8 text-muted-foreground" />
-                  </div>
-                </div>
-              )}
-              <span className="text-xs text-destructive">{form.formState.errors.video_url?.message}</span>
+              <Label htmlFor="cover_image">Imagem de Capa (URL)</Label>
+              <Input
+                id="cover_image"
+                {...form.register('cover_image')}
+                placeholder="https://exemplo.com/imagem.jpg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="video_url">Vídeo (URL)</Label>
+              <Input
+                id="video_url"
+                {...form.register('video_url')}
+                placeholder="https://youtube.com/watch?v=..."
+              />
             </div>
           </div>
 

@@ -22,10 +22,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Adicionar log para todas as requisi��es
+// Log simples para requisições
 app.use((req, res, next) => {
-  process.stdout.write(`[${new Date().toISOString()}] ${req.method} ${req.path}\n`);
-  process.stdout.write(`[DEBUG] Headers: ${JSON.stringify(req.headers)}\n`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`${req.method} ${req.path}`);
+  }
   next();
 });
 
@@ -80,30 +81,19 @@ if (missingVars.length > 0) {
 
 // Middleware para verificar token
 const authenticateToken = (req, res, next) => {
-  process.stdout.write(`\n[AUTH] === IN�CIO DA AUTENTICA��O ===\n`);
-  process.stdout.write(`[AUTH] Rota: ${req.method} ${req.path}\n`);
-  process.stdout.write(`[AUTH] Headers: ${JSON.stringify(req.headers)}\n`);
-  
   const auth = req.headers.authorization;
   if (!auth) {
-    process.stdout.write('[AUTH] Token ausente\n');
-    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (erro) ===\n\n');
     return res.status(401).json({ error: 'Token ausente.' });
   }
   
   try {
     const [, token] = auth.split(' ');
-    process.stdout.write(`[AUTH] Token recebido: ${token}\n`);
     const decoded = jwt.verify(token, JWT_SECRET);
-    process.stdout.write(`[AUTH] Token v�lido para usu�rio: ${JSON.stringify(decoded)}\n`);
-    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (sucesso) ===\n\n');
     req.user = decoded;
     next();
   } catch (err) {
-    process.stdout.write(`[AUTH] Token inv�lido: ${err.message}\n`);
-    process.stdout.write(`[AUTH] Stack trace: ${err.stack}\n`);
-    process.stdout.write('[AUTH] === FIM DA AUTENTICA��O (erro) ===\n\n');
-    res.status(401).json({ error: 'Token inv�lido.' });
+    console.error(`[AUTH] Token inválido para ${req.method} ${req.path}:`, err.message);
+    res.status(401).json({ error: 'Token inválido.' });
   }
 };
 
@@ -251,12 +241,7 @@ app.post('/api/forum/upload-image', authenticateToken, upload.single('image'), a
 
 // ===== SISTEMA DE F�RUM: GET T�PICOS =====
 app.get('/api/forum/topics', authenticateToken, async (req, res) => {
-  process.stdout.write('\n[DEBUG] ========== In�cio GET /api/forum/topics ==========\n');
-  process.stdout.write(`[DEBUG] Usu�rio: ${JSON.stringify(req.user)}\n`);
   try {
-    process.stdout.write('[GET /api/forum/topics] Iniciando busca de t�picos do f�rum...\n');
-    process.stdout.write('[GET /api/forum/topics] Executando query...\n');
-    
     const { rows } = await pool.query(`
       SELECT 
         ft.*,
@@ -273,23 +258,15 @@ app.get('/api/forum/topics', authenticateToken, async (req, res) => {
       ORDER BY ft.is_pinned DESC, ft.order_index ASC, ft.created_at ASC
     `);
     
-    process.stdout.write('[GET /api/forum/topics] Query executada com sucesso\n');
-    process.stdout.write(`[GET /api/forum/topics] T�picos encontrados: ${rows.length}\n`);
-    process.stdout.write(`[GET /api/forum/topics] IDs dos t�picos: ${rows.map(r => r.id).join(', ')}\n`);
-    
     if (!Array.isArray(rows)) {
-      process.stdout.write('[GET /api/forum/topics] Erro: rows n�o � um array\n');
       res.json([]);
       return;
     }
     
     res.json(rows);
-    process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics ==========\n\n');
   } catch (err) {
-    process.stdout.write(`[GET /api/forum/topics] Erro ao buscar t�picos: ${err}\n`);
-    process.stdout.write(`[GET /api/forum/topics] Stack trace: ${err.stack}\n`);
-    res.status(500).json({ error: 'Erro interno ao buscar t�picos.' });
-    process.stdout.write('[DEBUG] ========== Fim GET /api/forum/topics (com erro) ==========\n\n');
+    console.error('[GET /api/forum/topics] Erro ao buscar tópicos:', err.message);
+    res.status(500).json({ error: 'Erro interno ao buscar tópicos.' });
   }
 });
 
@@ -4240,162 +4217,63 @@ app.get('/api/classes/:id/courses', authenticateToken, async (req, res) => {
     res.set('Pragma', 'no-cache');
     
     const { id } = req.params;
-    process.stdout.write('\n[GET /api/classes/:id/courses] === IN�CIO DA REQUISI��O ===\n');
-    process.stdout.write(`[GET /api/classes/:id/courses] ID da turma: ${id}\n`);
-    process.stdout.write(`[GET /api/classes/:id/courses] Usu�rio: ${JSON.stringify(req.user)}\n`);
     
-    // Primeiro, buscar a turma para verificar se o usu�rio tem acesso
+    // Buscar a turma para verificar se o usuário tem acesso
     const classResult = await pool.query(`
       SELECT instructor_id, is_public FROM class_instances WHERE id = $1
     `, [id]);
     
-    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da busca da turma: ${JSON.stringify(classResult.rows)}\n`);
-    
     if (classResult.rows.length === 0) {
-      process.stdout.write('[GET /api/classes/:id/courses] Turma n�o encontrada\n');
-      return res.status(404).json({ error: 'Turma n�o encontrada.' });
+      return res.status(404).json({ error: 'Turma não encontrada.' });
     }
     
     const classData = classResult.rows[0];
-    process.stdout.write(`[GET /api/classes/:id/courses] Dados da turma: ${JSON.stringify(classData)}\n`);
+    const query = `
+      SELECT 
+        cc.id,
+        cc.class_id,
+        cc.course_id,
+        cc.is_required,
+        cc.order_index,
+        cc.created_at,
+        c.title as course_title,
+        c.description as course_description,
+        c.thumbnail_url as course_thumbnail,
+        c.level,
+        c.price,
+        p.name as instructor_name,
+        p.avatar_url as instructor_avatar
+      FROM class_courses cc
+      JOIN courses c ON cc.course_id = c.id
+      JOIN profiles p ON c.instructor_id = p.id
+      WHERE cc.class_id = $1
+      ORDER BY cc.order_index ASC, cc.created_at ASC
+    `;
     
-    // Verificar se o usu�rio tem acesso aos cursos
-    // 1. Se � o instructor da turma
+    // Verificar se o usuário tem acesso aos cursos
+    // 1. Se é o instructor da turma
     if (classData.instructor_id === req.user.id) {
-      process.stdout.write('[GET /api/classes/:id/courses] Usu�rio � o instructor da turma\n');
-      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
-      
-      // Primeiro, verificar se os cursos existem
-      const coursesCheck = await pool.query(`
-        SELECT id, title FROM courses WHERE id IN (
-          SELECT course_id FROM class_courses WHERE class_id = $1
-        )
-      `, [id]);
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados na tabela courses: ${JSON.stringify(coursesCheck.rows)}\n`);
-      
-      // Depois, verificar os instrutores
-      const instructorsCheck = await pool.query(`
-        SELECT p.id, p.name FROM profiles p 
-        JOIN courses c ON c.instructor_id = p.id
-        WHERE c.id IN (
-          SELECT course_id FROM class_courses WHERE class_id = $1
-        )
-      `, [id]);
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Instrutores encontrados: ${JSON.stringify(instructorsCheck.rows)}\n`);
-      
-      // Agora sim, fazer a query completa
-      const query = `
-        SELECT 
-          cc.id,
-          cc.class_id,
-          cc.course_id,
-          cc.is_required,
-          cc.order_index,
-          cc.created_at,
-          c.title as course_title,
-          c.description as course_description,
-          c.thumbnail_url as course_thumbnail,
-          c.level,
-          c.price,
-          p.name as instructor_name,
-          p.avatar_url as instructor_avatar
-        FROM class_courses cc
-        JOIN courses c ON cc.course_id = c.id
-        JOIN profiles p ON c.instructor_id = p.id
-        WHERE cc.class_id = $1
-        ORDER BY cc.order_index ASC, cc.created_at ASC
-      `;
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Query SQL: ${query}\n`);
-      
       const { rows } = await pool.query(query, [id]);
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
-      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (instructor) ===\n\n');
-      
       return res.json(rows);
     }
     
-    // 2. Se a turma � p�blica, permitir visualizar cursos
+    // 2. Se a turma é pública, permitir visualizar cursos
     if (classData.is_public) {
-      process.stdout.write('[GET /api/classes/:id/courses] Turma � p�blica, acesso permitido\n');
-      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
-      
-      const { rows } = await pool.query(`
-        SELECT 
-          cc.id,
-          cc.class_id,
-          cc.course_id,
-          cc.is_required,
-          cc.order_index,
-          cc.created_at,
-          c.title as course_title,
-          c.description as course_description,
-          c.thumbnail_url as course_thumbnail,
-          c.level,
-          c.price,
-          p.name as instructor_name,
-          p.avatar_url as instructor_avatar
-        FROM class_courses cc
-        JOIN courses c ON cc.course_id = c.id
-        JOIN profiles p ON c.instructor_id = p.id
-        WHERE cc.class_id = $1
-        ORDER BY cc.order_index ASC, cc.created_at ASC
-      `, [id]);
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
-      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (p�blica) ===\n\n');
-      
+      const { rows } = await pool.query(query, [id]);
       return res.json(rows);
     }
     
-    // 3. Se o usu�rio est� matriculado na turma
+    // 3. Se o usuário está matriculado na turma
     const enrollmentCheck = await pool.query(`
-      SELECT * FROM class_instance_enrollments 
+      SELECT 1 FROM class_instance_enrollments 
       WHERE class_instance_id = $1 AND user_id = $2 AND status = 'active'
     `, [id, req.user.id]);
     
-    process.stdout.write(`[GET /api/classes/:id/courses] Resultado da verifica��o de matr�cula: ${JSON.stringify(enrollmentCheck.rows)}\n`);
-    
     if (enrollmentCheck.rows.length > 0) {
-      process.stdout.write('[GET /api/classes/:id/courses] Usu�rio est� matriculado na turma\n');
-      process.stdout.write('[GET /api/classes/:id/courses] Executando query para buscar cursos...\n');
-      
-      const { rows } = await pool.query(`
-        SELECT 
-          cc.id,
-          cc.class_id,
-          cc.course_id,
-          cc.is_required,
-          cc.order_index,
-          cc.created_at,
-          c.title as course_title,
-          c.description as course_description,
-          c.thumbnail_url as course_thumbnail,
-          c.level,
-          c.price,
-          p.name as instructor_name,
-          p.avatar_url as instructor_avatar
-        FROM class_courses cc
-        JOIN courses c ON cc.course_id = c.id
-        JOIN profiles p ON c.instructor_id = p.id
-        WHERE cc.class_id = $1
-        ORDER BY cc.order_index ASC, cc.created_at ASC
-      `, [id]);
-      
-      process.stdout.write(`[GET /api/classes/:id/courses] Cursos encontrados: ${rows.length}\n`);
-      process.stdout.write(`[GET /api/classes/:id/courses] Dados dos cursos: ${JSON.stringify(rows)}\n`);
-      process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (matriculado) ===\n\n');
-      
+      const { rows } = await pool.query(query, [id]);
       return res.json(rows);
     }
     
-    process.stdout.write('[GET /api/classes/:id/courses] Acesso negado - usu�rio n�o tem permiss�o\n');
-    process.stdout.write('[GET /api/classes/:id/courses] === FIM DA REQUISI��O (acesso negado) ===\n\n');
     return res.status(403).json({ error: 'Acesso negado a esta turma.' });
     
   } catch (err) {
