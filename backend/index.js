@@ -340,6 +340,20 @@ app.post('/api/auth/signup', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const id = crypto.randomUUID();
     await pool.query('INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)', [id, name, email, hash, 'student']);
+    
+    // Disparar webhook para criação de usuário
+    try {
+      await sendWebhook('user.created', {
+        id,
+        name,
+        email,
+        role: 'student',
+        created_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook user.created:', webhookError);
+    }
+    
     res.status(201).json({ message: 'Usu�rio criado com sucesso.' });
   } catch (err) {
     console.error(err);
@@ -396,6 +410,23 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
       'INSERT INTO posts (id, title, content, author_id, category, cover_image, video_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [id, title, content, req.user.id, category, cover_image, video_url, created_at]
     );
+
+    // Disparar webhook para criação de post
+    try {
+      await sendWebhook('post.created', {
+        id,
+        title,
+        content,
+        author_id: req.user.id,
+        author_name: req.user.name,
+        category,
+        cover_image,
+        video_url,
+        created_at: created_at.toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook post.created:', webhookError);
+    }
 
     // Criar notifica��o para moderadores/admins sobre novo post na comunidade
     try {
@@ -1129,6 +1160,26 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
       'INSERT INTO courses (id, title, description, level, price, thumbnail_url, demo_video, tags, instructor_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
       [id, title, description, level, finalPrice, thumbnailUrl, demoVideoUrl, category ? [category] : [], req.user.id, created_at]
     );
+    
+    // Disparar webhook para criação de curso
+    try {
+      await sendWebhook('course.created', {
+        id,
+        title,
+        description,
+        level,
+        price: finalPrice,
+        thumbnail_url: thumbnailUrl,
+        demo_video: demoVideoUrl,
+        tags: category ? [category] : [],
+        instructor_id: req.user.id,
+        instructor_name: req.user.name,
+        created_at: created_at.toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook course.created:', webhookError);
+    }
+    
     res.status(201).json({ 
       id, 
       title, 
@@ -1217,6 +1268,24 @@ app.put('/api/posts/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Post n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para atualização de post
+    try {
+      await sendWebhook('post.updated', {
+        id,
+        title,
+        content,
+        category,
+        cover_image,
+        video_url,
+        author_id: req.user.id,
+        author_name: req.user.name,
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook post.updated:', webhookError);
+    }
+    
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[PUT /api/posts/:id] Erro ao editar post:', err);
@@ -1235,6 +1304,21 @@ app.delete('/api/posts/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Post n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para exclusão de post
+    try {
+      const deletedPost = result.rows[0];
+      await sendWebhook('post.deleted', {
+        id: deletedPost.id,
+        title: deletedPost.title,
+        author_id: req.user.id,
+        author_name: req.user.name,
+        deleted_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook post.deleted:', webhookError);
+    }
+    
     res.json({ message: 'Post deletado com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/posts/:id] Erro ao deletar post:', err);
@@ -1270,6 +1354,26 @@ app.put('/api/courses/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Curso n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para atualização de curso
+    try {
+      await sendWebhook('course.updated', {
+        id,
+        title,
+        description,
+        level,
+        price: finalPrice,
+        thumbnail_url: thumbnailUrl,
+        demo_video: demoVideoUrl,
+        tags: category ? [category] : [],
+        instructor_id: req.user.id,
+        instructor_name: req.user.name,
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook course.updated:', webhookError);
+    }
+    
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[PUT /api/courses/:id] Erro ao editar curso:', err);
@@ -1288,6 +1392,20 @@ app.delete('/api/courses/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Curso n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para exclusão de curso
+    try {
+      const deletedCourse = result.rows[0];
+      await sendWebhook('course.deleted', {
+        id: deletedCourse.id,
+        title: deletedCourse.title,
+        instructor_id: deletedCourse.instructor_id,
+        deleted_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook course.deleted:', webhookError);
+    }
+    
     res.json({ message: 'Curso deletado com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/courses/:id] Erro ao deletar curso:', err);
@@ -1319,6 +1437,21 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Usu�rio n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para atualização de usuário
+    try {
+      const updatedUser = result.rows[0];
+      await sendWebhook('user.updated', {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook user.updated:', webhookError);
+    }
+    
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[PUT /api/users/:id] Erro ao editar usu�rio:', err);
@@ -1337,6 +1470,21 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Usu�rio n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para exclusão de usuário
+    try {
+      const deletedUser = result.rows[0];
+      await sendWebhook('user.deleted', {
+        id: deletedUser.id,
+        name: deletedUser.name,
+        email: deletedUser.email,
+        role: deletedUser.role,
+        deleted_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook user.deleted:', webhookError);
+    }
+    
     res.json({ message: 'Usu�rio deletado com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/users/:id] Erro ao deletar usu�rio:', err);
@@ -1608,6 +1756,21 @@ app.post('/api/posts/:id/comments', authenticateToken, async (req, res) => {
       [postId, userId, content.trim()]
     );
 
+    // Disparar webhook para criação de comentário
+    try {
+      const comment = result.rows[0];
+      await sendWebhook('comment.created', {
+        id: comment.id,
+        post_id: postId,
+        user_id: userId,
+        user_name: req.user.name,
+        content: comment.content,
+        created_at: comment.created_at
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook comment.created:', webhookError);
+    }
+
     // Criar notifica��o para o autor do post sobre novo coment�rio
     try {
       const postAuthorResult = await pool.query(`
@@ -1659,6 +1822,22 @@ app.put('/api/comments/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Coment�rio n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para atualização de comentário
+    try {
+      const comment = result.rows[0];
+      await sendWebhook('comment.updated', {
+        id: comment.id,
+        post_id: comment.post_id,
+        user_id: userId,
+        user_name: req.user.name,
+        content: comment.content,
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook comment.updated:', webhookError);
+    }
+    
     res.json(result.rows[0]);
   } catch (err) {
     console.error('[PUT /api/comments/:id] Erro:', err);
@@ -1678,6 +1857,21 @@ app.delete('/api/comments/:id', authenticateToken, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Coment�rio n�o encontrado ou sem permiss�o.' });
     }
+    
+    // Disparar webhook para exclusão de comentário
+    try {
+      const deletedComment = result.rows[0];
+      await sendWebhook('comment.deleted', {
+        id: deletedComment.id,
+        post_id: deletedComment.post_id,
+        user_id: userId,
+        user_name: req.user.name,
+        deleted_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook comment.deleted:', webhookError);
+    }
+    
     res.json({ message: 'Coment�rio deletado com sucesso.' });
   } catch (err) {
     console.error('[DELETE /api/comments/:id] Erro:', err);
@@ -1800,6 +1994,28 @@ app.post('/api/classes', authenticateToken, async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `, [id, course_id, req.user.id, instance_name, instance_description, is_public || false, max_students, start_date, end_date, schedule, location]);
+    
+    // Disparar webhook para criação de turma
+    try {
+      const newClass = rows[0];
+      await sendWebhook('class.created', {
+        id: newClass.id,
+        course_id: newClass.course_id,
+        instructor_id: newClass.instructor_id,
+        instructor_name: req.user.name,
+        instance_name: newClass.instance_name,
+        instance_description: newClass.instance_description,
+        is_public: newClass.is_public,
+        max_students: newClass.max_students,
+        start_date: newClass.start_date,
+        end_date: newClass.end_date,
+        schedule: newClass.schedule,
+        location: newClass.location,
+        created_at: newClass.created_at
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook class.created:', webhookError);
+    }
     
     console.log('[POST /api/classes] Turma criada com sucesso:', rows[0]);
     res.status(201).json(rows[0]);
@@ -2273,6 +2489,20 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
       [id, req.user.id, course_id, new Date(), 0]
     );
     
+    // Disparar webhook para criação de matrícula
+    try {
+      await sendWebhook('enrollment.created', {
+        id,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        course_id,
+        enrolled_at: new Date().toISOString(),
+        progress: 0
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook enrollment.created:', webhookError);
+    }
+    
     // --- NOVA L�GICA: Matricular automaticamente em todas as turmas do curso ---
     const classInstances = await pool.query(
       'SELECT id FROM class_instances WHERE course_id = $1',
@@ -2529,6 +2759,35 @@ app.post('/api/lessons/:lessonId/complete', authenticateToken, async (req, res) 
     const check = await pool.query('SELECT * FROM lesson_completions WHERE user_id = $1 AND lesson_id = $2', [userId, lessonId]);
     if (check.rows.length === 0) {
       await pool.query('INSERT INTO lesson_completions (user_id, lesson_id, completed_at) VALUES ($1, $2, NOW())', [userId, lessonId]);
+      
+      // Disparar webhook para conclusão de aula
+      try {
+        // Buscar informações da aula e curso para o webhook
+        const lessonInfo = await pool.query(`
+          SELECT l.title as lesson_title, l.module_id, m.course_id, m.title as module_title, c.title as course_title
+          FROM lessons l
+          JOIN modules m ON l.module_id = m.id
+          JOIN courses c ON m.course_id = c.id
+          WHERE l.id = $1
+        `, [lessonId]);
+        
+        if (lessonInfo.rows.length > 0) {
+          const lesson = lessonInfo.rows[0];
+          await sendWebhook('lesson.completed', {
+            user_id: userId,
+            user_name: req.user.name,
+            lesson_id: lessonId,
+            lesson_title: lesson.lesson_title,
+            module_id: lesson.module_id,
+            module_title: lesson.module_title,
+            course_id: lesson.course_id,
+            course_title: lesson.course_title,
+            completed_at: new Date().toISOString()
+          });
+        }
+      } catch (webhookError) {
+        console.error('[WEBHOOK] Erro ao enviar webhook lesson.completed:', webhookError);
+      }
     }
     res.json({ success: true });
   } catch (err) {
@@ -2578,6 +2837,21 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
       VALUES ($1, $2, $3, $4)
       RETURNING id
     `, [lessonId, userId, content.trim(), parent_id || null]);
+
+    // Disparar webhook para criação de comentário em aula
+    try {
+      await sendWebhook('lesson_comment.created', {
+        id: rows[0].id,
+        lesson_id: lessonId,
+        user_id: userId,
+        user_name: req.user.name,
+        content: content.trim(),
+        parent_id: parent_id || null,
+        created_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook lesson_comment.created:', webhookError);
+    }
 
     // Criar notifica��es
     try {
@@ -2671,6 +2945,19 @@ app.put('/api/comments/:commentId', authenticateToken, async (req, res) => {
       [content.trim(), commentId]
     );
 
+    // Disparar webhook para atualização de comentário em aula
+    try {
+      await sendWebhook('lesson_comment.updated', {
+        id: commentId,
+        user_id: userId,
+        user_name: req.user.name,
+        content: content.trim(),
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook lesson_comment.updated:', webhookError);
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error('[PUT /api/comments/:commentId]', err);
@@ -2696,6 +2983,18 @@ app.delete('/api/comments/:commentId', authenticateToken, async (req, res) => {
 
     // Deletar coment�rio (cascade ir� deletar respostas e curtidas)
     await pool.query('DELETE FROM lesson_comments WHERE id = $1', [commentId]);
+
+    // Disparar webhook para exclusão de comentário em aula
+    try {
+      await sendWebhook('lesson_comment.deleted', {
+        id: commentId,
+        user_id: userId,
+        user_name: req.user.name,
+        deleted_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook lesson_comment.deleted:', webhookError);
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -2778,6 +3077,22 @@ async function createNotification(userId, title, message, type, referenceId = nu
       VALUES ($1, $2, $3, $4, $5, $6, false)
       RETURNING id
     `, [userId, title, message, type, referenceId, referenceType]);
+    
+    // Disparar webhook para criação de notificação
+    try {
+      await sendWebhook('notification.created', {
+        id: result.rows[0].id,
+        user_id: userId,
+        title,
+        message,
+        type,
+        reference_id: referenceId,
+        reference_type: referenceType,
+        created_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook notification.created:', webhookError);
+    }
     
     console.log('[CREATE NOTIFICATION] Notifica��o criada com sucesso! ID:', result.rows[0].id);
   } catch (err) {
@@ -5377,6 +5692,23 @@ app.post('/api/forum/posts', authenticateToken, async (req, res) => {
       
       await client.query('COMMIT');
       
+      // Disparar webhook para criação de post no fórum
+      try {
+        const newPost = postResult.rows[0];
+        await sendWebhook('post.created', {
+          id: newPost.id,
+          topic_id: newPost.topic_id,
+          title: newPost.title,
+          content: newPost.content,
+          author_id: newPost.author_id,
+          author_name: req.user.name,
+          content_image_url: newPost.content_image_url,
+          created_at: newPost.created_at
+        });
+      } catch (webhookError) {
+        console.error('[WEBHOOK] Erro ao enviar webhook post.created (forum):', webhookError);
+      }
+      
       // Criar notifica��o para moderadores/admins sobre novo post
       try {
         const modAdminResult = await pool.query(`
@@ -5525,6 +5857,22 @@ app.post('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => 
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `, [replyId, postId, parent_reply_id || null, content.trim(), req.user.id]);
+    
+    // Disparar webhook para criação de resposta no fórum
+    try {
+      const newReply = rows[0];
+      await sendWebhook('forum_reply.created', {
+        id: newReply.id,
+        post_id: newReply.post_id,
+        parent_reply_id: newReply.parent_reply_id,
+        content: newReply.content,
+        author_id: newReply.author_id,
+        author_name: req.user.name,
+        created_at: newReply.created_at
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook forum_reply.created:', webhookError);
+    }
     
     // Criar notifica��o para o autor do post (se n�o for o mesmo usu�rio)
     try {
@@ -5746,6 +6094,19 @@ app.put('/api/forum/replies/:id', authenticateToken, async (req, res) => {
       WHERE id = $2
     `, [content.trim(), replyId]);
     
+    // Disparar webhook para atualização de resposta no fórum
+    try {
+      await sendWebhook('forum_reply.updated', {
+        id: replyId,
+        content: content.trim(),
+        author_id: req.user.id,
+        author_name: req.user.name,
+        updated_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook forum_reply.updated:', webhookError);
+    }
+    
     console.log('[PUT /api/forum/replies/:id] Resposta editada com sucesso');
     res.json({ success: true, message: 'Resposta editada com sucesso.' });
     
@@ -5794,6 +6155,18 @@ app.delete('/api/forum/replies/:id', authenticateToken, async (req, res) => {
       await client.query('DELETE FROM forum_replies WHERE id = $1', [replyId]);
       
       await client.query('COMMIT');
+      
+      // Disparar webhook para exclusão de resposta no fórum
+      try {
+        await sendWebhook('forum_reply.deleted', {
+          id: replyId,
+          author_id: req.user.id,
+          author_name: req.user.name,
+          deleted_at: new Date().toISOString()
+        });
+      } catch (webhookError) {
+        console.error('[WEBHOOK] Erro ao enviar webhook forum_reply.deleted:', webhookError);
+      }
       
       console.log('[DELETE /api/forum/replies/:id] Resposta deletada com sucesso');
       res.json({ success: true, message: 'Resposta deletada com sucesso.' });
@@ -6101,15 +6474,47 @@ app.get('/api/forum/posts/:id/replies', authenticateToken, async (req, res) => {
 
 // ===== SISTEMA DE WEBHOOKS =====
 
+// Endpoint de teste para webhooks
+app.post('/api/test-webhook', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    console.log('[TEST WEBHOOK] Testando envio de webhook...');
+    
+    await sendWebhook('test.event', {
+      message: 'Este é um webhook de teste',
+      user_id: req.user.id,
+      user_name: req.user.name,
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({ success: true, message: 'Webhook de teste enviado!' });
+  } catch (err) {
+    console.error('[TEST WEBHOOK] Erro:', err);
+    res.status(500).json({ error: 'Erro ao testar webhook: ' + err.message });
+  }
+});
+
 // Fun��o para enviar webhook
 async function sendWebhook(eventType, payload) {
   try {
+    console.log(`[WEBHOOK] Iniciando envio para evento: ${eventType}`);
+    
     // Buscar webhooks ativos que escutam este evento
     const { rows: webhooks } = await pool.query(`
       SELECT * FROM webhooks 
       WHERE is_active = true 
       AND $1 = ANY(events)
     `, [eventType]);
+
+    console.log(`[WEBHOOK] Encontrados ${webhooks.length} webhooks ativos para evento ${eventType}`);
+
+    if (webhooks.length === 0) {
+      console.log(`[WEBHOOK] Nenhum webhook configurado para o evento ${eventType}`);
+      return;
+    }
 
     for (const webhook of webhooks) {
       try {
@@ -6137,7 +6542,6 @@ async function sendWebhook(eventType, payload) {
         }
 
         // Fazer requisi��o
-        const fetch = (await import('node-fetch')).default;
         const response = await fetch(webhook.url, {
           method: 'POST',
           headers,
@@ -6316,7 +6720,7 @@ app.get('/api/webhooks/:id/logs', authenticateToken, async (req, res) => {
   }
 });
 
-// Rota catch-all para SPA (deve ser a �ltima rota)
+// Rota catch-all para SPA (deve ser a �ltima rota)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
