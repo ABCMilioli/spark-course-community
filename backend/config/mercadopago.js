@@ -1,4 +1,5 @@
-import crypto from 'crypto';
+const crypto = require('crypto');
+const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 
 // Validação das configurações do Mercado Pago
 function validateMercadoPagoConfig() {
@@ -35,33 +36,19 @@ function validateMercadoPagoConfig() {
 
 // Configuração do Mercado Pago
 let mercadoPagoConfig;
-let mercadopago;
+let client;
+let preference;
+let payment;
 
 try {
   mercadoPagoConfig = validateMercadoPagoConfig();
   
   if (mercadoPagoConfig.configured) {
-    // Importação dinâmica do SDK do Mercado Pago
-    try {
-      const mercadopagoModule = await import('mercadopago');
-      mercadopago = mercadopagoModule.default || mercadopagoModule;
-      
-      // Verificar se o SDK tem o método configure
-      if (typeof mercadopago.configure === 'function') {
-        mercadopago.configure({
-          access_token: mercadoPagoConfig.accessToken,
-          timeout: 10000,
-        });
-        console.log('[MERCADOPAGO] ✅ SDK configurado com sucesso');
-      } else {
-        // Fallback para versões mais antigas do SDK
-        mercadopago.access_token = mercadoPagoConfig.accessToken;
-        console.log('[MERCADOPAGO] ✅ SDK configurado (modo legacy)');
-      }
-    } catch (importError) {
-      console.error('[MERCADOPAGO] ❌ Erro ao importar SDK:', importError.message);
-      mercadoPagoConfig.configured = false;
-    }
+    // Configurar o SDK globalmente
+    client = new MercadoPagoConfig({ accessToken: mercadoPagoConfig.accessToken });
+    preference = new Preference(client);
+    payment = new Payment(client);
+    console.log('[MERCADOPAGO] ✅ SDK configurado com sucesso');
   }
 } catch (error) {
   console.error('[MERCADOPAGO] ❌ Falha na inicialização:', error.message);
@@ -96,8 +83,8 @@ const BRAZIL_CONFIG = {
 };
 
 // Função para criar preferência de pagamento
-export async function createPreference(items, metadata = {}) {
-  if (!mercadoPagoConfig.configured || !mercadopago) {
+async function createPreference(items, metadata = {}) {
+  if (!mercadoPagoConfig.configured || !preference) {
     throw new Error('Mercado Pago não está configurado');
   }
 
@@ -144,10 +131,10 @@ export async function createPreference(items, metadata = {}) {
       expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 horas
     };
 
-    const preference = await mercadopago.preferences.create({ body: preferenceData });
+    const result = await preference.create({ body: preferenceData });
     
-    console.log(`[MERCADOPAGO] ✅ Preferência criada: ${preference.id}`);
-    return preference;
+    console.log(`[MERCADOPAGO] ✅ Preferência criada: ${result.id}`);
+    return result;
 
   } catch (error) {
     console.error('[MERCADOPAGO] ❌ Erro ao criar preferência:', {
@@ -160,18 +147,18 @@ export async function createPreference(items, metadata = {}) {
 }
 
 // Função para buscar informações de um pagamento
-export async function getPayment(paymentId) {
-  if (!mercadoPagoConfig.configured || !mercadopago) {
+async function getPayment(paymentId) {
+  if (!mercadoPagoConfig.configured || !payment) {
     throw new Error('Mercado Pago não está configurado');
   }
 
   try {
     console.log(`[MERCADOPAGO] 🔍 Buscando pagamento: ${paymentId}`);
 
-    const payment = await mercadopago.payments.get({ id: paymentId });
+    const result = await payment.get({ id: paymentId });
     
-    console.log(`[MERCADOPAGO] ✅ Pagamento encontrado: ${payment.id} (${payment.status})`);
-    return payment;
+    console.log(`[MERCADOPAGO] ✅ Pagamento encontrado: ${result.id} (${result.status})`);
+    return result;
 
   } catch (error) {
     console.error('[MERCADOPAGO] ❌ Erro ao buscar pagamento:', {
@@ -184,12 +171,19 @@ export async function getPayment(paymentId) {
 }
 
 // Função para processar webhook do Mercado Pago
-export async function processWebhook(body, headers) {
+async function processWebhook(rawBody, headers, url) {
   if (!mercadoPagoConfig.configured) {
     throw new Error('Mercado Pago não está configurado');
   }
 
   try {
+    // Parse para log
+    let body;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (e) {
+      body = {};
+    }
     console.log('[MERCADOPAGO] 📨 Processando webhook:', {
       type: body.type,
       action: body.action,
@@ -199,22 +193,65 @@ export async function processWebhook(body, headers) {
     // Validar assinatura se configurada
     const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
     if (secret) {
-      const signature = headers['x-signature'];
-      const requestId = headers['x-request-id'];
+      console.log('[MERCADOPAGO] 🔑 Secret usado:', secret, 'Tamanho:', secret.length);
+      console.log('[MERCADOPAGO] 🔐 Validando assinatura do webhook');
+      
+      const signature = headers['signature'] || headers['Signature'] || headers['x-signature'] || headers['X-Signature'];
+      const requestId = headers['x-request-id'] || headers['X-Request-Id'];
       
       if (!signature || !requestId) {
+        console.error('[MERCADOPAGO] ❌ Headers necessários ausentes:', { signature, requestId });
         throw new Error('Headers de assinatura ausentes');
       }
 
-      // Verificar assinatura (implementação específica do MP)
+      // Extrair timestamp e assinatura do header
+      const signatureParts = signature.split(',');
+      const timestampPart = signatureParts.find(part => part.startsWith('ts='));
+      const signatureValue = signatureParts.find(part => part.startsWith('v1='))?.split('=')[1];
+
+      if (!timestampPart || !signatureValue) {
+        console.error('[MERCADOPAGO] ❌ Formato de assinatura inválido:', signature);
+        throw new Error('Formato de assinatura inválido');
+      }
+
+      const timestamp = timestampPart.split('=')[1];
+
+      // Gerar string para validação
+      // Formato: timestamp + método + url + body bruto
+      const message = `${timestamp}POST${url}${rawBody}`;
+      
+      console.log('[MERCADOPAGO] 🔍 Dados para validação:', {
+        method: 'POST',
+        url,
+        timestamp,
+        bodyLength: rawBody.length,
+        messageToHash: message
+      });
+
+      // Gerar assinatura esperada
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(`${requestId}${body.data?.id}`)
+        .update(message)
         .digest('hex');
 
-      if (signature !== expectedSignature) {
+      console.log('[MERCADOPAGO] 🔍 Verificando assinatura:', {
+        received: signatureValue,
+        expected: expectedSignature,
+        timestamp,
+        requestId
+      });
+
+      if (signatureValue !== expectedSignature) {
+        console.error('[MERCADOPAGO] ❌ Assinatura inválida:', {
+          received: signatureValue,
+          expected: expectedSignature,
+          messageUsed: message,
+          rawBody
+        });
         throw new Error('Assinatura inválida');
       }
+
+      console.log('[MERCADOPAGO] ✅ Assinatura validada com sucesso');
     }
 
     // Processar diferentes tipos de webhook
@@ -248,7 +285,7 @@ export async function processWebhook(body, headers) {
 }
 
 // Função para converter status do Mercado Pago para formato padrão
-export function convertStatus(mercadoPagoStatus) {
+function convertStatus(mercadoPagoStatus) {
   const statusMap = {
     pending: 'pending',
     approved: 'succeeded',
@@ -265,15 +302,15 @@ export function convertStatus(mercadoPagoStatus) {
 }
 
 // Função para criar um payment (alternativa à preferência)
-export async function createPayment(paymentData) {
-  if (!mercadoPagoConfig.configured || !mercadopago) {
+async function createPayment(paymentData) {
+  if (!mercadoPagoConfig.configured || !payment) {
     throw new Error('Mercado Pago não está configurado');
   }
 
   try {
     console.log('[MERCADOPAGO] 💳 Criando pagamento direto');
 
-    const payment = await mercadopago.payments.create({
+    const result = await payment.create({
       body: {
         ...paymentData,
         metadata: {
@@ -285,8 +322,8 @@ export async function createPayment(paymentData) {
       },
     });
 
-    console.log(`[MERCADOPAGO] ✅ Pagamento criado: ${payment.id}`);
-    return payment;
+    console.log(`[MERCADOPAGO] ✅ Pagamento criado: ${result.id}`);
+    return result;
 
   } catch (error) {
     console.error('[MERCADOPAGO] ❌ Erro ao criar pagamento:', {
@@ -298,7 +335,7 @@ export async function createPayment(paymentData) {
 }
 
 // Função para obter métodos de pagamento disponíveis
-export function getAvailablePaymentMethods() {
+function getAvailablePaymentMethods() {
   const methods = [
     {
       id: 'stripe',
@@ -334,7 +371,7 @@ export function getAvailablePaymentMethods() {
 }
 
 // Função para verificar status do Mercado Pago
-export function getMercadoPagoStatus() {
+function getMercadoPagoStatus() {
   return {
     configured: mercadoPagoConfig.configured,
     environment: mercadoPagoConfig.isProduction ? 'production' : 'test',
@@ -344,15 +381,15 @@ export function getMercadoPagoStatus() {
 }
 
 // Função para criar link de pagamento rápido
-export async function createPaymentLink(amount, description, metadata = {}) {
-  if (!mercadoPagoConfig.configured || !mercadopago) {
+async function createPaymentLink(amount, description, metadata = {}) {
+  if (!mercadoPagoConfig.configured || !preference) {
     throw new Error('Mercado Pago não está configurado');
   }
 
   try {
     console.log(`[MERCADOPAGO] 🔗 Criando link de pagamento: R$ ${amount}`);
 
-    const preference = await createPreference([
+    const preferenceResult = await createPreference([
       {
         title: description,
         quantity: 1,
@@ -362,16 +399,16 @@ export async function createPaymentLink(amount, description, metadata = {}) {
     ], metadata);
 
     const paymentLink = mercadoPagoConfig.isProduction 
-      ? `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${preference.id}`
-      : `https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=${preference.id}`;
+      ? `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${preferenceResult.id}`
+      : `https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=${preferenceResult.id}`;
 
     console.log(`[MERCADOPAGO] ✅ Link criado: ${paymentLink}`);
     
     return {
-      preferenceId: preference.id,
+      preferenceId: preferenceResult.id,
       paymentLink,
-      initPoint: preference.init_point,
-      sandboxInitPoint: preference.sandbox_init_point,
+      initPoint: preferenceResult.init_point,
+      sandboxInitPoint: preferenceResult.sandbox_init_point,
     };
 
   } catch (error) {
@@ -380,4 +417,13 @@ export async function createPaymentLink(amount, description, metadata = {}) {
   }
 }
 
-export default mercadopago; 
+module.exports = {
+  createPreference,
+  getPayment,
+  processWebhook,
+  convertStatus,
+  createPayment,
+  getAvailablePaymentMethods,
+  getMercadoPagoStatus,
+  createPaymentLink,
+}; 

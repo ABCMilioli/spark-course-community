@@ -182,7 +182,7 @@ export default function PostDetail() {
   const editCommentMutation = useMutation({
     mutationFn: async ({ id, content }: { id: string; content: string }) => {
       const token = localStorage.getItem('token');
-      const response = await axios.put(`${API_URL}/comments/${id}`, { content }, {
+      const response = await axios.put(`${API_URL}/posts/comments/${id}`, { content }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;
@@ -203,7 +203,7 @@ export default function PostDetail() {
   const deleteCommentMutation = useMutation({
     mutationFn: async (id: string) => {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_URL}/comments/${id}`, {
+      await axios.delete(`${API_URL}/posts/comments/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
     },

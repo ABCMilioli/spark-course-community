@@ -10,6 +10,7 @@ import { uploadFile, deleteFile } from './utils/upload.js';
 import { fileURLToPath } from 'url';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { s3Client, getPresignedUrl } from './config/minio.js';
+import bodyParser from 'body-parser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,19 @@ app.use(cors({
   credentials: true,
   exposedHeaders: ['Authorization']
 }));
+
+// 1. Middleware RAW do Mercado Pago (antes de qualquer express.json)
+app.use('/api/webhooks/mercadopago', bodyParser.raw({ type: '*/*' }));
+
+// 2. Log de requisições (opcional)
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`${req.method} ${req.path}`);
+  }
+  next();
+});
+
+// 3. Agora, para o restante da aplicação, use express.json normalmente
 app.use(express.json());
 
 // Log simples para requisições
@@ -6604,6 +6618,7 @@ app.get('/api/webhooks/:id/logs', authenticateToken, async (req, res) => {
 // Importar configurações dos gateways
 import { createPaymentIntent, retrievePaymentIntent, constructWebhookEvent, formatAmount } from './config/stripe.js';
 import { createPreference, getPayment, processWebhook, convertStatus, getAvailablePaymentMethods, getMercadoPagoStatus } from './config/mercadopago.js';
+import { processCardPayment, processPixPayment, processBoletoPayment } from './config/mercadopago-transparent.js';
 
 // Criar Payment Intent para um curso
 app.post('/api/payments/create-intent', authenticateToken, async (req, res) => {
@@ -7308,8 +7323,211 @@ app.get('/api/payments/:paymentId', authenticateToken, async (req, res) => {
   }
 });
 
-// ===== ENDPOINTS DO MERCADO PAGO =====
-// TEMPORARIAMENTE DESABILITADOS - Configure MERCADOPAGO_ACCESS_TOKEN para habilitar
+// ===== ENDPOINTS DO MERCADO PAGO (CHECKOUT TRANSPARENTE) =====
+
+// Processar pagamento com cartão de crédito
+app.post('/api/payments/mercadopago/process-card', authenticateToken, async (req, res) => {
+  try {
+    const { course_id, card_data } = req.body;
+    
+    if (!course_id || !card_data) {
+      return res.status(400).json({ error: 'Dados incompletos' });
+    }
+
+    // Buscar informações do curso
+    const courseResult = await pool.query(
+      'SELECT id, title, price FROM courses WHERE id = $1',
+      [course_id]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado' });
+    }
+
+    const course = courseResult.rows[0];
+    
+    // Processar pagamento
+    const payment = await processCardPayment(course, card_data, {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name
+    });
+
+    // Salvar pagamento no banco
+    const paymentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO payments (id, user_id, course_id, amount, currency, status, gateway, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      paymentId,
+      req.user.id,
+      course.id,
+      course.price,
+      'BRL',
+      payment.status === 'approved' ? 'succeeded' : payment.status,
+      'mercadopago',
+      {
+        mercadopago_payment_id: payment.id,
+        payment_method: payment.payment_method,
+        installments: payment.installments,
+        created_at: new Date().toISOString(),
+      }
+    ]);
+
+    console.log(`[MERCADOPAGO] ✅ Pagamento com cartão processado: ${payment.id}`);
+
+    res.json({
+      payment_id: paymentId,
+      mercadopago_payment_id: payment.id,
+      status: payment.status,
+      status_detail: payment.status_detail
+    });
+
+  } catch (error) {
+    console.error('[MERCADOPAGO] ❌ Erro ao processar pagamento com cartão:', error);
+    res.status(500).json({ 
+      error: 'Erro ao processar pagamento',
+      details: error.message 
+    });
+  }
+});
+
+// Gerar pagamento PIX
+app.post('/api/payments/mercadopago/generate-pix', authenticateToken, async (req, res) => {
+  try {
+    const { course_id } = req.body;
+    
+    if (!course_id) {
+      return res.status(400).json({ error: 'course_id é obrigatório' });
+    }
+
+    // Buscar informações do curso
+    const courseResult = await pool.query(
+      'SELECT id, title, price FROM courses WHERE id = $1',
+      [course_id]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado' });
+    }
+
+    const course = courseResult.rows[0];
+    
+    // Gerar PIX
+    const payment = await processPixPayment(course, {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name
+    });
+
+    // Salvar pagamento no banco
+    const paymentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO payments (id, user_id, course_id, amount, currency, status, gateway, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      paymentId,
+      req.user.id,
+      course.id,
+      course.price,
+      'BRL',
+      'pending',
+      'mercadopago',
+      {
+        mercadopago_payment_id: payment.id,
+        payment_method: 'pix',
+        created_at: new Date().toISOString(),
+      }
+    ]);
+
+    console.log(`[MERCADOPAGO] ✅ PIX gerado: ${payment.id}`);
+
+    res.json({
+      payment_id: paymentId,
+      mercadopago_payment_id: payment.id,
+      status: payment.status,
+      qr_code: payment.pix_qr_code,
+      qr_code_base64: payment.pix_qr_code_base64
+    });
+
+  } catch (error) {
+    console.error('[MERCADOPAGO] ❌ Erro ao gerar PIX:', error);
+    res.status(500).json({ 
+      error: 'Erro ao gerar PIX',
+      details: error.message 
+    });
+  }
+});
+
+// Gerar boleto
+app.post('/api/payments/mercadopago/generate-boleto', authenticateToken, async (req, res) => {
+  try {
+    const { course_id, doc_number } = req.body;
+    
+    if (!course_id || !doc_number) {
+      return res.status(400).json({ error: 'Dados incompletos' });
+    }
+
+    // Buscar informações do curso
+    const courseResult = await pool.query(
+      'SELECT id, title, price FROM courses WHERE id = $1',
+      [course_id]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado' });
+    }
+
+    const course = courseResult.rows[0];
+    
+    // Gerar boleto
+    const payment = await processBoletoPayment(course, {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      docNumber: doc_number
+    });
+
+    // Salvar pagamento no banco
+    const paymentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO payments (id, user_id, course_id, amount, currency, status, gateway, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      paymentId,
+      req.user.id,
+      course.id,
+      course.price,
+      'BRL',
+      'pending',
+      'mercadopago',
+      {
+        mercadopago_payment_id: payment.id,
+        payment_method: 'boleto',
+        created_at: new Date().toISOString(),
+      }
+    ]);
+
+    console.log(`[MERCADOPAGO] ✅ Boleto gerado: ${payment.id}`);
+
+    res.json({
+      payment_id: paymentId,
+      mercadopago_payment_id: payment.id,
+      status: payment.status,
+      boleto_url: payment.external_resource_url,
+      barcode: payment.barcode
+    });
+
+  } catch (error) {
+    console.error('[MERCADOPAGO] ❌ Erro ao gerar boleto:', error);
+    res.status(500).json({ 
+      error: 'Erro ao gerar boleto',
+      details: error.message 
+    });
+  }
+});
+
+// ===== ENDPOINTS DO MERCADO PAGO (CHECKOUT PRO) =====
 
 // Criar preferência de pagamento no Mercado Pago
 app.post('/api/payments/mercadopago/create-preference', authenticateToken, async (req, res) => {
@@ -7386,161 +7604,131 @@ app.post('/api/payments/mercadopago/create-preference', authenticateToken, async
 });
 
 // Webhook do Mercado Pago com validação robusta
-app.post('/api/webhooks/mercadopago', express.json(), async (req, res) => {
+app.post('/api/webhooks/mercadopago', async (req, res) => {
   const startTime = Date.now();
 
+  // Garante que o rawBody é sempre uma string
+  let rawBody;
+  if (Buffer.isBuffer(req.body)) {
+    rawBody = req.body.toString('utf8');
+  } else if (typeof req.body === 'string') {
+    rawBody = req.body;
+  } else {
+    rawBody = JSON.stringify(req.body);
+  }
+
+  console.log('[MERCADOPAGO WEBHOOK] RAW BODY:', rawBody);
+
+  let parsedBody;
+  let processingResult = { status: 'ignored', message: 'Evento não processado' };
   try {
-    console.log('[MERCADOPAGO WEBHOOK] 📨 Webhook recebido:', {
-      type: req.body?.type,
-      action: req.body?.action,
-      dataId: req.body?.data?.id
-    });
+    parsedBody = JSON.parse(rawBody);
+  } catch (e) {
+    parsedBody = {};
+  }
+  console.log('[MERCADOPAGO WEBHOOK] 📨 Webhook recebido:', {
+    type: parsedBody?.type,
+    action: parsedBody?.action,
+    dataId: parsedBody?.data?.id
+  });
 
-    // Verificar se o Mercado Pago está configurado
-    const mpStatus = getMercadoPagoStatus();
-    if (!mpStatus.configured) {
-      console.log('[MERCADOPAGO WEBHOOK] ⚠️  Mercado Pago não configurado - webhook ignorado');
-      return res.json({ 
-        received: true, 
-        status: 'ignored',
-        message: 'Mercado Pago não configurado',
-        processing_time_ms: Date.now() - startTime
-      });
-    }
-
-    // Validações básicas
-    if (!req.body || !req.body.type) {
-      console.error('[MERCADOPAGO WEBHOOK] ❌ Payload inválido');
-      return res.status(400).json({ error: 'Payload inválido' });
-    }
-
-    // Rate limiting básico (opcional)
-    const clientIP = req.ip || req.connection.remoteAddress;
-    console.log(`[MERCADOPAGO WEBHOOK] IP: ${clientIP}`);
-
-    let processingResult = { status: 'ignored', message: 'Evento não processado' };
-
-    try {
-      // Processar webhook usando a função do config
-      const webhookResult = await processWebhook(req.body, req.headers);
-      
-      if (webhookResult.type === 'payment') {
-        // Processar mudança de status de pagamento
-        const payment = webhookResult.payment;
-        
-        if (payment) {
-          const convertedStatus = convertStatus(payment.status);
-          
-          // Atualizar pagamento no banco
-          const updateResult = await pool.query(`
-            UPDATE payments 
-            SET status = $1, updated_at = $2, metadata = $3 
-            WHERE id = (
-              SELECT id FROM payments 
-              WHERE metadata->>'mercadopago_payment_id' = $4 
-              OR metadata->>'external_reference' = $5
-            )
-            RETURNING id, user_id, course_id, amount
-          `, [
-            convertedStatus,
-            new Date(),
-            {
-              mercadopago_payment_id: payment.id,
-              mercadopago_status: payment.status,
-              mercadopago_status_detail: payment.status_detail,
-              payment_method: payment.payment_method_id,
-              installments: payment.installments,
-              updated_at: new Date().toISOString()
-            },
-            payment.id.toString(),
-            payment.external_reference
-          ]);
-
-          if (updateResult.rows.length > 0) {
-            const updatedPayment = updateResult.rows[0];
-            
-            // Se pagamento foi aprovado, criar matrícula
-            if (convertedStatus === 'succeeded') {
-              const enrollmentCheck = await pool.query(
-                'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
-                [updatedPayment.user_id, updatedPayment.course_id]
+  try {
+    // Processar webhook usando a função do config
+    const webhookResult = await processWebhook(rawBody, req.headers, req.path);      
+    if (webhookResult.type === 'payment') {
+      // Processar mudança de status de pagamento
+      const payment = webhookResult.payment;
+      if (payment) {
+        const convertedStatus = convertStatus(payment.status);
+        // Atualizar pagamento no banco
+        const updateResult = await pool.query(`
+          UPDATE payments 
+          SET status = $1, updated_at = $2, metadata = $3 
+          WHERE id = (
+            SELECT id FROM payments 
+            WHERE metadata->>'mercadopago_payment_id' = $4 
+            OR metadata->>'external_reference' = $5
+          )
+          RETURNING id, user_id, course_id, amount
+        `, [
+          convertedStatus,
+          new Date(),
+          {
+            mercadopago_payment_id: payment.id,
+            mercadopago_status: payment.status,
+            mercadopago_status_detail: payment.status_detail,
+            payment_method: payment.payment_method_id,
+            installments: payment.installments,
+            updated_at: new Date().toISOString()
+          },
+          payment.id.toString(),
+          payment.external_reference
+        ]);
+        if (updateResult.rows.length > 0) {
+          const updatedPayment = updateResult.rows[0];
+          // Se pagamento foi aprovado, criar matrícula
+          if (convertedStatus === 'succeeded') {
+            const enrollmentCheck = await pool.query(
+              'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+              [updatedPayment.user_id, updatedPayment.course_id]
+            );
+            if (enrollmentCheck.rows.length === 0) {
+              const enrollmentId = crypto.randomUUID();
+              await pool.query(
+                'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+                [enrollmentId, updatedPayment.user_id, updatedPayment.course_id, new Date(), 0]
               );
-
-              if (enrollmentCheck.rows.length === 0) {
-                const enrollmentId = crypto.randomUUID();
-                await pool.query(
-                  'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
-                  [enrollmentId, updatedPayment.user_id, updatedPayment.course_id, new Date(), 0]
-                );
-
-                console.log(`[MERCADOPAGO WEBHOOK] ✅ Matrícula criada: ${enrollmentId}`);
-              }
-
-              // Disparar webhook personalizado
-              try {
-                await sendWebhook('payment.succeeded', {
-                  payment_id: updatedPayment.id,
-                  user_id: updatedPayment.user_id,
-                  course_id: updatedPayment.course_id,
-                  amount: updatedPayment.amount,
-                  gateway: 'mercadopago',
-                  mercadopago_payment_id: payment.id
-                });
-              } catch (webhookError) {
-                console.error('[WEBHOOK] Erro ao enviar webhook payment.succeeded (MP):', webhookError);
-              }
+              console.log(`[MERCADOPAGO WEBHOOK] ✅ Matrícula criada: ${enrollmentId}`);
             }
-
-            processingResult = {
-              status: 'success',
-              message: 'Pagamento atualizado com sucesso',
-              payment_id: updatedPayment.id,
-              new_status: convertedStatus
-            };
-
-            console.log(`[MERCADOPAGO WEBHOOK] ✅ Pagamento atualizado: ${updatedPayment.id} -> ${convertedStatus}`);
-          } else {
-            console.warn(`[MERCADOPAGO WEBHOOK] ⚠️  Pagamento não encontrado no banco: ${payment.id}`);
-            processingResult = {
-              status: 'warning',
-              message: 'Pagamento não encontrado no banco de dados'
-            };
+            // Disparar webhook personalizado
+            try {
+              await sendWebhook('payment.succeeded', {
+                payment_id: updatedPayment.id,
+                user_id: updatedPayment.user_id,
+                course_id: updatedPayment.course_id,
+                amount: updatedPayment.amount,
+                gateway: 'mercadopago',
+                mercadopago_payment_id: payment.id
+              });
+            } catch (webhookError) {
+              console.error('[WEBHOOK] Erro ao enviar webhook payment.succeeded (MP):', webhookError);
+            }
           }
+          processingResult = {
+            status: 'success',
+            message: 'Pagamento atualizado com sucesso',
+            payment_id: updatedPayment.id,
+            new_status: convertedStatus
+          };
+          console.log(`[MERCADOPAGO WEBHOOK] ✅ Pagamento atualizado: ${updatedPayment.id} -> ${convertedStatus}`);
+        } else {
+          console.warn(`[MERCADOPAGO WEBHOOK] ⚠️  Pagamento não encontrado no banco: ${payment.id}`);
+          processingResult = {
+            status: 'warning',
+            message: 'Pagamento não encontrado no banco de dados'
+          };
         }
-      } else {
-        console.log(`[MERCADOPAGO WEBHOOK] ❓ Tipo de webhook não tratado: ${webhookResult.type}`);
-        processingResult = {
-          status: 'ignored',
-          message: `Tipo de webhook ${webhookResult.type} não tratado`
-        };
       }
-
-    } catch (processingError) {
-      console.error('[MERCADOPAGO WEBHOOK] ❌ Erro no processamento:', processingError);
+    } else {
+      console.log(`[MERCADOPAGO WEBHOOK] ❓ Tipo de webhook não tratado: ${webhookResult.type}`);
       processingResult = {
-        status: 'error',
-        message: processingError.message
+        status: 'ignored',
+        message: `Tipo de webhook ${webhookResult.type} não tratado`
       };
     }
-
     const processingTime = Date.now() - startTime;
     console.log(`[MERCADOPAGO WEBHOOK] ✅ Webhook processado em ${processingTime}ms`);
-
     res.json({
       received: true,
       status: processingResult.status,
       message: processingResult.message,
       processing_time_ms: processingTime
     });
-    
   } catch (error) {
     console.error('[MERCADOPAGO WEBHOOK] ❌ Erro geral:', error);
-    res.status(500).json({ 
-      error: 'Erro interno',
-      processing_time_ms: Date.now() - startTime
-    });
+    res.status(500).json({ error: 'Erro interno no processamento do webhook' });
   }
-}); // <-- Fechamento do webhook do Mercado Pago
+});
 
 // Rota catch-all deve ser a última
 app.get('*', (req, res) => {

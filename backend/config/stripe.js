@@ -1,4 +1,4 @@
-import Stripe from 'stripe';
+const Stripe = require('stripe');
 
 // Validação das configurações obrigatórias
 function validateStripeConfig() {
@@ -79,7 +79,7 @@ const BRAZIL_CONFIG = {
 };
 
 // Função para criar um Payment Intent com validações robustas
-export async function createPaymentIntent(amount, currency = 'brl', metadata = {}) {
+async function createPaymentIntent(amount, currency = 'brl', metadata = {}) {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -134,7 +134,7 @@ export async function createPaymentIntent(amount, currency = 'brl', metadata = {
 // Função para recuperar um Payment Intent com cache
 const paymentIntentCache = new Map();
 
-export async function retrievePaymentIntent(paymentIntentId) {
+async function retrievePaymentIntent(paymentIntentId) {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -176,7 +176,7 @@ export async function retrievePaymentIntent(paymentIntentId) {
 }
 
 // Função para confirmar um Payment Intent
-export async function confirmPaymentIntent(paymentIntentId, paymentMethodId, returnUrl = null) {
+async function confirmPaymentIntent(paymentIntentId, paymentMethodId, returnUrl = null) {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -211,7 +211,7 @@ export async function confirmPaymentIntent(paymentIntentId, paymentMethodId, ret
 }
 
 // Função para cancelar um Payment Intent
-export async function cancelPaymentIntent(paymentIntentId, reason = 'requested_by_customer') {
+async function cancelPaymentIntent(paymentIntentId, reason = 'requested_by_customer') {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -238,7 +238,7 @@ export async function cancelPaymentIntent(paymentIntentId, reason = 'requested_b
 }
 
 // Função para verificar webhook com validação robusta
-export function constructWebhookEvent(payload, signature, secret) {
+function constructWebhookEvent(payload, signature, secret) {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -264,7 +264,7 @@ export function constructWebhookEvent(payload, signature, secret) {
 }
 
 // Função para criar uma sessão de checkout (alternativa ao Payment Intent)
-export async function createCheckoutSession(lineItems, metadata = {}, successUrl, cancelUrl) {
+async function createCheckoutSession(lineItems, metadata = {}, successUrl, cancelUrl) {
   if (!stripe) {
     throw new Error('Stripe não está configurado');
   }
@@ -311,7 +311,7 @@ export async function createCheckoutSession(lineItems, metadata = {}, successUrl
 }
 
 // Função para formatar valor para exibição
-export function formatAmount(amount, currency = 'brl') {
+function formatAmount(amount, currency = 'brl') {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: currency.toUpperCase(),
@@ -319,17 +319,17 @@ export function formatAmount(amount, currency = 'brl') {
 }
 
 // Função para converter valor de reais para centavos
-export function convertToCents(amount) {
+function convertToCents(amount) {
   return Math.round(amount * 100);
 }
 
 // Função para converter valor de centavos para reais
-export function convertFromCents(amount) {
+function convertFromCents(amount) {
   return amount / 100;
 }
 
 // Função para verificar status do Stripe
-export function getStripeStatus() {
+function getStripeStatus() {
   return {
     configured: !!stripe,
     environment: stripeConfig?.isLiveKey ? 'production' : 'test',
@@ -349,4 +349,4 @@ if (typeof setInterval !== 'undefined') {
   }, 60000);
 }
 
-export default stripe; 
+module.exports = stripe; 

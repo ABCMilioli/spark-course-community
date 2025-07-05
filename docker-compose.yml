@@ -7,6 +7,22 @@ services:
       - "8080:80"
     environment:
       - NODE_ENV=production
+      # Token de acesso principal do Mercado Pago
+      - MERCADOPAGO_ACCESS_TOKEN=APP_USR-xxxxxxxxxxxx
+      
+      # Chave secreta para validar webhooks - DEVE ser exatamente igual ao "Webhook secret" do painel do Mercado Pago
+      - MERCADOPAGO_WEBHOOK_SECRET=WHK-xxxx-xxxx-xxxx-xxxx
+      
+      # URL pública do seu webhook - DEVE ser acessível pela internet
+      - MERCADOPAGO_NOTIFICATION_URL=https://seu-dominio.com/api/webhooks/mercadopago
+      
+      # URLs de retorno após pagamento
+      - PAYMENT_SUCCESS_URL=https://seu-dominio.com/payment/success
+      - PAYMENT_FAILURE_URL=https://seu-dominio.com/payment/failure
+      - PAYMENT_CANCEL_URL=https://seu-dominio.com/payment/pending
+      
+      # URL base da sua aplicação
+      - APP_URL=https://seu-dominio.com
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s

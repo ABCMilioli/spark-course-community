@@ -194,15 +194,12 @@ export default function ForumTopic() {
     );
   }
 
-  if (!topicData) {
+  if (!topicData || !topicData.pagination || typeof topicData.pagination.total !== 'number') {
+    console.error('topicData inválido:', topicData);
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Tópico não encontrado</h1>
-          <Button onClick={() => navigate('/forum')}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Voltar ao Fórum
-          </Button>
+        <div className="text-center text-red-500">
+          Erro ao carregar posts do tópico. Dados recebidos inválidos.
         </div>
       </div>
     );
@@ -253,7 +250,7 @@ export default function ForumTopic() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground">
-            {topicData.pagination.total} posts
+            {topicData.total} posts
           </span>
         </div>
         <div className="flex items-center gap-2">

@@ -304,7 +304,7 @@ const Messages: React.FC = () => {
               </div>
             ) : (
               conversations.map((conversation) => {
-                const otherParticipant = getOtherParticipant(conversation);
+                const otherUser = conversation.other_user;
                 const isSelected = conversationId === conversation.id;
                 const unread = hasUnreadMessages(conversation);
                 
@@ -316,13 +316,13 @@ const Messages: React.FC = () => {
                   >
                     <div className="flex items-center gap-3">
                       <Avatar>
-                        <AvatarImage src={otherParticipant?.avatar_url} />
-                        <AvatarFallback>{otherParticipant?.name?.charAt(0)}</AvatarFallback>
+                        <AvatarImage src={otherUser?.avatar_url} />
+                        <AvatarFallback>{otherUser?.name?.charAt(0)}</AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <p className={`font-medium truncate text-white ${unread ? 'font-semibold' : ''}`}>
-                            {otherParticipant?.name || 'Usuário'}
+                            {otherUser?.name || 'Usuário'}
                           </p>
                           {conversation.last_message_at && (
                             <span className="text-xs text-gray-400">
@@ -378,14 +378,12 @@ const Messages: React.FC = () => {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <Avatar>
-                  <AvatarImage src={getOtherParticipant(selectedConversation.conversation)?.avatar_url} />
-                  <AvatarFallback>
-                    {getOtherParticipant(selectedConversation.conversation)?.name?.charAt(0)}
-                  </AvatarFallback>
+                  <AvatarImage src={selectedConversation?.conversation.other_user?.avatar_url} />
+                  <AvatarFallback>{selectedConversation?.conversation.other_user?.name?.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <h3 className="font-medium">
-                    {getOtherParticipant(selectedConversation.conversation)?.name}
+                    {selectedConversation?.conversation.other_user?.name}
                   </h3>
                   <p className="text-sm text-gray-500">Online</p>
                 </div>

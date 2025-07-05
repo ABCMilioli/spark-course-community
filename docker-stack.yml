@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: automacaodebaixocusto/spark-course-unificado:latest
+    image: automacaodebaixocusto/spark-course-unificado:v1.0.10
     environment:
       - JWT_SECRET=Q2h5b3VldG9zZWNyZXRzZXJhbGhhZG9yYWRvcmFuZG9tMTIzIT8kKiYoKS0r
       - POSTGRES_HOST=postgres
@@ -24,14 +24,14 @@ services:
       - MINIO_MAX_FILE_SIZE=104857600
       - MINIO_RETENTION_DAYS=365
       
-      # Stripe Configuration (Desabilitado - Configure suas chaves reais)
-      - STRIPE_SECRET_KEY=sk_test_disabled_configure_real_key
-      - STRIPE_WEBHOOK_SECRET=whsec_disabled_configure_real_secret
-      - STRIPE_PUBLISHABLE_KEY=pk_test_disabled_configure_real_key
+
       
-      # Mercado Pago Configuration (Configure seu token real)
-      - MERCADOPAGO_ACCESS_TOKEN=TEST-12345678901234567890123456789012
-      - MERCADOPAGO_WEBHOOK_URL=https://community.iacas.top/api/webhooks/mercadopago
+      # Mercado Pago - Produção
+      - MERCADOPAGO_ACCESS_TOKEN=APP_USR-1488140951727118-070422-02ff2a4006d414790201bb46abbfa8dc-1501873958
+      - MERCADOPAGO_WEBHOOK_SECRET=dc9c5a9d10bddb31e1ffe73f330ff32288de25db6bd7c2188c35501f1c60a94c
+      - MERCADOPAGO_NOTIFICATION_URL=https://community.iacas.top/api/webhooks/mercadopago
+     
+      # Mercado Pago Configuration
       - MERCADOPAGO_SUCCESS_URL=https://community.iacas.top/payment/success
       - MERCADOPAGO_FAILURE_URL=https://community.iacas.top/payment/failure
       - MERCADOPAGO_PENDING_URL=https://community.iacas.top/payment/pending
@@ -49,16 +49,10 @@ services:
         max_attempts: 3
       labels:
         - "traefik.enable=true"
-        # Frontend route
-        - "traefik.http.routers.spark-course-frontend.rule=Host(`community.iacas.top`) && !PathPrefix(`/api`)"
-        - "traefik.http.routers.spark-course-frontend.entrypoints=websecure"
-        - "traefik.http.routers.spark-course-frontend.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.spark-course-frontend.loadbalancer.server.port=3001"
-        # API route
-        - "traefik.http.routers.spark-course-api.rule=Host(`community.iacas.top`) && PathPrefix(`/api`)"
-        - "traefik.http.routers.spark-course-api.entrypoints=websecure"
-        - "traefik.http.routers.spark-course-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.services.spark-course-api.loadbalancer.server.port=3001"
+        - "traefik.http.routers.spark-course.rule=Host(`community.iacas.top`)"
+        - "traefik.http.routers.spark-course.entrypoints=websecure"
+        - "traefik.http.routers.spark-course.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.spark-course.loadbalancer.server.port=3001"
         - "traefik.docker.network=network_public"
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]

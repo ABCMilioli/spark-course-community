@@ -1,5 +1,5 @@
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3Client } from '../config/minio.js';
+const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { s3Client } = require('../config/minio.js');
 
 const uploadFile = async (file, folder = 'general') => {
   try {
@@ -55,4 +55,4 @@ const deleteFile = async (fileName) => {
   }
 };
 
-export { uploadFile, deleteFile }; 
+module.exports = { uploadFile, deleteFile }; 

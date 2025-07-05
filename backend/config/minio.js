@@ -1,5 +1,5 @@
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const s3Client = new S3Client({
   endpoint: `https://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}`,
@@ -20,4 +20,7 @@ async function getPresignedUrl(bucket, key, expiresInSeconds = 600) {
   return getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
 }
 
-export { s3Client, getPresignedUrl }; 
+module.exports = {
+  s3Client,
+  getPresignedUrl
+};

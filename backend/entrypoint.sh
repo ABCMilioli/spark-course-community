@@ -39,5 +39,5 @@ for f in /app/migrations/*.sql; do
 done
 
 echo "Todas as migrations foram aplicadas!"
-echo "Iniciando backend..."
-exec node index.js 
+echo "Iniciando backend modular..."
+exec node index-modular.cjs 

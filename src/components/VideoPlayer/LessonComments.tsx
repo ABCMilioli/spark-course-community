@@ -28,6 +28,7 @@ export function LessonComments({ lessonId }: LessonCommentsProps) {
       const { data } = await axios.get(`${API_URL}/lessons/${lessonId}/comments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('Dados dos comentários carregados:', data);
       return data as LessonComment[];
     },
     enabled: !!lessonId,
@@ -53,14 +54,21 @@ export function LessonComments({ lessonId }: LessonCommentsProps) {
 
   const likeCommentMutation = useMutation({
     mutationFn: async (commentId: string) => {
+      console.log('Iniciando mutation de like para comentário:', commentId);
       const token = localStorage.getItem('token');
       const { data } = await axios.post(`${API_URL}/comments/${commentId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('Resposta da API:', data);
       return data;
     },
     onSuccess: () => {
+      console.log('Like realizado com sucesso, invalidando queries');
       queryClient.invalidateQueries({ queryKey: ['lesson-comments', lessonId] });
+    },
+    onError: (error) => {
+      console.error('Erro na mutation de like:', error);
+      toast.error('Erro ao curtir comentário');
     },
   });
 
@@ -74,6 +82,7 @@ export function LessonComments({ lessonId }: LessonCommentsProps) {
   };
 
   const handleLikeComment = (commentId: string) => {
+    console.log('Clicou no like do comentário:', commentId);
     likeCommentMutation.mutate(commentId);
   };
 
@@ -147,6 +156,7 @@ export function LessonComments({ lessonId }: LessonCommentsProps) {
                   size="sm"
                   onClick={() => handleLikeComment(comment.id)}
                   className={`gap-1 ${comment.is_liked_by_user ? 'text-red-500' : ''}`}
+                  disabled={likeCommentMutation.isPending}
                 >
                   <Heart className={`w-4 h-4 ${comment.is_liked_by_user ? 'fill-current' : ''}`} />
                   {comment.likes_count}
