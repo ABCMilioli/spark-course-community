@@ -26,6 +26,10 @@ import Classes from "./pages/Classes";
 import ClassDetail from "./pages/ClassDetail";
 import ClassManagement from "./pages/ClassManagement";
 import Payment from "./pages/Payment";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentFailure from "./pages/PaymentFailure";
+import PaymentPending from "./pages/PaymentPending";
+import PaymentManagement from "./pages/Admin/PaymentManagement";
 import PublicProfile from "./pages/PublicProfile";
 import Messages from "./pages/Messages";
 
@@ -77,7 +81,11 @@ function AppContent() {
               <Route path="/explore" element={<Explore />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/course/edit/:courseId" element={<CourseAdmin />} />
+              <Route path="/admin/payments" element={<PaymentManagement />} />
               <Route path="/payment" element={<Payment />} />
+              <Route path="/payment/success" element={<PaymentSuccess />} />
+              <Route path="/payment/failure" element={<PaymentFailure />} />
+              <Route path="/payment/pending" element={<PaymentPending />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>

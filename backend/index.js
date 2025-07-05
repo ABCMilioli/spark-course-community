@@ -6599,6 +6599,950 @@ app.get('/api/webhooks/:id/logs', authenticateToken, async (req, res) => {
 });
 
 // Rota catch-all para SPA (deve ser a �ltima rota)
+// ===== ENDPOINTS DE PAGAMENTO =====
+
+// Importar configurações dos gateways
+import { createPaymentIntent, retrievePaymentIntent, constructWebhookEvent, formatAmount } from './config/stripe.js';
+import { createPreference, getPayment, processWebhook, convertStatus, getAvailablePaymentMethods, getMercadoPagoStatus } from './config/mercadopago.js';
+
+// Criar Payment Intent para um curso
+app.post('/api/payments/create-intent', authenticateToken, async (req, res) => {
+  try {
+    const { course_id } = req.body;
+    
+    console.log('[POST /api/payments/create-intent] Criando Payment Intent');
+    console.log('[POST /api/payments/create-intent] course_id:', course_id);
+    console.log('[POST /api/payments/create-intent] user:', req.user);
+
+    if (!course_id) {
+      return res.status(400).json({ error: 'course_id é obrigatório.' });
+    }
+
+    // Buscar informações do curso
+    const courseResult = await pool.query(
+      'SELECT id, title, price FROM courses WHERE id = $1',
+      [course_id]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado.' });
+    }
+
+    const course = courseResult.rows[0];
+
+    if (Number(course.price) === 0) {
+      return res.status(400).json({ error: 'Cursos gratuitos não requerem pagamento.' });
+    }
+
+    // Verificar se já está matriculado
+    const existingEnrollment = await pool.query(
+      'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+      [req.user.id, course_id]
+    );
+
+    if (existingEnrollment.rows.length > 0) {
+      return res.status(400).json({ error: 'Usuário já está matriculado neste curso.' });
+    }
+
+    // Verificar se já existe um pagamento pendente
+    const existingPayment = await pool.query(
+      'SELECT id, stripe_payment_intent_id FROM payments WHERE user_id = $1 AND course_id = $2 AND status = $3',
+      [req.user.id, course_id, 'pending']
+    );
+
+    if (existingPayment.rows.length > 0) {
+      // Retornar o Payment Intent existente
+      const paymentIntent = await retrievePaymentIntent(existingPayment.rows[0].stripe_payment_intent_id);
+      return res.json({
+        client_secret: paymentIntent.client_secret,
+        payment_intent_id: paymentIntent.id,
+        amount: formatAmount(paymentIntent.amount),
+        course: {
+          id: course.id,
+          title: course.title,
+          price: course.price
+        }
+      });
+    }
+
+    // Criar Payment Intent no Stripe
+    const paymentIntent = await createPaymentIntent(Number(course.price), 'brl', {
+      course_id,
+      user_id: req.user.id,
+      course_title: course.title
+    });
+
+    // Salvar no banco de dados
+    const paymentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO payments (id, user_id, course_id, stripe_payment_intent_id, amount, status, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [
+      paymentId,
+      req.user.id,
+      course_id,
+      paymentIntent.id,
+      course.price,
+      'pending',
+      { course_title: course.title }
+    ]);
+
+    console.log('[POST /api/payments/create-intent] Payment Intent criado:', paymentIntent.id);
+
+    res.json({
+      client_secret: paymentIntent.client_secret,
+      payment_intent_id: paymentIntent.id,
+      amount: formatAmount(paymentIntent.amount),
+      course: {
+        id: course.id,
+        title: course.title,
+        price: course.price
+      }
+    });
+
+  } catch (error) {
+    console.error('[POST /api/payments/create-intent] Erro:', error);
+    res.status(500).json({ error: 'Erro ao criar Payment Intent.' });
+  }
+});
+
+// Confirmar pagamento
+app.post('/api/payments/confirm', authenticateToken, async (req, res) => {
+  try {
+    const { payment_intent_id } = req.body;
+    
+    console.log('[POST /api/payments/confirm] Confirmando pagamento');
+    console.log('[POST /api/payments/confirm] payment_intent_id:', payment_intent_id);
+
+    if (!payment_intent_id) {
+      return res.status(400).json({ error: 'payment_intent_id é obrigatório.' });
+    }
+
+    // Buscar pagamento no banco
+    const paymentResult = await pool.query(
+      'SELECT * FROM payments WHERE stripe_payment_intent_id = $1 AND user_id = $2',
+      [payment_intent_id, req.user.id]
+    );
+
+    if (paymentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Pagamento não encontrado.' });
+    }
+
+    const payment = paymentResult.rows[0];
+
+    // Verificar status no Stripe
+    const stripePayment = await retrievePaymentIntent(payment_intent_id);
+
+    if (stripePayment.status === 'succeeded') {
+      // Atualizar status no banco
+      await pool.query(
+        'UPDATE payments SET status = $1, updated_at = $2 WHERE id = $3',
+        ['succeeded', new Date(), payment.id]
+      );
+
+      // Criar matrícula
+      const enrollmentId = crypto.randomUUID();
+      await pool.query(
+        'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+        [enrollmentId, req.user.id, payment.course_id, new Date(), 0]
+      );
+
+      // Disparar webhook
+      try {
+        await sendWebhook('payment.succeeded', {
+          payment_id: payment.id,
+          user_id: req.user.id,
+          user_name: req.user.name,
+          course_id: payment.course_id,
+          amount: payment.amount,
+          payment_intent_id: payment_intent_id
+        });
+      } catch (webhookError) {
+        console.error('[WEBHOOK] Erro ao enviar webhook payment.succeeded:', webhookError);
+      }
+
+      console.log('[POST /api/payments/confirm] Pagamento confirmado com sucesso');
+      res.json({ 
+        success: true, 
+        message: 'Pagamento confirmado com sucesso!',
+        enrollment_id: enrollmentId
+      });
+    } else {
+      res.status(400).json({ 
+        error: 'Pagamento não foi confirmado.',
+        status: stripePayment.status 
+      });
+    }
+
+  } catch (error) {
+    console.error('[POST /api/payments/confirm] Erro:', error);
+    res.status(500).json({ error: 'Erro ao confirmar pagamento.' });
+  }
+});
+
+// Webhook do Stripe com validação robusta
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  const startTime = Date.now();
+  let webhookId = null;
+
+  try {
+    const signature = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    console.log('[WEBHOOK STRIPE] 📨 Webhook recebido');
+
+    // Validações de segurança
+    if (!webhookSecret) {
+      console.error('[WEBHOOK STRIPE] ❌ STRIPE_WEBHOOK_SECRET não configurado');
+      return res.status(500).json({ error: 'Webhook secret não configurado.' });
+    }
+
+    if (!signature) {
+      console.error('[WEBHOOK STRIPE] ❌ Assinatura ausente');
+      return res.status(400).json({ error: 'Assinatura ausente.' });
+    }
+
+    if (!req.body || req.body.length === 0) {
+      console.error('[WEBHOOK STRIPE] ❌ Payload vazio');
+      return res.status(400).json({ error: 'Payload vazio.' });
+    }
+
+    // Verificar assinatura
+    let event;
+    try {
+      event = constructWebhookEvent(req.body, signature, webhookSecret);
+    } catch (err) {
+      console.error('[WEBHOOK STRIPE] ❌ Assinatura inválida:', {
+        error: err.message,
+        signatureLength: signature?.length,
+        payloadLength: req.body?.length,
+      });
+      return res.status(400).json({ error: 'Assinatura inválida.' });
+    }
+
+    console.log(`[WEBHOOK STRIPE] ✅ Evento válido: ${event.type} (${event.id})`);
+
+    // Verificar se o webhook já foi processado (idempotência)
+    const existingWebhook = await pool.query(
+      'SELECT id, status FROM stripe_webhooks WHERE stripe_event_id = $1',
+      [event.id]
+    );
+
+    if (existingWebhook.rows.length > 0) {
+      const existing = existingWebhook.rows[0];
+      console.log(`[WEBHOOK STRIPE] 🔄 Webhook já processado: ${event.id} (status: ${existing.status})`);
+      return res.json({ received: true, status: 'already_processed' });
+    }
+
+    // Salvar webhook no banco
+    webhookId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO stripe_webhooks (id, stripe_event_id, event_type, payment_intent_id, payload, status)
+      VALUES ($1, $2, $3, $4, $5, $6)
+    `, [
+      webhookId,
+      event.id,
+      event.type,
+      event.data?.object?.id || null,
+      event,
+      'processing'
+    ]);
+
+    console.log(`[WEBHOOK STRIPE] 💾 Webhook salvo: ${webhookId}`);
+
+    // Processar eventos específicos
+    let processingResult = { status: 'ignored', message: 'Evento não processado' };
+
+    try {
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          processingResult = await handlePaymentSuccess(event.data.object);
+          break;
+        
+        case 'payment_intent.payment_failed':
+          processingResult = await handlePaymentFailure(event.data.object);
+          break;
+        
+        case 'payment_intent.canceled':
+          processingResult = await handlePaymentCancel(event.data.object);
+          break;
+        
+        case 'payment_intent.requires_action':
+          processingResult = { status: 'requires_action', message: 'Ação adicional necessária' };
+          console.log(`[WEBHOOK STRIPE] ⚠️  Payment Intent requer ação: ${event.data.object.id}`);
+          break;
+
+        case 'payment_intent.processing':
+          processingResult = { status: 'processing', message: 'Pagamento em processamento' };
+          console.log(`[WEBHOOK STRIPE] 🔄 Payment Intent processando: ${event.data.object.id}`);
+          break;
+        
+        default:
+          console.log(`[WEBHOOK STRIPE] ❓ Evento não tratado: ${event.type}`);
+          processingResult = { status: 'ignored', message: `Evento ${event.type} não tratado` };
+      }
+    } catch (processingError) {
+      console.error('[WEBHOOK STRIPE] ❌ Erro no processamento:', processingError);
+      processingResult = { status: 'error', message: processingError.message };
+    }
+
+    // Atualizar status do webhook
+    const finalStatus = processingResult.status === 'error' ? 'failed' : 'processed';
+    await pool.query(
+      'UPDATE stripe_webhooks SET status = $1, processed_at = $2 WHERE id = $3',
+      [finalStatus, new Date(), webhookId]
+    );
+
+    const processingTime = Date.now() - startTime;
+    console.log(`[WEBHOOK STRIPE] ✅ Webhook processado em ${processingTime}ms: ${event.type} (${finalStatus})`);
+
+    res.json({ 
+      received: true, 
+      status: finalStatus,
+      processing_time_ms: processingTime,
+      event_id: event.id,
+      result: processingResult
+    });
+
+  } catch (error) {
+    console.error('[WEBHOOK STRIPE] ❌ Erro geral:', error);
+
+    // Marcar webhook como falhado se foi salvo
+    if (webhookId) {
+      try {
+        await pool.query(
+          'UPDATE stripe_webhooks SET status = $1, processed_at = $2 WHERE id = $3',
+          ['failed', new Date(), webhookId]
+        );
+      } catch (updateError) {
+        console.error('[WEBHOOK STRIPE] ❌ Erro ao atualizar status:', updateError);
+      }
+    }
+
+    res.status(500).json({ 
+      error: 'Erro interno.',
+      processing_time_ms: Date.now() - startTime
+    });
+  }
+});
+
+// Função para processar pagamento bem-sucedido
+async function handlePaymentSuccess(paymentIntent) {
+  try {
+    console.log(`[WEBHOOK STRIPE] 💰 Processando pagamento bem-sucedido: ${paymentIntent.id}`);
+
+    // Buscar pagamento no banco
+    const paymentResult = await pool.query(
+      'SELECT * FROM payments WHERE stripe_payment_intent_id = $1',
+      [paymentIntent.id]
+    );
+
+    if (paymentResult.rows.length === 0) {
+      console.error(`[WEBHOOK STRIPE] ❌ Pagamento não encontrado no banco: ${paymentIntent.id}`);
+      return { status: 'error', message: 'Pagamento não encontrado no banco de dados' };
+    }
+
+    const payment = paymentResult.rows[0];
+
+    // Verificar se já está como succeeded (idempotência)
+    if (payment.status === 'succeeded') {
+      console.log(`[WEBHOOK STRIPE] ✅ Pagamento já processado como succeeded: ${payment.id}`);
+      return { status: 'already_processed', message: 'Pagamento já estava como succeeded' };
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Atualizar status do pagamento
+      await client.query(
+        'UPDATE payments SET status = $1, updated_at = $2, metadata = $3 WHERE id = $4',
+        [
+          'succeeded', 
+          new Date(), 
+          { 
+            ...payment.metadata, 
+            stripe_confirmed_at: new Date().toISOString(),
+            payment_intent_status: paymentIntent.status 
+          },
+          payment.id
+        ]
+      );
+
+      // Verificar se já existe matrícula
+      const enrollmentResult = await client.query(
+        'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+        [payment.user_id, payment.course_id]
+      );
+
+      let enrollmentId = null;
+      if (enrollmentResult.rows.length === 0) {
+        // Criar matrícula
+        enrollmentId = crypto.randomUUID();
+        await client.query(
+          'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+          [enrollmentId, payment.user_id, payment.course_id, new Date(), 0]
+        );
+
+        console.log(`[WEBHOOK STRIPE] ✅ Matrícula criada: ${enrollmentId}`);
+      } else {
+        enrollmentId = enrollmentResult.rows[0].id;
+        console.log(`[WEBHOOK STRIPE] ✅ Matrícula já existia: ${enrollmentId}`);
+      }
+
+      await client.query('COMMIT');
+
+      // Disparar webhook personalizado
+      try {
+        await sendWebhook('payment.succeeded', {
+          payment_id: payment.id,
+          user_id: payment.user_id,
+          course_id: payment.course_id,
+          amount: payment.amount,
+          payment_intent_id: paymentIntent.id,
+          enrollment_id: enrollmentId
+        });
+      } catch (webhookError) {
+        console.error('[WEBHOOK] Erro ao enviar webhook payment.succeeded:', webhookError);
+      }
+
+      console.log(`[WEBHOOK STRIPE] ✅ Pagamento processado com sucesso: ${payment.id}`);
+      return { 
+        status: 'success', 
+        message: 'Pagamento processado e matrícula criada',
+        payment_id: payment.id,
+        enrollment_id: enrollmentId
+      };
+
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('[WEBHOOK STRIPE] ❌ Erro ao processar pagamento bem-sucedido:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+// Função para processar falha no pagamento
+async function handlePaymentFailure(paymentIntent) {
+  try {
+    console.log(`[WEBHOOK STRIPE] ❌ Processando falha no pagamento: ${paymentIntent.id}`);
+
+    const result = await pool.query(
+      'UPDATE payments SET status = $1, updated_at = $2, metadata = $3 WHERE stripe_payment_intent_id = $4 RETURNING id',
+      [
+        'failed', 
+        new Date(), 
+        { 
+          stripe_failure_reason: paymentIntent.last_payment_error?.message || 'Falha não especificada',
+          stripe_failure_code: paymentIntent.last_payment_error?.code,
+          updated_at: new Date().toISOString()
+        }, 
+        paymentIntent.id
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      console.error(`[WEBHOOK STRIPE] ❌ Pagamento não encontrado para falha: ${paymentIntent.id}`);
+      return { status: 'error', message: 'Pagamento não encontrado no banco de dados' };
+    }
+
+    const paymentId = result.rows[0].id;
+
+    // Disparar webhook personalizado para falha
+    try {
+      await sendWebhook('payment.failed', {
+        payment_id: paymentId,
+        payment_intent_id: paymentIntent.id,
+        failure_reason: paymentIntent.last_payment_error?.message,
+        failure_code: paymentIntent.last_payment_error?.code
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook payment.failed:', webhookError);
+    }
+
+    console.log(`[WEBHOOK STRIPE] ✅ Falha no pagamento processada: ${paymentId}`);
+    return { 
+      status: 'success', 
+      message: 'Falha no pagamento processada',
+      payment_id: paymentId,
+      failure_reason: paymentIntent.last_payment_error?.message
+    };
+
+  } catch (error) {
+    console.error('[WEBHOOK STRIPE] ❌ Erro ao processar falha no pagamento:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+
+// Função para processar cancelamento do pagamento
+async function handlePaymentCancel(paymentIntent) {
+  try {
+    console.log(`[WEBHOOK STRIPE] 🚫 Processando cancelamento do pagamento: ${paymentIntent.id}`);
+
+    const result = await pool.query(
+      'UPDATE payments SET status = $1, updated_at = $2, metadata = $3 WHERE stripe_payment_intent_id = $4 RETURNING id',
+      [
+        'canceled', 
+        new Date(), 
+        { 
+          stripe_canceled_at: new Date().toISOString(),
+          cancellation_reason: paymentIntent.cancellation_reason || 'Cancelado pelo usuário'
+        }, 
+        paymentIntent.id
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      console.error(`[WEBHOOK STRIPE] ❌ Pagamento não encontrado para cancelamento: ${paymentIntent.id}`);
+      return { status: 'error', message: 'Pagamento não encontrado no banco de dados' };
+    }
+
+    const paymentId = result.rows[0].id;
+
+    // Disparar webhook personalizado para cancelamento
+    try {
+      await sendWebhook('payment.canceled', {
+        payment_id: paymentId,
+        payment_intent_id: paymentIntent.id,
+        cancellation_reason: paymentIntent.cancellation_reason
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook payment.canceled:', webhookError);
+    }
+
+    console.log(`[WEBHOOK STRIPE] ✅ Cancelamento processado: ${paymentId}`);
+    return { 
+      status: 'success', 
+      message: 'Cancelamento processado',
+      payment_id: paymentId,
+      cancellation_reason: paymentIntent.cancellation_reason
+    };
+
+  } catch (error) {
+    console.error('[WEBHOOK STRIPE] ❌ Erro ao processar cancelamento do pagamento:', error);
+    return { status: 'error', message: error.message };
+  }
+}
+// ===== ROTAS DE PAGAMENTO =====
+
+// 1. Buscar métodos de pagamento disponíveis
+app.get('/api/payments/methods', authenticateToken, async (req, res) => {
+  try {
+    const methods = getAvailablePaymentMethods();
+    res.json(methods);
+  } catch (error) {
+    console.error('[GET /api/payments/methods] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar métodos de pagamento.' });
+  }
+});
+
+// 2. Estatísticas de pagamentos por gateway
+app.get('/api/payments/stats', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    // Buscar estatísticas por gateway
+    const { rows } = await pool.query(`
+      SELECT 
+        gateway,
+        COUNT(*) as total_payments,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COUNT(CASE WHEN status = 'succeeded' THEN 1 END) as succeeded_payments,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_payments,
+        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_payments,
+        ROUND(
+          CASE 
+            WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN status = 'succeeded' THEN 1 END)::decimal / COUNT(*)) * 100
+            ELSE 0
+          END, 2
+        ) as success_rate
+      FROM payments 
+      GROUP BY gateway
+      ORDER BY total_payments DESC
+    `);
+
+    res.json(rows);
+  } catch (error) {
+    console.error('[GET /api/payments/stats] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar estatísticas.' });
+  }
+});
+
+// 3. Buscar histórico de pagamentos
+app.get('/api/payments/history', authenticateToken, async (req, res) => {
+  try {
+    console.log('[GET /api/payments/history] Buscando histórico de pagamentos');
+
+    let query;
+    let params;
+
+    if (req.user.role === 'admin') {
+      query = `
+        SELECT p.*, c.title as course_title, c.thumbnail_url, u.name as user_name, u.email as user_email
+        FROM payments p
+        JOIN courses c ON p.course_id = c.id
+        JOIN profiles u ON p.user_id = u.id
+        ORDER BY p.created_at DESC
+      `;
+      params = [];
+    } else {
+      query = `
+        SELECT p.*, c.title as course_title, c.thumbnail_url
+        FROM payments p
+        JOIN courses c ON p.course_id = c.id
+        WHERE p.user_id = $1
+        ORDER BY p.created_at DESC
+      `;
+      params = [req.user.id];
+    }
+
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (error) {
+    console.error('[GET /api/payments/history] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico de pagamentos.' });
+  }
+});
+
+// 4. Estatísticas gerais de pagamentos
+app.get('/api/payments/overview', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { period = '30' } = req.query;
+    const daysAgo = parseInt(period);
+    
+    let whereClause = '';
+    if (period !== 'all') {
+      whereClause = `WHERE created_at >= NOW() - INTERVAL '${daysAgo} days'`;
+    }
+
+    // Buscar estatísticas gerais
+    const { rows: generalStats } = await pool.query(`
+      SELECT 
+        COUNT(*) as total_payments,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COUNT(CASE WHEN status = 'succeeded' THEN 1 END) as succeeded_payments,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_payments,
+        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_payments,
+        ROUND(AVG(amount), 2) as average_amount,
+        ROUND(
+          CASE 
+            WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN status = 'succeeded' THEN 1 END)::decimal / COUNT(*)) * 100
+            ELSE 0
+          END, 2
+        ) as success_rate
+      FROM payments 
+      ${whereClause}
+    `);
+
+    // Buscar dados dos últimos 7 dias para gráfico
+    const { rows: dailyStats } = await pool.query(`
+      SELECT 
+        DATE(created_at) as date,
+        COUNT(*) as payments_count,
+        COALESCE(SUM(amount), 0) as daily_revenue,
+        COUNT(CASE WHEN status = 'succeeded' THEN 1 END) as succeeded_count
+      FROM payments 
+      WHERE created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY DATE(created_at)
+      ORDER BY date DESC
+    `);
+
+    // Buscar top cursos por receita
+    const { rows: topCourses } = await pool.query(`
+      SELECT 
+        c.title,
+        COUNT(p.id) as total_sales,
+        COALESCE(SUM(p.amount), 0) as total_revenue
+      FROM payments p
+      JOIN courses c ON p.course_id = c.id
+      WHERE p.status = 'succeeded' ${period !== 'all' ? `AND p.created_at >= NOW() - INTERVAL '${daysAgo} days'` : ''}
+      GROUP BY c.id, c.title
+      ORDER BY total_revenue DESC
+      LIMIT 5
+    `);
+
+    res.json({
+      general: generalStats[0],
+      daily: dailyStats,
+      topCourses: topCourses
+    });
+
+  } catch (error) {
+    console.error('[GET /api/payments/overview] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar visão geral.' });
+  }
+});
+
+// 5. Buscar detalhes de um pagamento específico (DEVE SER A ÚLTIMA ROTA)
+app.get('/api/payments/:paymentId', authenticateToken, async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+
+    const { rows } = await pool.query(`
+      SELECT p.*, c.title as course_title, c.thumbnail_url, u.name as user_name
+      FROM payments p
+      JOIN courses c ON p.course_id = c.id
+      JOIN profiles u ON p.user_id = u.id
+      WHERE p.id = $1 AND p.user_id = $2
+    `, [paymentId, req.user.id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Pagamento não encontrado.' });
+    }
+
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('[GET /api/payments/:paymentId] Erro:', error);
+    res.status(500).json({ error: 'Erro ao buscar detalhes do pagamento.' });
+  }
+});
+
+// ===== ENDPOINTS DO MERCADO PAGO =====
+// TEMPORARIAMENTE DESABILITADOS - Configure MERCADOPAGO_ACCESS_TOKEN para habilitar
+
+// Criar preferência de pagamento no Mercado Pago
+app.post('/api/payments/mercadopago/create-preference', authenticateToken, async (req, res) => {
+  try {
+    const { course_id } = req.body;
+    
+    if (!course_id) {
+      return res.status(400).json({ error: 'course_id é obrigatório' });
+    }
+
+    // Buscar informações do curso
+    const courseResult = await pool.query(
+      'SELECT id, title, price FROM courses WHERE id = $1',
+      [course_id]
+    );
+
+    if (courseResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Curso não encontrado' });
+    }
+
+    const course = courseResult.rows[0];
+    
+    // Criar preferência no Mercado Pago
+    const preference = await createPreference([
+      {
+        title: course.title,
+        quantity: 1,
+        unit_price: parseFloat(course.price),
+        description: `Curso: ${course.title}`,
+      }
+    ], {
+      course_id: course.id,
+      user_id: req.user.id,
+      external_reference: `course_${course.id}_user_${req.user.id}_${Date.now()}`,
+    });
+
+    // Salvar pagamento no banco
+    const paymentId = crypto.randomUUID();
+    await pool.query(`
+      INSERT INTO payments (id, user_id, course_id, amount, currency, status, gateway, external_reference, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [
+      paymentId,
+      req.user.id,
+      course.id,
+      course.price,
+      'BRL',
+      'pending',
+      'mercadopago',
+      preference.external_reference,
+      {
+        mercadopago_preference_id: preference.id,
+        created_at: new Date().toISOString(),
+      }
+    ]);
+
+    console.log(`[MERCADOPAGO] ✅ Preferência criada para curso ${course.id}: ${preference.id}`);
+
+    res.json({
+      preference_id: preference.id,
+      init_point: preference.init_point,
+      sandbox_init_point: preference.sandbox_init_point,
+      external_reference: preference.external_reference,
+      payment_id: paymentId,
+    });
+
+  } catch (error) {
+    console.error('[MERCADOPAGO] ❌ Erro ao criar preferência:', error);
+    res.status(500).json({ 
+      error: 'Erro ao criar preferência de pagamento',
+      details: error.message 
+    });
+  }
+});
+
+// Webhook do Mercado Pago com validação robusta
+app.post('/api/webhooks/mercadopago', express.json(), async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    console.log('[MERCADOPAGO WEBHOOK] 📨 Webhook recebido:', {
+      type: req.body?.type,
+      action: req.body?.action,
+      dataId: req.body?.data?.id
+    });
+
+    // Verificar se o Mercado Pago está configurado
+    const mpStatus = getMercadoPagoStatus();
+    if (!mpStatus.configured) {
+      console.log('[MERCADOPAGO WEBHOOK] ⚠️  Mercado Pago não configurado - webhook ignorado');
+      return res.json({ 
+        received: true, 
+        status: 'ignored',
+        message: 'Mercado Pago não configurado',
+        processing_time_ms: Date.now() - startTime
+      });
+    }
+
+    // Validações básicas
+    if (!req.body || !req.body.type) {
+      console.error('[MERCADOPAGO WEBHOOK] ❌ Payload inválido');
+      return res.status(400).json({ error: 'Payload inválido' });
+    }
+
+    // Rate limiting básico (opcional)
+    const clientIP = req.ip || req.connection.remoteAddress;
+    console.log(`[MERCADOPAGO WEBHOOK] IP: ${clientIP}`);
+
+    let processingResult = { status: 'ignored', message: 'Evento não processado' };
+
+    try {
+      // Processar webhook usando a função do config
+      const webhookResult = await processWebhook(req.body, req.headers);
+      
+      if (webhookResult.type === 'payment') {
+        // Processar mudança de status de pagamento
+        const payment = webhookResult.payment;
+        
+        if (payment) {
+          const convertedStatus = convertStatus(payment.status);
+          
+          // Atualizar pagamento no banco
+          const updateResult = await pool.query(`
+            UPDATE payments 
+            SET status = $1, updated_at = $2, metadata = $3 
+            WHERE id = (
+              SELECT id FROM payments 
+              WHERE metadata->>'mercadopago_payment_id' = $4 
+              OR metadata->>'external_reference' = $5
+            )
+            RETURNING id, user_id, course_id, amount
+          `, [
+            convertedStatus,
+            new Date(),
+            {
+              mercadopago_payment_id: payment.id,
+              mercadopago_status: payment.status,
+              mercadopago_status_detail: payment.status_detail,
+              payment_method: payment.payment_method_id,
+              installments: payment.installments,
+              updated_at: new Date().toISOString()
+            },
+            payment.id.toString(),
+            payment.external_reference
+          ]);
+
+          if (updateResult.rows.length > 0) {
+            const updatedPayment = updateResult.rows[0];
+            
+            // Se pagamento foi aprovado, criar matrícula
+            if (convertedStatus === 'succeeded') {
+              const enrollmentCheck = await pool.query(
+                'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
+                [updatedPayment.user_id, updatedPayment.course_id]
+              );
+
+              if (enrollmentCheck.rows.length === 0) {
+                const enrollmentId = crypto.randomUUID();
+                await pool.query(
+                  'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
+                  [enrollmentId, updatedPayment.user_id, updatedPayment.course_id, new Date(), 0]
+                );
+
+                console.log(`[MERCADOPAGO WEBHOOK] ✅ Matrícula criada: ${enrollmentId}`);
+              }
+
+              // Disparar webhook personalizado
+              try {
+                await sendWebhook('payment.succeeded', {
+                  payment_id: updatedPayment.id,
+                  user_id: updatedPayment.user_id,
+                  course_id: updatedPayment.course_id,
+                  amount: updatedPayment.amount,
+                  gateway: 'mercadopago',
+                  mercadopago_payment_id: payment.id
+                });
+              } catch (webhookError) {
+                console.error('[WEBHOOK] Erro ao enviar webhook payment.succeeded (MP):', webhookError);
+              }
+            }
+
+            processingResult = {
+              status: 'success',
+              message: 'Pagamento atualizado com sucesso',
+              payment_id: updatedPayment.id,
+              new_status: convertedStatus
+            };
+
+            console.log(`[MERCADOPAGO WEBHOOK] ✅ Pagamento atualizado: ${updatedPayment.id} -> ${convertedStatus}`);
+          } else {
+            console.warn(`[MERCADOPAGO WEBHOOK] ⚠️  Pagamento não encontrado no banco: ${payment.id}`);
+            processingResult = {
+              status: 'warning',
+              message: 'Pagamento não encontrado no banco de dados'
+            };
+          }
+        }
+      } else {
+        console.log(`[MERCADOPAGO WEBHOOK] ❓ Tipo de webhook não tratado: ${webhookResult.type}`);
+        processingResult = {
+          status: 'ignored',
+          message: `Tipo de webhook ${webhookResult.type} não tratado`
+        };
+      }
+
+    } catch (processingError) {
+      console.error('[MERCADOPAGO WEBHOOK] ❌ Erro no processamento:', processingError);
+      processingResult = {
+        status: 'error',
+        message: processingError.message
+      };
+    }
+
+    const processingTime = Date.now() - startTime;
+    console.log(`[MERCADOPAGO WEBHOOK] ✅ Webhook processado em ${processingTime}ms`);
+
+    res.json({
+      received: true,
+      status: processingResult.status,
+      message: processingResult.message,
+      processing_time_ms: processingTime
+    });
+    
+  } catch (error) {
+    console.error('[MERCADOPAGO WEBHOOK] ❌ Erro geral:', error);
+    res.status(500).json({ 
+      error: 'Erro interno',
+      processing_time_ms: Date.now() - startTime
+    });
+  }
+}); // <-- Fechamento do webhook do Mercado Pago
+
+// Rota catch-all deve ser a última
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

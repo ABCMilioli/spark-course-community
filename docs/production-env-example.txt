@@ -1,0 +1,76 @@
+# Configuração de Produção - Gateways de Pagamento
+# Copie este arquivo para .env.production e preencha com suas chaves reais
+
+# ===== BANCO DE DADOS =====
+POSTGRES_HOST=seu-db-host
+POSTGRES_PORT=5432
+POSTGRES_USER=seu-usuario-db
+POSTGRES_PASSWORD=sua-senha-db
+POSTGRES_DB=seu-banco-db
+
+# ===== STRIPE (PRODUÇÃO) =====
+# Chaves do Stripe (modo produção)
+STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_SECRET_KEY=sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# URLs dos Webhooks Stripe
+STRIPE_WEBHOOK_ENDPOINT=https://seu-dominio.com/api/webhooks/stripe
+
+# ===== MERCADO PAGO (PRODUÇÃO) =====
+# Token de acesso do Mercado Pago (modo produção)
+MERCADOPAGO_ACCESS_TOKEN=APP_USR-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Configurações do Mercado Pago
+MERCADOPAGO_CLIENT_ID=xxxxxxxxxxxxxxxx
+MERCADOPAGO_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# URLs dos Webhooks Mercado Pago
+MERCADOPAGO_WEBHOOK_ENDPOINT=https://seu-dominio.com/api/webhooks/mercadopago
+MERCADOPAGO_NOTIFICATION_URL=https://seu-dominio.com/api/webhooks/mercadopago
+
+# ===== CONFIGURAÇÕES GERAIS =====
+# Ambiente de execução
+NODE_ENV=production
+
+# URL da aplicação
+APP_URL=https://seu-dominio.com
+API_URL=https://seu-dominio.com/api
+
+# Chave secreta para JWT
+JWT_SECRET=sua-chave-secreta-super-segura-aqui
+
+# ===== CONFIGURAÇÕES DE PAGAMENTO =====
+# Moeda padrão
+DEFAULT_CURRENCY=BRL
+
+# URLs de retorno após pagamento
+PAYMENT_SUCCESS_URL=https://seu-dominio.com/payment/success
+PAYMENT_CANCEL_URL=https://seu-dominio.com/payment/cancel
+PAYMENT_FAILURE_URL=https://seu-dominio.com/payment/failure
+
+# ===== CONFIGURAÇÕES DE EMAIL =====
+# Para notificações de pagamento
+SMTP_HOST=seu-smtp-host
+SMTP_PORT=587
+SMTP_USER=seu-email@dominio.com
+SMTP_PASS=sua-senha-email
+
+# ===== CONFIGURAÇÕES DE LOGS =====
+# Nível de log para produção
+LOG_LEVEL=info
+
+# ===== CONFIGURAÇÕES DE SEGURANÇA =====
+# Origens permitidas para CORS
+ALLOWED_ORIGINS=https://seu-dominio.com,https://www.seu-dominio.com
+
+# Rate limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# ===== OBSERVAÇÕES =====
+# 1. Nunca commite este arquivo com chaves reais
+# 2. Use variáveis de ambiente no servidor de produção
+# 3. Mantenha as chaves seguras e rotacione periodicamente
+# 4. Configure webhooks com URLs HTTPS válidas
+# 5. Teste sempre em ambiente de sandbox antes da produção 

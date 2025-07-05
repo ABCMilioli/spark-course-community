@@ -23,6 +23,18 @@ services:
       - MINIO_UPLOAD_TIMEOUT=300000
       - MINIO_MAX_FILE_SIZE=104857600
       - MINIO_RETENTION_DAYS=365
+      
+      # Stripe Configuration (Desabilitado - Configure suas chaves reais)
+      - STRIPE_SECRET_KEY=sk_test_disabled_configure_real_key
+      - STRIPE_WEBHOOK_SECRET=whsec_disabled_configure_real_secret
+      - STRIPE_PUBLISHABLE_KEY=pk_test_disabled_configure_real_key
+      
+      # Mercado Pago Configuration (Configure seu token real)
+      - MERCADOPAGO_ACCESS_TOKEN=TEST-12345678901234567890123456789012
+      - MERCADOPAGO_WEBHOOK_URL=https://community.iacas.top/api/webhooks/mercadopago
+      - MERCADOPAGO_SUCCESS_URL=https://community.iacas.top/payment/success
+      - MERCADOPAGO_FAILURE_URL=https://community.iacas.top/payment/failure
+      - MERCADOPAGO_PENDING_URL=https://community.iacas.top/payment/pending
     networks:
       - network_public
     deploy:

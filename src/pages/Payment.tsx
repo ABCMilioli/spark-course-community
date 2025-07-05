@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CreditCard, Lock, Check } from "lucide-react";
+import { ArrowLeft, CreditCard, Lock, Check, Loader2, ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from 'axios';
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -25,6 +26,9 @@ export default function Payment() {
   const { courseId } = useParams<{ courseId: string }>();
   const [searchParams] = useSearchParams();
   const courseIdFromParams = searchParams.get('courseId') || courseId;
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentIntent, setPaymentIntent] = useState<any>(null);
+  const [selectedGateway, setSelectedGateway] = useState<'stripe' | 'mercadopago'>('stripe');
 
   const { data: course, isLoading } = useQuery({
     queryKey: ['course-payment', courseIdFromParams],
@@ -32,27 +36,71 @@ export default function Payment() {
     enabled: !!courseIdFromParams,
   });
 
-  const handlePayment = async () => {
+  const handleCreatePaymentIntent = async () => {
+    if (!course) return;
+
+    setIsProcessing(true);
     try {
-      // Aqui você implementaria a integração com gateway de pagamento
-      // Por enquanto, vamos simular um pagamento bem-sucedido
-      
-      // Criar matrícula após pagamento
       const token = localStorage.getItem('token');
-      await axios.post(`${API_URL}/enrollments`, {
-        course_id: courseIdFromParams,
-        user_id: user?.id
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
       
-      toast.success('Pagamento processado com sucesso!');
+      if (selectedGateway === 'stripe') {
+        const { data } = await axios.post(`${API_URL}/payments/create-intent`, {
+          course_id: courseIdFromParams
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setPaymentIntent(data);
+        toast.success('Pagamento preparado com sucesso!');
+      } else {
+        const { data } = await axios.post(`${API_URL}/payments/mercadopago/create-preference`, {
+          course_id: courseIdFromParams
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setPaymentIntent(data);
+        toast.success('Preferência de pagamento criada!');
+      }
+    } catch (error: any) {
+      console.error('Erro ao criar pagamento:', error);
+      toast.error(error.response?.data?.error || 'Erro ao preparar pagamento');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!paymentIntent) {
+      await handleCreatePaymentIntent();
+      return;
+    }
+
+    if (selectedGateway === 'stripe') {
+      // Aqui você implementaria a integração com Stripe Elements
+      // Por enquanto, vamos simular um pagamento bem-sucedido
+      setIsProcessing(true);
       
-      // Redirecionar para o player do curso
-      navigate(`/player?courseId=${courseIdFromParams}`);
-    } catch (error) {
-      console.error('Erro ao processar pagamento:', error);
-      toast.error('Erro ao processar pagamento');
+      try {
+        const token = localStorage.getItem('token');
+        await axios.post(`${API_URL}/payments/confirm`, {
+          payment_intent_id: paymentIntent.payment_intent_id
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        toast.success('Pagamento processado com sucesso!');
+        navigate(`/player?courseId=${courseIdFromParams}`);
+      } catch (error: any) {
+        console.error('Erro ao processar pagamento:', error);
+        toast.error(error.response?.data?.error || 'Erro ao processar pagamento');
+      } finally {
+        setIsProcessing(false);
+      }
+    } else {
+      // Mercado Pago - redirecionar para checkout
+      if (paymentIntent.init_point) {
+        window.open(paymentIntent.init_point, '_blank');
+        toast.success('Redirecionando para o Mercado Pago...');
+      }
     }
   };
 
@@ -136,32 +184,109 @@ export default function Payment() {
           </CardContent>
         </Card>
 
+        {/* Gateway Selection */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Escolha o Gateway de Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div 
+                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                  selectedGateway === 'stripe' 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:bg-muted/50'
+                }`}
+                onClick={() => setSelectedGateway('stripe')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">S</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">Stripe</p>
+                    <p className="text-sm text-muted-foreground">Gateway internacional</p>
+                  </div>
+                  {selectedGateway === 'stripe' && (
+                    <Check className="w-5 h-5 text-primary ml-auto" />
+                  )}
+                </div>
+              </div>
+
+              <div 
+                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                  selectedGateway === 'mercadopago' 
+                    ? 'border-primary bg-primary/5' 
+                    : 'border-border hover:bg-muted/50'
+                }`}
+                onClick={() => setSelectedGateway('mercadopago')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-500 rounded flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">MP</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">Mercado Pago</p>
+                    <p className="text-sm text-muted-foreground">Gateway brasileiro</p>
+                  </div>
+                  {selectedGateway === 'mercadopago' && (
+                    <Check className="w-5 h-5 text-primary ml-auto" />
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Payment Methods */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5" />
-              Método de Pagamento
+              Métodos de Pagamento Disponíveis
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <div className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-muted/50">
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
                 <CreditCard className="w-5 h-5 text-primary" />
                 <div className="flex-1">
                   <p className="font-medium">Cartão de Crédito</p>
-                  <p className="text-sm text-muted-foreground">Visa, Mastercard, Elo</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedGateway === 'stripe' ? 'Visa, Mastercard, Elo' : 'Visa, Mastercard, Elo, Hipercard'}
+                  </p>
                 </div>
                 <Check className="w-5 h-5 text-primary" />
               </div>
               
-              <div className="flex items-center gap-3 p-4 border rounded-lg cursor-pointer hover:bg-muted/50">
-                <CreditCard className="w-5 h-5 text-muted-foreground" />
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <CreditCard className="w-5 h-5 text-primary" />
                 <div className="flex-1">
                   <p className="font-medium">PIX</p>
                   <p className="text-sm text-muted-foreground">Pagamento instantâneo</p>
                 </div>
+                <Check className="w-5 h-5 text-primary" />
               </div>
+
+              <div className="flex items-center gap-3 p-4 border rounded-lg">
+                <CreditCard className="w-5 h-5 text-primary" />
+                <div className="flex-1">
+                  <p className="font-medium">Boleto Bancário</p>
+                  <p className="text-sm text-muted-foreground">Vencimento em 3 dias</p>
+                </div>
+                <Check className="w-5 h-5 text-primary" />
+              </div>
+
+              {selectedGateway === 'mercadopago' && (
+                <div className="flex items-center gap-3 p-4 border rounded-lg">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                  <div className="flex-1">
+                    <p className="font-medium">Transferência Bancária</p>
+                    <p className="text-sm text-muted-foreground">PIX ou TED</p>
+                  </div>
+                  <Check className="w-5 h-5 text-primary" />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -204,12 +329,35 @@ export default function Payment() {
               onClick={handlePayment} 
               className="w-full h-12 text-lg"
               size="lg"
+              disabled={isProcessing}
             >
-              Finalizar Compra - R$ {Number(course.price).toFixed(2)}
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : selectedGateway === 'mercadopago' ? (
+                <>
+                  <ExternalLink className="w-5 h-5 mr-2" />
+                  Pagar com Mercado Pago - R$ {Number(course.price).toFixed(2)}
+                </>
+              ) : (
+                `Finalizar Compra - R$ ${Number(course.price).toFixed(2)}`
+              )}
             </Button>
             <p className="text-xs text-center text-muted-foreground mt-2">
               Ao finalizar, você concorda com nossos termos de uso
             </p>
+            {paymentIntent && (
+              <p className="text-xs text-center text-green-600 mt-2">
+                ✓ {selectedGateway === 'mercadopago' ? 'Preferência criada' : 'Pagamento preparado'} com sucesso
+              </p>
+            )}
+            {selectedGateway === 'mercadopago' && (
+              <p className="text-xs text-center text-blue-600 mt-2">
+                ⚡ Você será redirecionado para o Mercado Pago para finalizar o pagamento
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { MoreHorizontal, FileText, Video, UserPlus, Edit, Trash2, Settings } from "lucide-react";
+import { MoreHorizontal, FileText, Video, UserPlus, Edit, Trash2, Settings, CreditCard } from "lucide-react";
 import { CreateUserModal } from "@/components/Admin/CreateUserModal";
 import { CreateCourseModal } from "@/components/Admin/CreateCourseModal";
 import { CreatePostModal } from "@/components/Admin/CreatePostModal";
@@ -303,17 +303,18 @@ export default function Admin() {
         {/* ... (stats cards code - can be updated later to show real counts) ... */}
       </div>
 
-      <Tabs defaultValue="users">
-        <div className="flex justify-between items-end">
-          <TabsList>
-            <TabsTrigger value="users">Usuários</TabsTrigger>
-            <TabsTrigger value="courses">Cursos</TabsTrigger>
-            <TabsTrigger value="posts">Posts</TabsTrigger>
-            <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
-            <TabsTrigger value="minio">MinIO Test</TabsTrigger>
-          </TabsList>
-          {/* Add buttons */}
-        </div>
+              <Tabs defaultValue="users">
+          <div className="flex justify-between items-end">
+            <TabsList>
+              <TabsTrigger value="users">Usuários</TabsTrigger>
+              <TabsTrigger value="courses">Cursos</TabsTrigger>
+              <TabsTrigger value="posts">Posts</TabsTrigger>
+              <TabsTrigger value="payments">Pagamentos</TabsTrigger>
+              <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+              <TabsTrigger value="minio">MinIO Test</TabsTrigger>
+            </TabsList>
+            {/* Add buttons */}
+          </div>
 
         {/* Users Tab */}
         <TabsContent value="users">
@@ -511,6 +512,39 @@ export default function Admin() {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Payments Tab */}
+        <TabsContent value="payments">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Gerenciamento de Pagamentos</CardTitle>
+                <Button 
+                  onClick={() => navigate('/admin/payments')} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  Ver Página Completa
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <div className="mb-4">
+                  <CreditCard className="w-12 h-12 text-muted-foreground mx-auto" />
+                </div>
+                <h3 className="text-lg font-medium mb-2">Sistema de Pagamentos</h3>
+                <p className="text-muted-foreground mb-4">
+                  Acesse a página completa de gerenciamento de pagamentos para visualizar estatísticas, 
+                  histórico de transações e configurar gateways de pagamento.
+                </p>
+                <Button onClick={() => navigate('/admin/payments')}>
+                  Acessar Gerenciamento de Pagamentos
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
