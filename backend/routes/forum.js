@@ -727,6 +727,35 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
         console.error('[WEBHOOK] Erro ao enviar webhook forum_reply.created:', webhookError);
       }
 
+      // Notificação para o autor do post
+      try {
+        const postAuthorResult = await pool.query(`
+          SELECT fp.author_id, fp.title, prof.name as author_name
+          FROM forum_posts fp
+          JOIN profiles prof ON fp.author_id = prof.id
+          WHERE fp.id = $1
+        `, [postId]);
+        
+        if (postAuthorResult.rows.length > 0) {
+          const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+          
+          if (postAuthorId !== req.user.id) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const truncatedContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+            await createNotification(
+              postAuthorId,
+              'Nova resposta no seu post do fórum',
+              `${userName} respondeu no seu post "${postTitle}": "${truncatedContent}"`,
+              'forum_reply',
+              postId,
+              'forum_post'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de resposta em post do fórum:', notificationErr);
+      }
+
       console.log('[POST /api/forum/posts/:id/replies] Resposta criada com sucesso');
       res.status(201).json(replyWithDetails);
 
@@ -771,6 +800,35 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
           'INSERT INTO forum_post_likes (id, post_id, user_id, created_at) VALUES ($1, $2, $3, $4)',
           [likeId, postId, req.user.id, new Date()]
         );
+        
+        // Notificação para o autor do post
+        try {
+          const postAuthorResult = await pool.query(`
+            SELECT fp.author_id, fp.title, prof.name as author_name
+            FROM forum_posts fp
+            JOIN profiles prof ON fp.author_id = prof.id
+            WHERE fp.id = $1
+          `, [postId]);
+          
+          if (postAuthorResult.rows.length > 0) {
+            const { author_id: postAuthorId, title: postTitle } = postAuthorResult.rows[0];
+            
+            if (postAuthorId !== req.user.id) {
+              const userName = await getUserName(req.user.id, req.user.name);
+              await createNotification(
+                postAuthorId,
+                'Curtida no seu post do fórum',
+                `${userName} curtiu seu post "${postTitle}" no fórum`,
+                'forum_like',
+                postId,
+                'forum_post'
+              );
+            }
+          }
+        } catch (notificationErr) {
+          console.error('[NOTIFICATION] Erro ao criar notificação de curtida em post do fórum:', notificationErr);
+        }
+        
         res.json({ liked: true, message: 'Post curtido.' });
       }
 
@@ -954,6 +1012,81 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
     } catch (err) {
       console.error('[GET /api/forum/tags/popular] Erro:', err);
       res.status(500).json({ error: 'Erro interno.' });
+    }
+  });
+
+  // Curtir/descurtir resposta
+  router.post('/replies/:id/like', authenticateToken, async (req, res) => {
+    try {
+      const { id: replyId } = req.params;
+      const userId = req.user.id;
+      
+      // Verificar se a resposta existe
+      const replyResult = await pool.query(
+        'SELECT id FROM forum_replies WHERE id = $1',
+        [replyId]
+      );
+
+      if (replyResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Resposta não encontrada.' });
+      }
+
+      const likeCheck = await pool.query(
+        'SELECT id FROM forum_reply_likes WHERE reply_id = $1 AND user_id = $2',
+        [replyId, userId]
+      );
+
+      if (likeCheck.rows.length > 0) {
+        // Remover curtida
+        await pool.query(
+          'DELETE FROM forum_reply_likes WHERE reply_id = $1 AND user_id = $2',
+          [replyId, userId]
+        );
+        res.json({ liked: false, message: 'Resposta descurtida.' });
+      } else {
+        // Adicionar curtida
+        const likeId = crypto.randomUUID();
+        await pool.query(
+          'INSERT INTO forum_reply_likes (id, reply_id, user_id, created_at) VALUES ($1, $2, $3, $4)',
+          [likeId, replyId, userId, new Date()]
+        );
+        
+        // Notificação para o autor da resposta
+        try {
+          const replyAuthorResult = await pool.query(`
+            SELECT fr.author_id, fr.content, fp.title as post_title, prof.name as author_name
+            FROM forum_replies fr
+            JOIN forum_posts fp ON fr.post_id = fp.id
+            JOIN profiles prof ON fr.author_id = prof.id
+            WHERE fr.id = $1
+          `, [replyId]);
+          
+          if (replyAuthorResult.rows.length > 0) {
+            const { author_id: replyAuthorId, content: replyContent, post_title } = replyAuthorResult.rows[0];
+            
+            if (replyAuthorId !== userId) {
+              const userName = await getUserName(req.user.id, req.user.name);
+              const truncatedContent = replyContent.length > 50 ? replyContent.substring(0, 50) + '...' : replyContent;
+              await createNotification(
+                replyAuthorId,
+                'Curtida na sua resposta do fórum',
+                `${userName} curtiu sua resposta no post "${post_title}": "${truncatedContent}"`,
+                'forum_reply_like',
+                replyId,
+                'forum_reply'
+              );
+            }
+          }
+        } catch (notificationErr) {
+          console.error('[NOTIFICATION] Erro ao criar notificação de curtida em resposta do fórum:', notificationErr);
+        }
+        
+        res.json({ liked: true, message: 'Resposta curtida.' });
+      }
+
+    } catch (err) {
+      console.error('[POST /api/forum/replies/:id/like] Erro:', err);
+      res.status(500).json({ error: 'Erro ao processar like da resposta.' });
     }
   });
 

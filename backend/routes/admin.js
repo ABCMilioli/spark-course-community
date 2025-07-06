@@ -120,6 +120,60 @@ router.put('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
+// Criar usuário
+router.post('/users', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
+    
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+    }
+    
+    // Verificar se email já existe
+    const existingUser = await req.app.locals.pool.query(
+      'SELECT id FROM profiles WHERE email = $1',
+      [email]
+    );
+    
+    if (existingUser.rows.length > 0) {
+      return res.status(409).json({ error: 'Email já cadastrado.' });
+    }
+    
+    // Validar role
+    const validRoles = ['admin', 'instructor', 'student'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Role inválido. Use: admin, instructor ou student.' });
+    }
+    
+    const hash = await bcrypt.hash(password, 10);
+    const id = crypto.randomUUID();
+    
+    const result = await req.app.locals.pool.query(
+      'INSERT INTO profiles (id, name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, created_at',
+      [id, name, email, hash, role]
+    );
+    
+    // Disparar webhook para criação de usuário
+    try {
+      await sendWebhook('user.created', {
+        id: result.rows[0].id,
+        name: result.rows[0].name,
+        email: result.rows[0].email,
+        role: result.rows[0].role,
+        created_at: new Date().toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook user.created:', webhookError);
+    }
+    
+    console.log('[POST /api/admin/users] Usuário criado com sucesso:', result.rows[0].email);
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('[POST /api/admin/users] Erro ao criar usuário:', err);
+    res.status(500).json({ error: 'Erro ao criar usuário.' });
+  }
+});
+
 // Deletar usuário
 router.delete('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {

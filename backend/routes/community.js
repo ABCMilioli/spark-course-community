@@ -277,7 +277,7 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
                 postAuthorId,
                 'Curtida no seu post',
                 `${userName} curtiu seu post "${postTitle}"`,
-                'like',
+                'community_like',
                 postId,
                 'community_post'
               );
@@ -554,6 +554,81 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
     } catch (err) {
       console.error('[DELETE /api/posts/comments/:id] Erro ao deletar comentário:', err);
       res.status(500).json({ error: 'Erro interno.' });
+    }
+  });
+
+  // Curtir/descurtir comentário
+  router.post('/comments/:id/like', authenticateToken, async (req, res) => {
+    try {
+      const { id: commentId } = req.params;
+      const userId = req.user.id;
+      
+      // Verificar se o comentário existe
+      const commentResult = await pool.query(
+        'SELECT id FROM comments WHERE id = $1',
+        [commentId]
+      );
+
+      if (commentResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Comentário não encontrado.' });
+      }
+
+      const likeCheck = await pool.query(
+        'SELECT id FROM comment_likes WHERE comment_id = $1 AND user_id = $2',
+        [commentId, userId]
+      );
+
+      if (likeCheck.rows.length > 0) {
+        // Remover curtida
+        await pool.query(
+          'DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2',
+          [commentId, userId]
+        );
+        res.json({ liked: false, message: 'Comentário descurtido.' });
+      } else {
+        // Adicionar curtida
+        const likeId = crypto.randomUUID();
+        await pool.query(
+          'INSERT INTO comment_likes (id, comment_id, user_id, created_at) VALUES ($1, $2, $3, $4)',
+          [likeId, commentId, userId, new Date()]
+        );
+        
+        // Notificação para o autor do comentário
+        try {
+          const commentAuthorResult = await pool.query(`
+            SELECT c.user_id, c.content, p.title as post_title, prof.name as author_name
+            FROM comments c
+            JOIN posts p ON c.post_id = p.id
+            JOIN profiles prof ON c.user_id = prof.id
+            WHERE c.id = $1
+          `, [commentId]);
+          
+          if (commentAuthorResult.rows.length > 0) {
+            const { user_id: commentAuthorId, content: commentContent, post_title } = commentAuthorResult.rows[0];
+            
+            if (commentAuthorId !== userId) {
+              const userName = await getUserName(req.user.id, req.user.name);
+              const truncatedContent = commentContent.length > 50 ? commentContent.substring(0, 50) + '...' : commentContent;
+              await createNotification(
+                commentAuthorId,
+                'Curtida no seu comentário da comunidade',
+                `${userName} curtiu seu comentário no post "${post_title}": "${truncatedContent}"`,
+                'community_comment_like',
+                commentId,
+                'community_comment'
+              );
+            }
+          }
+        } catch (notificationErr) {
+          console.error('[NOTIFICATION] Erro ao criar notificação de curtida em comentário da comunidade:', notificationErr);
+        }
+        
+        res.json({ liked: true, message: 'Comentário curtido.' });
+      }
+
+    } catch (err) {
+      console.error('[POST /api/posts/comments/:id/like] Erro:', err);
+      res.status(500).json({ error: 'Erro ao processar like do comentário.' });
     }
   });
 

@@ -30,6 +30,11 @@ const pool = new Pool({
   user: process.env.POSTGRES_USER,
   password: process.env.POSTGRES_PASSWORD,
   database: process.env.POSTGRES_DB,
+  // Configurações de timeout para evitar problemas de conexão
+  connectionTimeoutMillis: 30000, // 30 segundos
+  idleTimeoutMillis: 30000, // 30 segundos
+  max: 20, // Máximo de conexões
+  min: 2, // Mínimo de conexões
 });
 
 // Configuração do MinIO/S3
@@ -62,14 +67,26 @@ if (missingVars.length > 0) {
 
 const app = express();
 
+// Configurações de performance
+app.set('trust proxy', 1); // Confiar no proxy reverso
+app.disable('x-powered-by'); // Remover header X-Powered-By
+
 // 1. Middleware RAW do Mercado Pago (antes de qualquer express.json)
 app.use('/api/webhooks/mercadopago', bodyParser.raw({ type: '*/*' }));
 
 // 2. Log de requisições (opcional)
 app.use((req, res, next) => {
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`${req.method} ${req.path}`);
-  }
+  const start = Date.now();
+  
+  // Log de início da requisição
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Iniciando`);
+  
+  // Interceptar o final da resposta
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+  });
+  
   next();
 });
 
@@ -77,8 +94,37 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'https://community.iacas.top',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Middleware de timeout para evitar requisições pendentes
+app.use((req, res, next) => {
+  // Definir timeout de 60 segundos para todas as requisições
+  const timeout = 60000; // 60 segundos
+  
+  // Configurar timeout na requisição
+  req.setTimeout(timeout, () => {
+    console.error(`[TIMEOUT] Requisição ${req.method} ${req.path} excedeu o timeout de ${timeout}ms`);
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Gateway Timeout - Requisição demorou muito para responder' });
+    }
+  });
+  
+  // Configurar timeout na resposta
+  res.setTimeout(timeout, () => {
+    console.error(`[TIMEOUT] Resposta ${req.method} ${req.path} excedeu o timeout de ${timeout}ms`);
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Gateway Timeout - Resposta demorou muito para ser enviada' });
+    }
+  });
+  
+  next();
+});
 
 // Configurar pool no app.locals para uso nos módulos
 app.locals.pool = pool;
@@ -96,6 +142,9 @@ const { sendWebhook } = require('./services/webhookService');
 // Utilitários
 const { uploadFile } = require('./utils/upload');
 
+// Rotas
+const messagesRouter = require('./routes/messages');
+
 // ===== FUNÇÕES AUXILIARES =====
 
 // Função helper para criar notificações
@@ -104,6 +153,27 @@ async function createNotification(userId, title, message, type, referenceId = nu
     console.log('[CREATE NOTIFICATION] Tentando criar notificação:', {
       userId, title, message, type, referenceId, referenceType
     });
+    
+    // Verificar se a tabela notifications existe
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'notifications'
+      )
+    `);
+    
+    if (!tableCheck.rows[0].exists) {
+      console.error('[CREATE NOTIFICATION] ERRO: Tabela notifications não existe!');
+      return;
+    }
+    
+    // Verificar se o usuário existe
+    const userCheck = await pool.query('SELECT id FROM profiles WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      console.error('[CREATE NOTIFICATION] ERRO: Usuário não encontrado:', userId);
+      return;
+    }
     
     const result = await pool.query(`
       INSERT INTO notifications (user_id, title, message, type, reference_id, reference_type, is_read)
@@ -130,6 +200,7 @@ async function createNotification(userId, title, message, type, referenceId = nu
     console.log('[CREATE NOTIFICATION] Notificação criada com sucesso! ID:', result.rows[0].id);
   } catch (err) {
     console.error('[CREATE NOTIFICATION] ERRO ao criar notificação:', err);
+    console.error('[CREATE NOTIFICATION] Stack trace:', err.stack);
     console.error('[CREATE NOTIFICATION] Parâmetros:', {
       userId, title, message, type, referenceId, referenceType
     });
@@ -163,6 +234,7 @@ const forumRoutes = require('./routes/forum');
 const classRoutes = require('./routes/classes');
 const adminRoutes = require('./routes/admin');
 const profileRoutes = require('./routes/profile');
+const notificationRoutes = require('./routes/notifications');
 
 // ===== CONFIGURAÇÃO DAS ROTAS =====
 
@@ -192,6 +264,14 @@ app.use('/api/admin', adminRoutes);
 
 // Rotas de perfil (exporta diretamente o router)
 app.use('/api/profile', profileRoutes);
+
+// Rotas de notificações (precisa de pool)
+app.use('/api/notifications', notificationRoutes(pool));
+
+// Rotas de mensagens (precisa de pool, createNotification e getUserName)
+console.log('[ROUTES] Registrando rotas de mensagens...');
+app.use('/api', messagesRouter(pool, createNotification, getUserName));
+console.log('[ROUTES] Rotas de mensagens registradas com sucesso');
 
 // ===== ENDPOINT DE MATRÍCULAS =====
 
@@ -302,78 +382,7 @@ app.get('/api/enrollments', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para criar nova matrícula
-app.post('/api/enrollments', authenticateToken, async (req, res) => {
-  try {
-    const { course_id } = req.body;
-    
-    console.log('[POST /api/enrollments] Criando matrícula');
-    console.log('[POST /api/enrollments] Dados:', { course_id });
-    console.log('[POST /api/enrollments] Usuário:', req.user.id, req.user.role);
-    
-    if (!course_id) {
-      return res.status(400).json({ error: 'course_id é obrigatório.' });
-    }
-    
-    // Verificar se o curso existe
-    const courseCheck = await pool.query('SELECT id, title, instructor_id FROM courses WHERE id = $1', [course_id]);
-    if (courseCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Curso não encontrado.' });
-    }
-    
-    const course = courseCheck.rows[0];
-    
-    // Verificar se o usuário já está matriculado
-    const existingEnrollment = await pool.query(
-      'SELECT id FROM enrollments WHERE user_id = $1 AND course_id = $2',
-      [req.user.id, course_id]
-    );
-    
-    if (existingEnrollment.rows.length > 0) {
-      return res.status(400).json({ error: 'Você já está matriculado neste curso.' });
-    }
-    
-    // Verificar se o usuário não está tentando se matricular no próprio curso
-    if (course.instructor_id === req.user.id) {
-      return res.status(400).json({ error: 'Instrutores não podem se matricular nos próprios cursos.' });
-    }
-    
-    const enrollmentId = crypto.randomUUID();
-    const enrolledAt = new Date();
-    
-    await pool.query(
-      'INSERT INTO enrollments (id, user_id, course_id, enrolled_at, progress) VALUES ($1, $2, $3, $4, $5)',
-      [enrollmentId, req.user.id, course_id, enrolledAt, 0]
-    );
-    
-    // Disparar webhook para criação de matrícula
-    try {
-      await sendWebhook(pool, 'enrollment.created', {
-        id: enrollmentId,
-        user_id: req.user.id,
-        user_name: req.user.name,
-        course_id: course_id,
-        course_title: course.title,
-        instructor_id: course.instructor_id,
-        enrolled_at: enrolledAt.toISOString()
-      });
-    } catch (webhookError) {
-      console.error('[WEBHOOK] Erro ao enviar webhook enrollment.created:', webhookError);
-    }
-    
-    console.log('[POST /api/enrollments] Matrícula criada com sucesso');
-    res.status(201).json({
-      id: enrollmentId,
-      user_id: req.user.id,
-      course_id: course_id,
-      enrolled_at: enrolledAt,
-      progress: 0
-    });
-  } catch (err) {
-    console.error('[POST /api/enrollments] Erro ao criar matrícula:', err);
-    res.status(500).json({ error: 'Erro interno.' });
-  }
-});
+
 
 // ===== ENDPOINTS DE LIÇÕES =====
 
@@ -445,6 +454,37 @@ app.post('/api/lessons/:lessonId/comments', authenticateToken, async (req, res) 
       });
     } catch (webhookError) {
       console.error('[WEBHOOK] Erro ao enviar webhook lesson_comment.created:', webhookError);
+    }
+
+    // Notificação para o instrutor da aula
+    try {
+      const lessonInstructorResult = await pool.query(`
+        SELECT l.title as lesson_title, c.instructor_id, prof.name as instructor_name
+        FROM lessons l
+        JOIN modules m ON l.module_id = m.id
+        JOIN courses c ON m.course_id = c.id
+        JOIN profiles prof ON c.instructor_id = prof.id
+        WHERE l.id = $1
+      `, [lessonId]);
+      
+      if (lessonInstructorResult.rows.length > 0) {
+        const { instructor_id, lesson_title, instructor_name } = lessonInstructorResult.rows[0];
+        
+        if (instructor_id !== req.user.id) {
+          const userName = await getUserName(req.user.id, req.user.name);
+          const truncatedContent = content.trim().length > 50 ? content.trim().substring(0, 50) + '...' : content.trim();
+          await createNotification(
+            instructor_id,
+            'Novo comentário na sua aula',
+            `${userName} comentou na sua aula "${lesson_title}": "${truncatedContent}"`,
+            'lesson_comment',
+            lessonId,
+            'lesson'
+          );
+        }
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de comentário em aula:', notificationErr);
     }
     
     res.status(201).json(comment);
@@ -811,6 +851,36 @@ app.post('/api/comments/:commentId/like', authenticateToken, async (req, res) =>
         'INSERT INTO lesson_comment_likes (comment_id, user_id) VALUES ($1, $2)',
         [commentId, userId]
       );
+      
+      // Notificação para o autor do comentário
+      try {
+        const commentAuthorResult = await pool.query(`
+          SELECT lc.user_id, lc.content, l.title as lesson_title, prof.name as author_name
+          FROM lesson_comments lc
+          JOIN lessons l ON lc.lesson_id = l.id
+          JOIN profiles prof ON lc.user_id = prof.id
+          WHERE lc.id = $1
+        `, [commentId]);
+        
+        if (commentAuthorResult.rows.length > 0) {
+          const { user_id: commentAuthorId, content: commentContent, lesson_title, author_name } = commentAuthorResult.rows[0];
+          
+          if (commentAuthorId !== userId) {
+            const userName = await getUserName(req.user.id, req.user.name);
+            const truncatedContent = commentContent.length > 50 ? commentContent.substring(0, 50) + '...' : commentContent;
+            await createNotification(
+              commentAuthorId,
+              'Curtida no seu comentário',
+              `${userName} curtiu seu comentário na aula "${lesson_title}": "${truncatedContent}"`,
+              'lesson_comment_like',
+              commentId,
+              'lesson_comment'
+            );
+          }
+        }
+      } catch (notificationErr) {
+        console.error('[NOTIFICATION] Erro ao criar notificação de curtida em comentário de aula:', notificationErr);
+      }
     }
 
     res.json({ success: true });
@@ -993,354 +1063,13 @@ app.get('/api/explore/search', authenticateToken, async (req, res) => {
 
 
 
-// ===== ENDPOINTS DE NOTIFICAÇÕES =====
 
-// Buscar notificações do usuário
-app.get('/api/notifications', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT id, user_id, title, message, type, reference_id, reference_type, is_read, created_at
-      FROM notifications 
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT 20
-    `, [userId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao buscar notificações.' });
-  }
-});
 
-app.get('/api/notifications/count', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { rows } = await pool.query(`
-      SELECT 
-        COUNT(*) FILTER (WHERE is_read = false) as unread_count,
-        COUNT(*) as total_count
-      FROM notifications 
-      WHERE user_id = $1
-    `, [userId]);
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('[GET /api/notifications/count]', err);
-    res.status(500).json({ error: 'Erro ao buscar contador de notificações.' });
-  }
-});
+// Rotas de conversas movidas para backend/routes/messages.js
 
-// Marcar notificação como lida
-app.put('/api/notifications/:notificationId/read', authenticateToken, async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = req.user.id;
-    
-    await pool.query(`
-      UPDATE notifications 
-      SET is_read = true 
-      WHERE id = $1 AND user_id = $2
-    `, [notificationId, userId]);
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[PUT /api/notifications/:id/read]', err);
-    res.status(500).json({ error: 'Erro ao marcar notificação como lida.' });
-  }
-});
+// Rotas de conversas movidas para backend/routes/messages.js
 
-// Marcar todas as notificações como lidas
-app.put('/api/notifications/read-all', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    await pool.query(`
-      UPDATE notifications 
-      SET is_read = true 
-      WHERE user_id = $1 AND is_read = false
-    `, [userId]);
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[PUT /api/notifications/read-all]', err);
-    res.status(500).json({ error: 'Erro ao marcar todas as notificações como lidas.' });
-  }
-});
-
-// Deletar notificação específica
-app.delete('/api/notifications/:notificationId', authenticateToken, async (req, res) => {
-  try {
-    const { notificationId } = req.params;
-    const userId = req.user.id;
-    
-    const result = await pool.query(`
-      DELETE FROM notifications 
-      WHERE id = $1 AND user_id = $2
-      RETURNING id
-    `, [notificationId, userId]);
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Notificação não encontrada.' });
-    }
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[DELETE /api/notifications/:id]', err);
-    res.status(500).json({ error: 'Erro ao deletar notificação.' });
-  }
-});
-
-// Deletar múltiplas notificações
-app.delete('/api/notifications', authenticateToken, async (req, res) => {
-  try {
-    const { notificationIds } = req.body;
-    const userId = req.user.id;
-    
-    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
-      return res.status(400).json({ error: 'IDs das notificações são obrigatórios.' });
-    }
-    
-    const placeholders = notificationIds.map((_, index) => `$${index + 2}`).join(', ');
-    const result = await pool.query(`
-      DELETE FROM notifications 
-      WHERE id IN (${placeholders}) AND user_id = $1
-      RETURNING id
-    `, [userId, ...notificationIds]);
-    
-    res.json({ success: true, deletedCount: result.rows.length });
-  } catch (err) {
-    console.error('[DELETE /api/notifications]', err);
-    res.status(500).json({ error: 'Erro ao deletar notificações.' });
-  }
-});
-
-// Deletar todas as notificações
-app.delete('/api/notifications/all', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const result = await pool.query(`
-      DELETE FROM notifications 
-      WHERE user_id = $1
-      RETURNING id
-    `, [userId]);
-    
-    res.json({ success: true, deletedCount: result.rows.length });
-  } catch (err) {
-    console.error('[DELETE /api/notifications/all]', err);
-    res.status(500).json({ error: 'Erro ao deletar todas as notificações.' });
-  }
-});
-
-// Endpoint para listar conversas do usuário
-app.get('/api/conversations', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    console.log('[GET /api/conversations] Buscando conversas para usuário:', userId);
-    
-    // Verificar se as tabelas existem
-    const tableCheck = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'conversations'
-      ) as conversations_exist,
-      EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'messages'
-      ) as messages_exist
-    `);
-    
-    const { conversations_exist, messages_exist } = tableCheck.rows[0];
-    console.log('[GET /api/conversations] Tabelas existem:', { conversations_exist, messages_exist });
-    
-    if (!conversations_exist || !messages_exist) {
-      console.log('[GET /api/conversations] Tabelas de mensagens não existem, retornando array vazio');
-      return res.json([]);
-    }
-    
-    // Verificar se há conversas para este usuário usando a estrutura correta
-    const conversationCount = await pool.query(`
-      SELECT COUNT(*) as count FROM conversations c
-      JOIN conversation_participants cp ON c.id = cp.conversation_id
-      WHERE cp.user_id = $1
-    `, [userId]);
-    
-    console.log('[GET /api/conversations] Total de conversas encontradas:', conversationCount.rows[0].count);
-    
-    const { rows } = await pool.query(`
-      SELECT 
-        c.id,
-        c.title,
-        c.type,
-        c.created_at,
-        c.updated_at,
-        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.sender_id != $1 AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01'::timestamptz)) as unread_count,
-        (SELECT m.content FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message,
-        (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) as last_message_time,
-        -- Buscar o outro participante da conversa
-        (SELECT JSON_BUILD_OBJECT(
-          'id', other_cp.user_id,
-          'name', p.name,
-          'avatar_url', p.avatar_url
-        )
-        FROM conversation_participants other_cp
-        JOIN profiles p ON other_cp.user_id = p.id
-        WHERE other_cp.conversation_id = c.id AND other_cp.user_id != $1
-        LIMIT 1) as other_user
-      FROM conversations c
-      JOIN conversation_participants cp ON c.id = cp.conversation_id
-      WHERE cp.user_id = $1 AND c.type = 'direct'
-      ORDER BY c.updated_at DESC
-    `, [userId]);
-    
-    console.log('[GET /api/conversations] Conversas encontradas:', rows.length);
-    console.log('[GET /api/conversations] Primeira conversa:', rows[0] || 'Nenhuma');
-    
-    // Formatar os dados para o frontend
-    const conversations = rows.map(row => {
-      const otherUser = row.other_user || { id: null, name: 'Usuário', avatar_url: null };
-      console.log('[GET /api/conversations] other_user:', otherUser);
-      return {
-        id: row.id,
-        other_user: otherUser,
-        unread_count: parseInt(row.unread_count),
-        last_message: row.last_message,
-        last_message_time: row.last_message_time,
-        created_at: row.created_at,
-        updated_at: row.updated_at
-      };
-    });
-    
-    console.log('[GET /api/conversations] Retornando conversas formatadas:', conversations.length);
-    res.json(conversations);
-  } catch (err) {
-    console.error('[GET /api/conversations] Erro:', err);
-    // Em caso de erro, retornar array vazio
-    res.json([]);
-  }
-});
-
-// Endpoint para conversas não lidas
-app.get('/api/conversations/unread-count', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    console.log('[GET /api/conversations/unread-count] Buscando conversas não lidas para usuário:', userId);
-    
-    // Verificar se as tabelas existem
-    const tableCheck = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'conversations'
-      ) as conversations_exist,
-      EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'messages'
-      ) as messages_exist
-    `);
-    
-    const { conversations_exist, messages_exist } = tableCheck.rows[0];
-    console.log('[GET /api/conversations/unread-count] Tabelas existem:', { conversations_exist, messages_exist });
-    
-    if (!conversations_exist || !messages_exist) {
-      console.log('[GET /api/conversations/unread-count] Tabelas de mensagens não existem, retornando 0');
-      return res.json({ unread_count: 0 });
-    }
-    
-    const { rows } = await pool.query(`
-      SELECT COUNT(*) as unread_count
-      FROM conversations c
-      JOIN conversation_participants cp ON c.id = cp.conversation_id
-      WHERE cp.user_id = $1
-      AND EXISTS (
-        SELECT 1 FROM messages m 
-        WHERE m.conversation_id = c.id 
-        AND m.sender_id != $1 
-        AND m.created_at > COALESCE(cp.last_read_at, '1970-01-01'::timestamptz)
-      )
-    `, [userId]);
-    
-    const unreadCount = parseInt(rows[0].unread_count);
-    console.log('[GET /api/conversations/unread-count] Conversas não lidas encontradas:', unreadCount);
-    
-    res.json({ unread_count: unreadCount });
-  } catch (err) {
-    console.error('[GET /api/conversations/unread-count]', err);
-    // Em caso de erro, retornar 0 em vez de erro 500
-    res.json({ unread_count: 0 });
-  }
-});
-
-// Endpoint para obter detalhes de uma conversa e suas mensagens
-app.get('/api/conversations/:id', authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const conversationId = req.params.id;
-    console.log(`[GET /api/conversations/${conversationId}] Buscando detalhes da conversa para usuário:`, userId);
-
-    // Verificar se a conversa existe e se o usuário é participante
-    const convResult = await pool.query(`
-      SELECT c.id, c.title, c.type, c.created_at, c.updated_at,
-        (SELECT JSON_BUILD_OBJECT(
-          'id', other_cp.user_id,
-          'name', p.name,
-          'avatar_url', p.avatar_url
-        )
-        FROM conversation_participants other_cp
-        JOIN profiles p ON other_cp.user_id = p.id
-        WHERE other_cp.conversation_id = c.id AND other_cp.user_id != $1
-        LIMIT 1) as other_user
-      FROM conversations c
-      JOIN conversation_participants cp ON c.id = cp.conversation_id
-      WHERE c.id = $2 AND cp.user_id = $1
-      LIMIT 1
-    `, [userId, conversationId]);
-
-    if (convResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Conversa não encontrada ou acesso negado.' });
-    }
-    const conversation = convResult.rows[0];
-
-    // Buscar participantes
-    const participantsResult = await pool.query(`
-      SELECT cp.id, cp.user_id, p.name as user_name, p.avatar_url as user_avatar, p.role as user_role, cp.joined_at, cp.last_read_at, true as is_active
-      FROM conversation_participants cp
-      JOIN profiles p ON cp.user_id = p.id
-      WHERE cp.conversation_id = $1
-    `, [conversationId]);
-    const participants = participantsResult.rows;
-
-    // Buscar mensagens
-    const messagesResult = await pool.query(`
-      SELECT m.id, m.conversation_id, m.sender_id, m.content, m.type as message_type, m.attachments, m.reply_to_id, m.created_at, m.updated_at,
-        sender.name as sender_name, sender.avatar_url as sender_avatar, sender.role as sender_role
-      FROM messages m
-      JOIN profiles sender ON m.sender_id = sender.id
-      WHERE m.conversation_id = $1
-      ORDER BY m.created_at ASC
-    `, [conversationId]);
-    const messages = messagesResult.rows.map(msg => ({
-      ...msg,
-      attachments: msg.attachments || [],
-      reply_to_message: null // Pode ser implementado depois
-    }));
-
-    res.json({
-      conversation: {
-        ...conversation,
-        participants
-      },
-      messages,
-      participants
-    });
-  } catch (err) {
-    console.error('[GET /api/conversations/:id] Erro:', err);
-    res.status(500).json({ error: 'Erro ao buscar conversa.' });
-  }
-});
+// Rotas de conversas movidas para backend/routes/messages.js
 
 // ===== ROTAS RESTANTES (AINDA NÃO MODULARIZADAS) =====
 
@@ -1440,7 +1169,46 @@ app.get('/api/popular-tags', authenticateToken, async (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    version: 'modular-v1.0'
+  });
+});
+
+// Health check específico para API
+app.get('/api/health', async (req, res) => {
+  try {
+    // Testar conectividade com o banco
+    const dbTest = await pool.query('SELECT NOW() as current_time');
+    
+    res.json({ 
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      version: 'modular-v1.0',
+      database: {
+        status: 'connected',
+        current_time: dbTest.rows[0].current_time
+      }
+    });
+  } catch (error) {
+    console.error('[HEALTH CHECK] Erro na verificação de saúde:', error);
+    res.status(503).json({ 
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      version: 'modular-v1.0',
+      database: {
+        status: 'disconnected',
+        error: error.message
+      }
+    });
+  }
 });
 
 // Servir arquivos estáticos do React
@@ -1510,56 +1278,7 @@ app.post('/api/courses', authenticateToken, async (req, res) => {
   }
 });
 
-// Endpoint para listar matrículas do usuário
-app.get('/api/enrollments', authenticateToken, async (req, res) => {
-  try {
-    const { user_id } = req.query;
-    const userId = user_id || req.user.id;
-    
-    // Verificar se a tabela enrollments existe
-    const tableCheck = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'enrollments'
-      ) as enrollments_exist
-    `);
-    
-    const { enrollments_exist } = tableCheck.rows[0];
-    
-    if (!enrollments_exist) {
-      console.log('[GET /api/enrollments] Tabela enrollments não existe, retornando array vazio');
-      return res.json([]);
-    }
-    
-    const { rows } = await pool.query(`
-      SELECT 
-        e.id,
-        e.user_id,
-        e.course_id,
-        e.enrolled_at,
-        e.progress,
-        e.completed_at,
-        c.title as course_title,
-        c.description as course_description,
-        c.thumbnail_url as course_thumbnail,
-        c.level as course_level,
-        p.name as instructor_name,
-        p.avatar_url as instructor_avatar
-      FROM enrollments e
-      JOIN courses c ON e.course_id = c.id
-      LEFT JOIN profiles p ON c.instructor_id = p.id
-      WHERE e.user_id = $1
-      ORDER BY e.enrolled_at DESC
-    `, [userId]);
-    
-    res.json(rows);
-  } catch (err) {
-    console.error('[GET /api/enrollments] Erro:', err);
-    // Em caso de erro, retornar array vazio
-    res.json([]);
-  }
-});
+
 
 // Endpoint para estatísticas de rating de um curso
 app.get('/api/courses/:id/rating-stats', authenticateToken, async (req, res) => {
@@ -1723,20 +1442,6 @@ app.post('/api/enrollments', authenticateToken, async (req, res) => {
       [id, req.user.id, course_id, new Date(), 0]
     );
     
-    // Disparar webhook para criação de matrícula
-    try {
-      await sendWebhook(pool, 'enrollment.created', {
-        id,
-        user_id: req.user.id,
-        user_name: req.user.name,
-        course_id,
-        enrolled_at: new Date().toISOString(),
-        progress: 0
-      });
-    } catch (webhookError) {
-      console.error('[WEBHOOK] Erro ao enviar webhook enrollment.created:', webhookError);
-    }
-    
     // --- NOVA LÓGICA: Matricular automaticamente em todas as turmas do curso ---
     const classInstances = await pool.query(
       'SELECT id FROM class_instances WHERE course_id = $1',
@@ -1890,12 +1595,127 @@ app.post('/api/upload/material', authenticateToken, upload.single('file'), async
   }
 });
 
+// ===== SISTEMA DE MENSAGENS =====
+
+// Enviar mensagem
+app.post('/api/messages', authenticateToken, async (req, res) => {
+  try {
+    const { conversation_id, content, reply_to_id } = req.body;
+    const sender_id = req.user.id;
+    
+    console.log('[POST /api/messages] Enviando mensagem');
+    console.log('[POST /api/messages] Usuário:', sender_id, req.user.name);
+    console.log('[POST /api/messages] Dados:', { conversation_id, content, reply_to_id });
+    
+    if (!conversation_id || !content || content.trim().length === 0) {
+      return res.status(400).json({ error: 'ID da conversa e conteúdo são obrigatórios.' });
+    }
+    
+    // Verificar se o usuário é participante da conversa
+    const participantCheck = await pool.query(
+      'SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2',
+      [conversation_id, sender_id]
+    );
+    
+    if (participantCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Você não tem permissão para enviar mensagens nesta conversa.' });
+    }
+    
+    const messageId = crypto.randomUUID();
+    const created_at = new Date();
+    
+    const result = await pool.query(`
+      INSERT INTO messages (id, conversation_id, sender_id, content, reply_to_id, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [messageId, conversation_id, sender_id, content.trim(), reply_to_id || null, created_at, created_at]);
+    
+    const message = result.rows[0];
+    
+    // Buscar dados do remetente para retornar
+    const { rows: senderData } = await pool.query(
+      'SELECT name as sender_name, avatar_url as sender_avatar_url FROM profiles WHERE id = $1',
+      [sender_id]
+    );
+    
+    const messageWithSender = {
+      ...message,
+      sender_name: senderData[0]?.sender_name || req.user.name,
+      sender_avatar_url: senderData[0]?.sender_avatar_url
+    };
+    
+    // Webhook
+    try {
+      await sendWebhook(pool, 'message.created', {
+        id: messageId,
+        conversation_id,
+        sender_id,
+        sender_name: req.user.name,
+        content: content.trim(),
+        reply_to_id,
+        created_at: created_at.toISOString()
+      });
+    } catch (webhookError) {
+      console.error('[WEBHOOK] Erro ao enviar webhook message.created:', webhookError);
+    }
+    
+    // Notificação para outros participantes da conversa
+    try {
+      const participantsResult = await pool.query(`
+        SELECT cp.user_id, p.name as participant_name
+        FROM conversation_participants cp
+        JOIN profiles p ON cp.user_id = p.id
+        WHERE cp.conversation_id = $1 AND cp.user_id != $2
+      `, [conversation_id, sender_id]);
+      
+      const userName = await getUserName(req.user.id, req.user.name);
+      const truncatedContent = content.trim().length > 50 ? content.trim().substring(0, 50) + '...' : content.trim();
+      
+      for (const participant of participantsResult.rows) {
+        await createNotification(
+          participant.user_id,
+          'Nova mensagem',
+          `${userName} enviou uma mensagem: "${truncatedContent}"`,
+          'new_message',
+          conversation_id,
+          'conversation'
+        );
+      }
+    } catch (notificationErr) {
+      console.error('[NOTIFICATION] Erro ao criar notificação de nova mensagem:', notificationErr);
+    }
+    
+    console.log('[POST /api/messages] Mensagem enviada com sucesso');
+    res.status(201).json(messageWithSender);
+  } catch (err) {
+    console.error('[POST /api/messages] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Rotas de mensagens já registradas acima
+
 // ===== ROTAS RESTANTES (AINDA NÃO MODULARIZADAS) =====
 
 // ... (outras rotas que ainda não foram modularizadas)
 
 // Servir arquivos estáticos do React (APENAS para rotas que não começam com /api)
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Middleware de tratamento de erros
+app.use((err, req, res, next) => {
+  console.error('[ERROR] Erro não tratado:', err);
+  console.error('[ERROR] Stack:', err.stack);
+  console.error('[ERROR] URL:', req.url);
+  console.error('[ERROR] Method:', req.method);
+  
+  if (!res.headersSent) {
+    res.status(500).json({ 
+      error: 'Erro interno do servidor',
+      message: process.env.NODE_ENV === 'development' ? err.message : 'Algo deu errado'
+    });
+  }
+});
 
 // Rota catch-all para o React (APENAS para rotas que não começam com /api)
 app.get('*', (req, res) => {
@@ -1909,7 +1729,7 @@ app.get('*', (req, res) => {
 });
 
 // Inicialização do servidor
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Servidor modular rodando na porta ${PORT}`);
   console.log(`📊 Progresso da modularização:`);
   console.log(`   ✅ Módulos extraídos: 13`);
@@ -1919,4 +1739,19 @@ app.listen(PORT, () => {
   console.log(`   📦 Utilitários: upload`);
   console.log(`   📈 Redução estimada: 75% do código principal`);
   console.log(`   🔄 Arquivo original preservado como backup`);
+  
+  // Configurar timeout do servidor
+  server.timeout = 120000; // 2 minutos
+  server.keepAliveTimeout = 65000; // 65 segundos
+  server.headersTimeout = 66000; // 66 segundos
+});
+
+// Tratamento de erros do servidor
+server.on('error', (error) => {
+  console.error('[SERVER ERROR] Erro no servidor:', error);
+});
+
+server.on('close', () => {
+  console.log('[SERVER] Servidor fechado');
+  pool.end();
 }); 

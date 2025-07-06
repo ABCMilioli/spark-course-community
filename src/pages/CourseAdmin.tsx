@@ -100,7 +100,7 @@ export default function CourseAdmin() {
       queryKey: ['instructors'],
       queryFn: async () => {
           const token = localStorage.getItem('token');
-          const { data } = await axios.get(`${API_URL}/instructors`, {
+          const { data } = await axios.get(`${API_URL}/admin/instructors`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           return data;

@@ -161,14 +161,30 @@ export function NotificationBell() {
     try {
       const token = localStorage.getItem('token');
       
+      console.log('🔔 [NotificationBell] Clicou na notificação:', {
+        id: notification.id,
+        type: notification.type,
+        reference_id: notification.reference_id,
+        reference_type: notification.reference_type
+      });
+      
       // Se tem referência, usar navegação inteligente
       if (notification.reference_id && notification.reference_type) {
+        console.log('🔔 [NotificationBell] Usando navegação inteligente...');
         const { data } = await axios.get(`${API_URL}/notifications/${notification.id}/navigate`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
+        console.log('🔔 [NotificationBell] Resposta da navegação:', data);
+        
+        if (data.url) {
+          console.log('🔔 [NotificationBell] Navegando para:', data.url);
         navigate(data.url);
+        } else {
+          console.log('🔔 [NotificationBell] URL não encontrada na resposta');
+        }
       } else {
+        console.log('🔔 [NotificationBell] Sem referência, apenas marcando como lida');
         // Apenas marcar como lida se não tem referência
         if (!notification.is_read) {
           await markAsRead(notification.id);
@@ -177,7 +193,7 @@ export function NotificationBell() {
       
       setIsOpen(false);
     } catch (error) {
-      console.error('Erro ao navegar pela notificação:', error);
+      console.error('❌ [NotificationBell] Erro ao navegar pela notificação:', error);
       toast.error('Erro ao abrir notificação');
       setIsOpen(false);
     }

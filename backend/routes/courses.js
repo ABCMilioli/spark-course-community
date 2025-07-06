@@ -78,6 +78,8 @@ module.exports = (pool, sendWebhook) => {
     }
   });
 
+
+
   // Detalhes de um curso específico
   router.get('/:id', authenticateToken, async (req, res) => {
     try {
@@ -326,6 +328,184 @@ module.exports = (pool, sendWebhook) => {
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: 'Erro ao deletar curso.' });
+    }
+  });
+
+  // ===== ROTAS DE ADMINISTRAÇÃO DE CURSOS =====
+  
+  // Função helper para verificar se o usuário é admin ou instructor
+  const requireAdmin = (req, res, next) => {
+    if (!['admin', 'instructor'].includes(req.user.role)) {
+      return res.status(403).json({ error: 'Acesso negado. Apenas administradores e instrutores podem acessar esta rota.' });
+    }
+    next();
+  };
+
+  // Buscar dados completos do curso para administração
+  router.get('/:id/admin', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      console.log(`[GET /api/courses/${id}/admin] Requisição recebida`);
+      console.log(`[GET /api/courses/${id}/admin] Usuário:`, req.user);
+      
+      // Buscar dados básicos do curso
+      const courseResult = await pool.query(`
+        SELECT c.*, pr.name as instructor_name,
+               (SELECT COUNT(*) FROM enrollments WHERE course_id = c.id) as enrolled_students,
+               CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+               c.thumbnail_url as thumbnail,
+               COALESCE(c.rating, 0) as rating
+        FROM courses c 
+        LEFT JOIN profiles pr ON c.instructor_id = pr.id 
+        WHERE c.id = $1
+      `, [id]);
+      
+      console.log(`[GET /api/courses/${id}/admin] Resultado da busca do curso:`, courseResult.rows.length);
+      
+      if (courseResult.rows.length === 0) {
+        console.log(`[GET /api/courses/${id}/admin] Curso não encontrado`);
+        return res.status(404).json({ error: 'Curso não encontrado.' });
+      }
+      
+      const course = courseResult.rows[0];
+      console.log(`[GET /api/courses/${id}/admin] Curso encontrado:`, course.title);
+      
+      // Buscar módulos e aulas
+      const modulesResult = await pool.query(`
+        SELECT m.id, m.title, m.module_order, m.is_visible,
+               l.id as lesson_id, l.title as lesson_title, l.description as lesson_description,
+               l.youtube_id, l.video_url, l.duration, l.lesson_order, l.is_visible as lesson_is_visible, l.release_days
+        FROM modules m
+        LEFT JOIN lessons l ON l.module_id = m.id
+        WHERE m.course_id = $1
+        ORDER BY m.module_order, l.lesson_order
+      `, [id]);
+      
+      console.log(`[GET /api/courses/${id}/admin] Módulos encontrados:`, modulesResult.rows.length);
+      
+      // Estruturar os dados
+      const modules = [];
+      let currentModule = null;
+      
+      modulesResult.rows.forEach(row => {
+        if (!currentModule || currentModule.id !== row.id) {
+          currentModule = {
+            id: row.id,
+            title: row.title,
+            module_order: row.module_order,
+            is_visible: row.is_visible,
+            lessons: []
+          };
+          modules.push(currentModule);
+        }
+        
+        if (row.lesson_id) {
+          currentModule.lessons.push({
+            id: row.lesson_id,
+            title: row.lesson_title,
+            description: row.lesson_description,
+            youtube_id: row.youtube_id,
+            video_url: row.video_url,
+            duration: row.duration,
+            lesson_order: row.lesson_order,
+            is_visible: row.lesson_is_visible,
+            release_days: row.release_days
+          });
+        }
+      });
+      
+      const response = {
+        ...course,
+        modules
+      };
+      
+      console.log(`[GET /api/courses/${id}/admin] Resposta enviada com ${modules.length} módulos`);
+      res.json(response);
+    } catch (err) {
+      console.error(`[GET /api/courses/${id}/admin] Erro:`, err);
+      res.status(500).json({ error: 'Erro interno.' });
+    }
+  });
+
+  // Atualizar dados completos do curso (administração)
+  router.put('/:id/admin', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, description, instructor_id, modules } = req.body;
+      
+      // Verificar se o curso existe
+      const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [id]);
+      if (courseCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Curso não encontrado.' });
+      }
+      
+      // Iniciar transação
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        
+        // Atualizar dados básicos do curso
+        await client.query(
+          'UPDATE courses SET title = $1, description = $2, instructor_id = $3 WHERE id = $4',
+          [title, description, instructor_id, id]
+        );
+        
+        // Deletar módulos e aulas existentes (cascade vai deletar as aulas automaticamente)
+        await client.query('DELETE FROM modules WHERE course_id = $1', [id]);
+        
+        // Inserir novos módulos e aulas
+        if (modules && modules.length > 0) {
+          for (let i = 0; i < modules.length; i++) {
+            const module = modules[i];
+            const moduleId = crypto.randomUUID();
+            
+            // Inserir módulo
+            await client.query(
+              'INSERT INTO modules (id, course_id, title, module_order, is_visible) VALUES ($1, $2, $3, $4, $5)',
+              [moduleId, id, module.title, i + 1, module.is_visible]
+            );
+            
+            // Inserir aulas do módulo
+            if (module.lessons && module.lessons.length > 0) {
+              for (let j = 0; j < module.lessons.length; j++) {
+                const lesson = module.lessons[j];
+                const lessonId = crypto.randomUUID();
+                
+                // Log para depuração do conteúdo da aula
+                console.log('[AULA]', lesson);
+                await client.query(
+                  'INSERT INTO lessons (id, module_id, title, description, youtube_id, video_url, duration, lesson_order, is_visible, release_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+                  [lessonId, moduleId, lesson.title, lesson.description || null, lesson.youtube_id || null, lesson.video_url || null, lesson.duration, j + 1, lesson.is_visible, lesson.release_days]
+                );
+              }
+            }
+          }
+        }
+        
+        await client.query('COMMIT');
+        
+        // Retornar dados atualizados
+        const updatedCourse = await pool.query(`
+          SELECT c.*, pr.name as instructor_name,
+                 CASE WHEN array_length(c.tags, 1) > 0 THEN c.tags[1] ELSE NULL END as category,
+                 c.thumbnail_url as thumbnail
+          FROM courses c 
+          LEFT JOIN profiles pr ON c.instructor_id = pr.id 
+          WHERE c.id = $1
+        `, [id]);
+        
+        res.json(updatedCourse.rows[0]);
+        
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+      
+    } catch (err) {
+      console.error('[PUT /api/courses/:id/admin] Erro ao salvar curso:', err);
+      res.status(500).json({ error: 'Erro ao salvar curso.' });
     }
   });
 
