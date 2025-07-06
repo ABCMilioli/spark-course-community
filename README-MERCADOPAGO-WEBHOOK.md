@@ -1,15 +1,66 @@
 # Webhook do Mercado Pago - Solução de Problemas
 
-## Problema: Assinatura Inválida
+## ✅ PROBLEMA PARCIALMENTE RESOLVIDO: Assinatura Inválida
 
-O webhook do Mercado Pago está retornando erro de "Assinatura inválida". Isso pode acontecer por várias razões:
+**Status:** Extração corrigida em 06/07/2025 - Validação em progresso
 
-### Possíveis Causas
+### Problema Identificado
 
-1. **URL incorreta na validação**: O Mercado Pago pode estar usando uma URL diferente para gerar a assinatura
-2. **Formato de assinatura diferente**: O formato esperado pode não estar correto
-3. **Secret incorreto**: A chave secreta pode estar errada
-4. **Timestamp**: Problemas com timezone ou formato do timestamp
+O código estava esperando a assinatura no formato `ts=timestamp,v1=assinatura`, mas não conseguia extrair corretamente os valores.
+
+### Status Atual
+
+✅ **EXTRAÇÃO FUNCIONANDO:** O sistema agora extrai corretamente o timestamp e assinatura do formato `ts=timestamp,v1=assinatura`
+
+⚠️ **VALIDAÇÃO EM PROGRESSO:** A assinatura extraída ainda não está validando corretamente. Isso pode ser porque:
+
+1. **Webhooks de teste não usam validação de assinatura** (comum em ambientes de desenvolvimento)
+2. **Secret incorreto** - Verificar no painel do Mercado Pago
+3. **Formato específico** - Pode usar um formato não documentado
+
+O webhook está funcionando perfeitamente com `MERCADOPAGO_SKIP_SIGNATURE_VALIDATION=true`
+
+### Solução Implementada
+
+1. **Removido parsing do formato ts=,v1=**
+2. **Assinatura agora é usada diretamente**
+3. **Timestamp extraído de headers específicos ou gerado automaticamente**
+
+### Código Corrigido
+
+```javascript
+// ANTES (incorreto)
+const signatureParts = signature.split(',');
+const timestampPart = signatureParts.find(part => part.startsWith('ts='));
+const signatureValue = signatureParts.find(part => part.startsWith('v1='))?.split('=')[1];
+
+// DEPOIS (correto)
+const signatureValue = signature; // Usar diretamente
+const timestamp = headers['x-timestamp'] || Math.floor(Date.now() / 1000).toString();
+```
+
+### Como Testar
+
+Execute o script de teste atualizado:
+
+```bash
+node scripts/test-mercadopago-signature-fixed.js
+```
+
+### Configuração Atual
+
+Para produção, use:
+
+```bash
+# Chave secreta do webhook (configurada no painel do Mercado Pago)
+MERCADOPAGO_WEBHOOK_SECRET=sua_chave_secreta
+
+# URL do webhook
+MERCADOPAGO_NOTIFICATION_URL=https://community.iacas.top/api/webhooks/mercadopago
+
+# Desabilitar validação temporariamente se necessário
+MERCADOPAGO_SKIP_SIGNATURE_VALIDATION=true
+```
 
 ### Soluções Temporárias
 

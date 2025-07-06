@@ -122,14 +122,14 @@ export function CustomVideoPlayer({
         width: '100%',
         videoId: youtubeId,
         playerVars: {
-          controls: 0,
+          controls: 1,
           modestbranding: 1,
           rel: 0,
-          showinfo: 0,
-          fs: 0,
-          cc_load_policy: 0,
+          showinfo: 1,
+          fs: 1,
+          cc_load_policy: 1,
           iv_load_policy: 3,
-          autohide: 1
+          autohide: 0
         },
         events: {
           onReady: (event: any) => {
@@ -418,6 +418,17 @@ export function CustomVideoPlayer({
               </div>
             </div>
           )}
+        </div>
+      </Card>
+    );
+  }
+
+  if (playerType === 'youtube') {
+    // Apenas o player oficial do YouTube, sem overlay customizado
+    return (
+      <Card className="overflow-hidden bg-black">
+        <div className="relative">
+          <div ref={playerRef} className="w-full" />
         </div>
       </Card>
     );

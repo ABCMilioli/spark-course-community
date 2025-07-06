@@ -175,7 +175,7 @@ export default function Classes() {
               <div>
                 <p className="text-2xl font-bold">
                   {isLoading ? <Skeleton className="h-8 w-12" /> : 
-                    classesData.reduce((total: number, cls: Class) => total + (cls.current_students || 0), 0) || 0}
+                    classesData.reduce((total: number, cls: Class) => total + Number(cls.current_students || 0), 0)}
                 </p>
                 <p className="text-sm text-muted-foreground">Total de Alunos</p>
               </div>

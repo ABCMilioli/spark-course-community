@@ -124,7 +124,16 @@ class WebhookService {
       if (webhookResult.type === 'payment') {
         // Processar mudança de status de pagamento
         const payment = webhookResult.payment;
-        if (payment) {
+        
+        // Se o pagamento não foi encontrado (pode ser teste)
+        if (!payment && webhookResult.error === 'payment_not_found') {
+          console.log(`[MERCADOPAGO WEBHOOK] ⚠️  Pagamento de teste ignorado: ${webhookResult.paymentId}`);
+          processingResult = {
+            status: 'ignored',
+            message: 'Pagamento de teste ignorado',
+            payment_id: webhookResult.paymentId
+          };
+        } else if (payment) {
           const convertedStatus = convertStatus(payment.status);
           // Atualizar pagamento no banco
           const updateResult = await this.pool.query(`

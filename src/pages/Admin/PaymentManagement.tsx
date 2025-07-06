@@ -17,6 +17,7 @@ import {
   Download, Filter, Search, Calendar, Eye,
   CheckCircle, XCircle, Clock, AlertCircle
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 interface PaymentStats {
   gateway: string;
@@ -59,6 +60,8 @@ const PaymentManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   
   const { toast } = useToast();
+  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -223,6 +226,18 @@ const PaymentManagement: React.FC = () => {
     });
   };
 
+  // Função para abrir modal de detalhes
+  const openPaymentDetails = (payment: Payment) => {
+    setSelectedPayment(payment);
+    setShowDetailsModal(true);
+  };
+
+  // Função para fechar modal
+  const closePaymentDetails = () => {
+    setShowDetailsModal(false);
+    setSelectedPayment(null);
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-6 space-y-6">
@@ -292,7 +307,7 @@ const PaymentManagement: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Receita Total</p>
-                <p className="text-2xl font-bold">R$ {totalStats.total_amount.toFixed(2)}</p>
+                <p className="text-2xl font-bold">R$ {Number(totalStats.total_amount).toFixed(2)}</p>
               </div>
               <DollarSign className="h-8 w-8 text-green-500" />
             </div>
@@ -304,7 +319,7 @@ const PaymentManagement: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Taxa de Sucesso</p>
-                <p className="text-2xl font-bold">{overallSuccessRate.toFixed(1)}%</p>
+                <p className="text-2xl font-bold">{Number(overallSuccessRate).toFixed(1)}%</p>
               </div>
               {overallSuccessRate >= 85 ? 
                 <TrendingUp className="h-8 w-8 text-green-500" /> : 
@@ -413,7 +428,7 @@ const PaymentManagement: React.FC = () => {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${(Number(percent) * 100).toFixed(0)}%`}
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="value"
@@ -544,7 +559,7 @@ const PaymentManagement: React.FC = () => {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm">
+                          <Button variant="ghost" size="sm" onClick={() => openPaymentDetails(payment)}>
                             <Eye className="h-4 w-4" />
                           </Button>
                         </TableCell>
@@ -584,6 +599,39 @@ const PaymentManagement: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de Detalhes do Pagamento */}
+      <Dialog open={showDetailsModal} onOpenChange={closePaymentDetails}>
+        <DialogContent className="max-w-lg w-full">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Pagamento</DialogTitle>
+            <DialogDescription>
+              Veja todas as informações deste pagamento.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedPayment && (
+            <div className="space-y-2 py-2">
+              <div><b>ID:</b> {selectedPayment.id}</div>
+              <div><b>Usuário:</b> {selectedPayment.user_name || 'N/A'}</div>
+              <div><b>Email:</b> {selectedPayment.user_email || 'N/A'}</div>
+              <div><b>Curso:</b> {selectedPayment.course_title}</div>
+              <div><b>Valor:</b> R$ {Number(selectedPayment.amount).toFixed(2)}</div>
+              <div><b>Status:</b> {getStatusBadge(selectedPayment.status)}</div>
+              <div><b>Gateway:</b> {selectedPayment.gateway === 'stripe' ? 'Stripe' : 'Mercado Pago'}</div>
+              <div><b>Data:</b> {new Date(selectedPayment.created_at).toLocaleString('pt-BR')}</div>
+              {selectedPayment.stripe_payment_intent_id && (
+                <div><b>Stripe Payment Intent:</b> {selectedPayment.stripe_payment_intent_id}</div>
+              )}
+              {/* Adicione outros campos relevantes aqui */}
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Fechar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

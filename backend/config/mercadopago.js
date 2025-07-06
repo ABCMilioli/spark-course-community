@@ -197,25 +197,38 @@ async function processWebhook(rawBody, headers, url) {
       console.log('[MERCADOPAGO] 🔑 Secret usado:', secret, 'Tamanho:', secret.length);
       console.log('[MERCADOPAGO] 🔐 Validando assinatura do webhook');
       
+      // Mercado Pago envia a assinatura diretamente, não no formato ts=,v1=
       const signature = headers['signature'] || headers['Signature'] || headers['x-signature'] || headers['X-Signature'];
       const requestId = headers['x-request-id'] || headers['X-Request-Id'];
       
-      if (!signature || !requestId) {
-        console.error('[MERCADOPAGO] ❌ Headers necessários ausentes:', { signature, requestId });
-        throw new Error('Headers de assinatura ausentes');
+      if (!signature) {
+        console.error('[MERCADOPAGO] ❌ Header de assinatura ausente');
+        throw new Error('Header de assinatura ausente');
       }
 
-      // Extrair timestamp e assinatura do header
-      const signatureParts = signature.split(',');
-      const timestampPart = signatureParts.find(part => part.startsWith('ts='));
-      const signatureValue = signatureParts.find(part => part.startsWith('v1='))?.split('=')[1];
-
-      if (!timestampPart || !signatureValue) {
-        console.error('[MERCADOPAGO] ❌ Formato de assinatura inválido:', signature);
-        throw new Error('Formato de assinatura inválido');
+      // Mercado Pago envia no formato: ts=timestamp,v1=assinatura
+      let signatureValue = signature;
+      let timestamp = Math.floor(Date.now() / 1000).toString();
+      
+      // Tentar extrair do formato ts=timestamp,v1=assinatura
+      if (signature.includes('ts=') && signature.includes('v1=')) {
+        const signatureParts = signature.split(',');
+        const timestampPart = signatureParts.find(part => part.startsWith('ts='));
+        const signaturePart = signatureParts.find(part => part.startsWith('v1='));
+        
+        if (timestampPart && signaturePart) {
+          timestamp = timestampPart.split('=')[1];
+          signatureValue = signaturePart.split('=')[1];
+          console.log('[MERCADOPAGO] 🔍 Extraído do formato ts=,v1=:', { timestamp, signatureValue });
+        }
       }
-
-      const timestamp = timestampPart.split('=')[1];
+      
+      // Se não conseguiu extrair, usar headers específicos
+      if (signatureValue === signature) {
+        timestamp = headers['x-timestamp'] || headers['X-Timestamp'] || 
+                   headers['x-mercadopago-timestamp'] || headers['X-MercadoPago-Timestamp'] ||
+                   timestamp;
+      }
 
       // Gerar string para validação
       // Formato: timestamp + método + url + body bruto
@@ -267,8 +280,23 @@ async function processWebhook(rawBody, headers, url) {
     switch (body.type) {
       case 'payment':
         if (body.action === 'payment.created' || body.action === 'payment.updated') {
-          const payment = await getPayment(body.data.id);
-          return { type: 'payment', action: body.action, payment };
+          try {
+            const payment = await getPayment(body.data.id);
+            return { type: 'payment', action: body.action, payment };
+          } catch (error) {
+            // Se o pagamento não for encontrado, pode ser um teste ou pagamento inválido
+            if (error.status === 404) {
+              console.warn(`[MERCADOPAGO] ⚠️  Pagamento não encontrado (pode ser teste): ${body.data.id}`);
+              return { 
+                type: 'payment', 
+                action: body.action, 
+                payment: null,
+                error: 'payment_not_found',
+                paymentId: body.data.id
+              };
+            }
+            throw error;
+          }
         }
         break;
         

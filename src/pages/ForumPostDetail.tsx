@@ -187,10 +187,6 @@ export default function ForumPostDetail() {
           <h1 className="text-2xl font-bold">Post do Fórum</h1>
           <p className="text-muted-foreground">Discussão da comunidade</p>
         </div>
-        {/* Debug info */}
-        <div className="ml-auto text-xs text-gray-500">
-          Post ID: {postId} | Tem imagem: {post?.content_image_url ? 'Sim' : 'Não'}
-        </div>
       </div>
 
       <Card className="max-w-2xl mx-auto">
