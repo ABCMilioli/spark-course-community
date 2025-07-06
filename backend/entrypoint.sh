@@ -39,5 +39,9 @@ for f in /app/migrations/*.sql; do
 done
 
 echo "Todas as migrations foram aplicadas!"
+
+echo "Gerando arquivo de configuração do frontend..."
+/app/generate-env-js.sh
+
 echo "Iniciando backend modular..."
 exec node index-modular.cjs 

@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { processWebhook, convertStatus } = require('../config/mercadopago-transparent');
+const { processWebhook, convertStatus } = require('../config/mercadopago');
 
 // Função para enviar webhook
 async function sendWebhook(pool, eventType, payload) {
@@ -120,7 +120,7 @@ class WebhookService {
 
     try {
       // Processar webhook usando a função do config
-      const webhookResult = await processWebhook(rawBody, req.headers, req.path);      
+      const webhookResult = await processWebhook(rawBody, req.headers, '/api/webhooks/mercadopago');      
       if (webhookResult.type === 'payment') {
         // Processar mudança de status de pagamento
         const payment = webhookResult.payment;

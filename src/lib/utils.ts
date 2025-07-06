@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import axios from 'axios'
+import { getApiUrl } from './env'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -36,7 +37,7 @@ export const getVideoEmbedUrl = (url: string): string => {
   return url;
 };
 
-export const API_URL = import.meta.env.VITE_API_URL || '/api';
+export const API_URL = getApiUrl();
 
 export async function fetchCourseDetail(courseId: string) {
   const token = localStorage.getItem('token');

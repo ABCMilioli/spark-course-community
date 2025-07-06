@@ -405,6 +405,68 @@ module.exports = (pool, createNotification, getUserName) => {
     }
   });
 
+  // Criar conversa direta entre dois usuários
+  router.post('/conversations/direct', authenticateToken, async (req, res) => {
+    try {
+      const { otherUserId } = req.body;
+      const userId = req.user.id;
+
+      console.log('[POST /api/conversations/direct] Criando conversa direta entre:', userId, 'e', otherUserId);
+
+      if (!otherUserId) {
+        return res.status(400).json({ error: 'ID do outro usuário é obrigatório.' });
+      }
+
+      if (otherUserId === userId) {
+        return res.status(400).json({ error: 'Não é possível criar conversa consigo mesmo.' });
+      }
+
+      // Verificar se o outro usuário existe
+      const userCheck = await pool.query('SELECT 1 FROM profiles WHERE id = $1', [otherUserId]);
+      if (userCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Usuário não encontrado.' });
+      }
+
+      // Usar função do banco para obter ou criar conversa
+      const { rows } = await pool.query(
+        'SELECT get_or_create_direct_conversation($1, $2) as conversation_id',
+        [userId, otherUserId]
+      );
+
+      const conversationId = rows[0].conversation_id;
+      
+      // Buscar dados da conversa criada/encontrada com processamento do other_user
+      const conversationData = await pool.query(`
+        SELECT * FROM conversations_with_last_message WHERE id = $1
+      `, [conversationId]);
+
+      if (conversationData.rows.length === 0) {
+        return res.status(404).json({ error: 'Conversa não encontrada.' });
+      }
+
+      // Processar dados para adicionar other_user
+      const conversation = conversationData.rows[0];
+      const participants = conversation.participants || [];
+      const otherUser = participants.find(p => p.user_id !== userId);
+      
+      const processedConversation = {
+        ...conversation,
+        other_user: otherUser ? {
+          id: otherUser.user_id,
+          name: otherUser.name,
+          avatar_url: otherUser.avatar_url,
+          role: otherUser.role || 'user'
+        } : null
+      };
+
+      console.log('[POST /api/conversations/direct] Conversa criada/encontrada:', processedConversation.id);
+      res.json(processedConversation);
+    } catch (err) {
+      console.error('[POST /api/conversations/direct]', err);
+      res.status(500).json({ error: 'Erro ao criar conversa.' });
+    }
+  });
+
   // Criar nova conversa
   router.post('/conversations', authenticateToken, async (req, res) => {
     try {

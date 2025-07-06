@@ -9,6 +9,7 @@ import { CreditCard, QrCode, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { API_URL } from '@/lib/utils';
+import { formatPrice } from '@/lib/price';
 
 interface TransparentCheckoutProps {
   courseId: string;
@@ -32,10 +33,12 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
   // Estado para PIX
   const [pixQrCode, setPixQrCode] = useState('');
   const [pixQrCodeBase64, setPixQrCodeBase64] = useState('');
+  const [pixPaymentId, setPixPaymentId] = useState('');
 
   // Estado para boleto
   const [boletoUrl, setBoletoUrl] = useState('');
   const [boletoBarcode, setBoletoBarcode] = useState('');
+  const [boletoPaymentId, setBoletoPaymentId] = useState('');
 
   // Formatar número do cartão
   const formatCardNumber = (value: string) => {
@@ -114,6 +117,7 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
 
       setPixQrCode(data.qr_code);
       setPixQrCodeBase64(data.qr_code_base64);
+      setPixPaymentId(data.payment_id);
       toast.success('PIX gerado com sucesso!');
 
     } catch (error: any) {
@@ -144,6 +148,7 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
 
       setBoletoUrl(data.boleto_url);
       setBoletoBarcode(data.barcode);
+      setBoletoPaymentId(data.payment_id);
       toast.success('Boleto gerado com sucesso!');
 
     } catch (error: any) {
@@ -154,14 +159,14 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
     }
   };
 
-  const formattedPrice = typeof coursePrice === 'number' ? coursePrice.toFixed(2) : '0.00';
+  const formattedPrice = formatPrice(coursePrice);
 
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle>Pagamento do Curso</CardTitle>
         <CardDescription>
-          {courseTitle} - R$ {formattedPrice}
+          {courseTitle} - {formattedPrice}
         </CardDescription>
       </CardHeader>
 
@@ -293,13 +298,21 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
                       O pagamento será confirmado automaticamente
                     </p>
                   </div>
-                  <div className="pt-4 border-t">
+                  <div className="pt-4 border-t space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => navigate(`/payment/pending?courseId=${courseId}&payment_id=${pixPaymentId}`)}
+                    >
+                      Acompanhar Pagamento
+                    </Button>
+                    
                     <Button
                       variant="outline"
                       className="w-full"
                       onClick={() => {
                         setPixQrCode('');
                         setPixQrCodeBase64('');
+                        setPixPaymentId('');
                       }}
                     >
                       Gerar Novo PIX
@@ -368,13 +381,21 @@ export default function TransparentCheckout({ courseId, courseTitle, coursePrice
                     </p>
                   </div>
 
-                  <div className="pt-4 border-t">
+                  <div className="pt-4 border-t space-y-2">
+                    <Button
+                      className="w-full"
+                      onClick={() => navigate(`/payment/pending?courseId=${courseId}&payment_id=${boletoPaymentId}`)}
+                    >
+                      Acompanhar Pagamento
+                    </Button>
+                    
                     <Button
                       variant="outline"
                       className="w-full"
                       onClick={() => {
                         setBoletoUrl('');
                         setBoletoBarcode('');
+                        setBoletoPaymentId('');
                       }}
                     >
                       Gerar Novo Boleto

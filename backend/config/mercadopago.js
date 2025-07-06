@@ -176,9 +176,10 @@ async function processWebhook(rawBody, headers, url) {
     throw new Error('Mercado Pago não está configurado');
   }
 
+  let body;
+
   try {
     // Parse para log
-    let body;
     try {
       body = JSON.parse(rawBody);
     } catch (e) {
@@ -241,6 +242,9 @@ async function processWebhook(rawBody, headers, url) {
         requestId
       });
 
+      // Verificar se deve pular validação (para debug)
+      const skipValidation = process.env.MERCADOPAGO_SKIP_SIGNATURE_VALIDATION === 'true';
+      
       if (signatureValue !== expectedSignature) {
         console.error('[MERCADOPAGO] ❌ Assinatura inválida:', {
           received: signatureValue,
@@ -248,10 +252,15 @@ async function processWebhook(rawBody, headers, url) {
           messageUsed: message,
           rawBody
         });
-        throw new Error('Assinatura inválida');
+        
+        if (skipValidation) {
+          console.warn('[MERCADOPAGO] ⚠️  Validação de assinatura desabilitada - processando mesmo assim');
+        } else {
+          throw new Error('Assinatura inválida');
+        }
+      } else {
+        console.log('[MERCADOPAGO] ✅ Assinatura validada com sucesso');
       }
-
-      console.log('[MERCADOPAGO] ✅ Assinatura validada com sucesso');
     }
 
     // Processar diferentes tipos de webhook

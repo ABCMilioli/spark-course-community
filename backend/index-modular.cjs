@@ -1695,6 +1695,209 @@ app.post('/api/messages', authenticateToken, async (req, res) => {
 
 // Rotas de mensagens já registradas acima
 
+// ===== ROTAS DE USUÁRIOS (COMPATIBILIDADE) =====
+
+// Listar usuários (admin)
+app.get('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const { role, limit = 10 } = req.query;
+    
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+    
+    let query = 'SELECT id, name, email, role, created_at FROM profiles WHERE 1=1';
+    const params = [];
+    let paramIndex = 1;
+    
+    if (role) {
+      query += ` AND role = $${paramIndex}`;
+      params.push(role);
+      paramIndex++;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT $${paramIndex}`;
+    params.push(parseInt(limit));
+    
+    const { rows } = await pool.query(query, params);
+    res.json(rows);
+  } catch (err) {
+    console.error('[GET /api/users] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Criar usuário (admin)
+app.post('/api/users', authenticateToken, async (req, res) => {
+  try {
+    const { name, email, password, role = 'student' } = req.body;
+    
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+    
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
+    }
+    
+    // Verificar se email já existe
+    const emailCheck = await pool.query('SELECT id FROM profiles WHERE email = $1', [email]);
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({ error: 'Email já está em uso.' });
+    }
+    
+    // Hash da senha
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Criar usuário
+    const { rows } = await pool.query(
+      'INSERT INTO profiles (name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role, created_at',
+      [name, email, hashedPassword, role]
+    );
+    
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error('[POST /api/users] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Atualizar usuário (admin)
+app.put('/api/users/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, role } = req.body;
+    
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+    
+    if (!name || !email) {
+      return res.status(400).json({ error: 'Nome e email são obrigatórios.' });
+    }
+    
+    // Verificar se email já existe (exceto para o usuário atual)
+    const emailCheck = await pool.query(
+      'SELECT id FROM profiles WHERE email = $1 AND id != $2',
+      [email, userId]
+    );
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({ error: 'Email já está em uso.' });
+    }
+    
+    // Atualizar usuário
+    const { rows } = await pool.query(
+      'UPDATE profiles SET name = $1, email = $2, role = $3 WHERE id = $4 RETURNING id, name, email, role, created_at',
+      [name, email, role, userId]
+    );
+    
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[PUT /api/users/:userId] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Deletar usuário (admin)
+app.delete('/api/users/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Verificar se é admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+    
+    // Verificar se não está tentando deletar a si mesmo
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Não é possível deletar seu próprio usuário.' });
+    }
+    
+    // Deletar usuário
+    const { rowCount } = await pool.query('DELETE FROM profiles WHERE id = $1', [userId]);
+    
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[DELETE /api/users/:userId] Erro:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// Rota para perfil público de usuário (mantida para compatibilidade com frontend)
+app.get('/api/users/:userId/profile', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log('[GET /api/users/:userId/profile] Buscando perfil público para usuário:', userId);
+    
+    // Buscar dados básicos do usuário (apenas campos públicos)
+    const userResult = await pool.query(
+      'SELECT id, name, role, bio, avatar_url, created_at FROM profiles WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Buscar estatísticas do usuário
+    const [postsResult, enrollmentsResult, forumPostsResult] = await Promise.all([
+      // Posts criados na comunidade
+      pool.query('SELECT COUNT(*) as count FROM posts WHERE author_id = $1', [userId]),
+      // Cursos matriculados (apenas contagem)
+      pool.query('SELECT COUNT(*) as count FROM enrollments WHERE user_id = $1', [userId]),
+      // Posts no fórum
+      pool.query('SELECT COUNT(*) as count FROM forum_posts WHERE author_id = $1', [userId])
+    ]);
+    
+    const stats = {
+      posts_count: parseInt(postsResult.rows[0].count),
+      courses_enrolled: parseInt(enrollmentsResult.rows[0].count),
+      forum_posts_count: parseInt(forumPostsResult.rows[0].count),
+    };
+    
+    // Buscar posts recentes do usuário (últimos 5)
+    const recentPostsResult = await pool.query(`
+      SELECT p.*, 
+             (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) as likes_count,
+             (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comments_count
+      FROM posts p 
+      WHERE p.author_id = $1 
+      ORDER BY p.created_at DESC 
+      LIMIT 5
+    `, [userId]);
+    
+    const response = {
+      ...user,
+      stats,
+      recent_posts: recentPostsResult.rows
+    };
+    
+    console.log('[GET /api/users/:userId/profile] Perfil público encontrado:', {
+      id: user.id,
+      name: user.name,
+      stats
+    });
+    
+    res.json(response);
+  } catch (err) {
+    console.error('[GET /api/users/:userId/profile] Erro ao buscar perfil público:', err);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ===== ROTAS RESTANTES (AINDA NÃO MODULARIZADAS) =====
 
 // ... (outras rotas que ainda não foram modularizadas)

@@ -2,7 +2,7 @@
 FROM node:18 AS frontend
 WORKDIR /app/frontend
 
-# Definir variável de ambiente para o build
+# Definir variável de ambiente para o build (valor padrão, pode ser sobrescrito)
 ARG VITE_API_URL=https://community.iacas.top
 ENV VITE_API_URL=${VITE_API_URL}
 
@@ -37,7 +37,9 @@ COPY backend/. .
 COPY --from=frontend /app/frontend/dist ./public
 COPY supabase/migrations ./migrations
 COPY backend/entrypoint.sh .
+COPY scripts/generate-env-js.sh .
 RUN chmod +x entrypoint.sh
+RUN chmod +x generate-env-js.sh
 
 EXPOSE 3001
 ENTRYPOINT ["./entrypoint.sh"] 

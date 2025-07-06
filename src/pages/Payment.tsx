@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchCourseDetail } from '@/lib/utils';
+import { parsePrice, formatPrice } from '@/lib/price';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,9 +15,16 @@ export default function Payment() {
   const [searchParams] = useSearchParams();
   const courseIdFromParams = searchParams.get('courseId') || courseId;
 
+  console.log('Payment.tsx - courseId (params):', courseId);
+  console.log('Payment.tsx - courseId (searchParams):', searchParams.get('courseId'));
+  console.log('Payment.tsx - courseIdFromParams:', courseIdFromParams);
+
   const { data: course, isLoading } = useQuery({
     queryKey: ['course-payment', courseIdFromParams],
-    queryFn: () => fetchCourseDetail(courseIdFromParams!),
+    queryFn: () => {
+      console.log('Payment.tsx - Chamando fetchCourseDetail para:', courseIdFromParams);
+      return fetchCourseDetail(courseIdFromParams!);
+    },
     enabled: !!courseIdFromParams,
   });
 
@@ -48,7 +56,7 @@ export default function Payment() {
     );
   }
 
-  const coursePrice = typeof course.price === 'number' ? course.price : 0;
+  const coursePrice = parsePrice(course.price);
 
   return (
     <div className="flex-1 p-6 bg-muted/40">
@@ -85,7 +93,7 @@ export default function Payment() {
                   </div>
                   <div className="pt-4 border-t">
                     <p className="text-2xl font-bold">
-                      R$ {coursePrice.toFixed(2)}
+                      {formatPrice(coursePrice)}
                     </p>
                   </div>
                 </div>

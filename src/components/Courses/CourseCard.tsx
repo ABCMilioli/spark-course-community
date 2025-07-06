@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CourseRatingDisplay } from "./CourseRatingDisplay";
 import { CourseWithInstructor } from "@/types";
+import { useNavigate } from 'react-router-dom';
+import { isPaidCourse, formatPrice } from '@/lib/price';
 
 interface CourseCardProps {
   course: CourseWithInstructor & { progressPercentage?: number; total_ratings?: number };
@@ -14,8 +16,14 @@ interface CourseCardProps {
 }
 
 export function CourseCard({ course, onPlay, showProgress = false }: CourseCardProps) {
+  const navigate = useNavigate();
+
   const handlePlay = () => {
-    onPlay?.(course.id);
+    if (isPaidCourse(course.price)) {
+      navigate(`/payment/${course.id}`);
+    } else {
+      onPlay?.(course.id);
+    }
   };
 
   const instructor = course.instructor || { name: course.instructor_name, avatar_url: course.instructor_avatar };
@@ -119,7 +127,7 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
           
           {!showProgress && (
             <div className="flex items-center gap-1 font-semibold text-primary">
-              <span>R$ {Number(course.price).toFixed(2)}</span>
+              <span>{formatPrice(course.price)}</span>
             </div>
           )}
         </div>

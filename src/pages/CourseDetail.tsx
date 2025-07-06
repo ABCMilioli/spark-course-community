@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { parsePrice, formatPrice, isFreeCourse } from '@/lib/price';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -64,7 +65,7 @@ export default function CourseDetail() {
       return;
     }
 
-    if (Number(course.price) === 0) {
+    if (isFreeCourse(course.price)) {
       // Curso gratuito - matricular direto
       try {
         const token = localStorage.getItem('token');
@@ -262,8 +263,8 @@ export default function CourseDetail() {
                 >
                   {isLoadingEnrollment ? 'Carregando...' : 
                    isEnrolled ? 'Continuar Curso' : 
-                   Number(course.price) === 0 ? 'Matricular Gratuitamente' : 
-                   `Inscrever Agora - R$${Number(course.price).toFixed(2)}`
+                   isFreeCourse(course.price) ? 'Matricular Gratuitamente' : 
+                   `Inscrever Agora - ${formatPrice(course.price)}`
                   }
                 </Button>
                 <div className="text-center text-sm mb-4">
