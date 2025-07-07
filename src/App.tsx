@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/Layout/AppSidebar";
 import { Header } from "@/components/Layout/Header";
@@ -32,11 +32,13 @@ import PaymentPending from "./pages/PaymentPending";
 import PaymentManagement from "./pages/Admin/PaymentManagement";
 import PublicProfile from "./pages/PublicProfile";
 import Messages from "./pages/Messages";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
 function AppContent() {
   const { user, isLoading } = useAuth();
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -47,6 +49,11 @@ function AppContent() {
         </div>
       </div>
     );
+  }
+
+  // Permitir acesso à tela de redefinição de senha mesmo sem login
+  if (location.pathname.startsWith("/reset-password")) {
+    return <ResetPassword />;
   }
 
   if (!user) {
@@ -86,6 +93,7 @@ function AppContent() {
               <Route path="/payment/success" element={<PaymentSuccess />} />
               <Route path="/payment/failure" element={<PaymentFailure />} />
               <Route path="/payment/pending" element={<PaymentPending />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>

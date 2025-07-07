@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
+const { requestPasswordReset, resetPassword } = require('../modules/passwordReset');
 
 const router = express.Router();
 
@@ -139,6 +140,43 @@ module.exports = (pool) => {
     } catch (err) {
       console.error('[PUT /api/profile] Erro ao atualizar perfil:', err);
       res.status(500).json({ error: 'Erro interno.' });
+    }
+  });
+
+  // Solicitar recuperação de senha
+  router.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    console.log('[POST /api/auth/forgot-password] Recebida solicitação para:', email);
+    
+    if (!email) {
+      console.log('[POST /api/auth/forgot-password] Erro: E-mail não fornecido');
+      return res.status(400).json({ error: 'E-mail obrigatório.' });
+    }
+    
+    try {
+      console.log('[POST /api/auth/forgot-password] Iniciando processo de recuperação...');
+      console.log('[POST /api/auth/forgot-password] Pool disponível:', !!req.app.locals.pool);
+      
+      await requestPasswordReset(req.app.locals.pool, email);
+      console.log('[POST /api/auth/forgot-password] E-mail de recuperação enviado com sucesso');
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[POST /api/auth/forgot-password] Erro detalhado:', err);
+      console.error('[POST /api/auth/forgot-password] Stack trace:', err.stack);
+      res.status(500).json({ error: 'Erro ao solicitar recuperação de senha.' });
+    }
+  });
+
+  // Redefinir senha
+  router.post('/reset-password', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token e nova senha obrigatórios.' });
+    try {
+      await resetPassword(req.app.locals.pool, token, password);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[POST /api/auth/reset-password]', err);
+      res.status(400).json({ error: err.message || 'Erro ao redefinir senha.' });
     }
   });
 

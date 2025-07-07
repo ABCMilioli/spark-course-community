@@ -23,6 +23,25 @@ services:
       
       # URL base da sua aplicação
       - APP_URL=https://seu-dominio.com
+      - NEXT_PUBLIC_APP_URL=https://seu-dominio.com
+      
+      # Configurações SMTP para recuperação de senha
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_SECURE=false
+      - SMTP_USER=seu-email@gmail.com
+      - SMTP_PASS=sua-senha-de-app
+      - SMTP_FROM=seu-email@gmail.com
+      
+      # Configurações do banco de dados
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=spark_course
+      
+      # Chave secreta para JWT
+      - JWT_SECRET=sua-chave-secreta-super-segura-aqui
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
       interval: 30s

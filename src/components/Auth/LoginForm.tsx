@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { BookOpen } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast as sonnerToast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 
 export function LoginForm() {
   const [email, setEmail] = useState('');
@@ -16,6 +17,11 @@ export function LoginForm() {
   const [error, setError] = useState('');
   const { login, signUp, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('login');
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +42,42 @@ export function LoginForm() {
         });
         setActiveTab('login'); // Switch to login tab after successful signup
       }
+    }
+  };
+
+  // Handler para envio do e-mail de recuperação
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotSuccess('');
+    setForgotLoading(true);
+    
+    try {
+      console.log('[LoginForm] Enviando solicitação de recuperação para:', forgotEmail);
+      
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log('[LoginForm] Solicitação de recuperação enviada com sucesso');
+        setForgotSuccess('Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.');
+        setForgotEmail('');
+      } else {
+        console.error('[LoginForm] Erro na resposta:', data);
+        setForgotError(data.error || 'Erro ao enviar solicitação de recuperação.');
+      }
+    } catch (error) {
+      console.error('[LoginForm] Erro ao enviar solicitação:', error);
+      setForgotError('Erro de conexão. Tente novamente.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -103,6 +145,15 @@ export function LoginForm() {
                   placeholder="••••••••"
                   required
                 />
+                <div className="text-right mt-1">
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline hover:text-brand-blue"
+                    onClick={() => setShowForgotModal(true)}
+                  >
+                    Esqueci minha senha?
+                  </button>
+                </div>
               </div>
               
               <Button type="submit" className="w-full" disabled={isLoading}>
@@ -112,6 +163,38 @@ export function LoginForm() {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Modal de recuperação de senha */}
+      <Dialog open={showForgotModal} onOpenChange={setShowForgotModal}>
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Recuperar Senha</DialogTitle>
+            <DialogDescription>
+              Informe seu e-mail cadastrado para receber um link de redefinição de senha.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleForgotPassword} className="space-y-4 py-2">
+            <Input
+              type="email"
+              placeholder="seu@email.com"
+              value={forgotEmail}
+              onChange={e => setForgotEmail(e.target.value)}
+              required
+              disabled={forgotLoading}
+            />
+            {forgotError && <Alert variant="destructive"><AlertDescription>{forgotError}</AlertDescription></Alert>}
+            {forgotSuccess && <Alert variant="success"><AlertDescription>{forgotSuccess}</AlertDescription></Alert>}
+            <DialogFooter>
+              <Button type="submit" disabled={forgotLoading}>
+                {forgotLoading ? 'Enviando...' : 'Enviar link de recuperação'}
+              </Button>
+              <DialogClose asChild>
+                <Button variant="outline" type="button">Fechar</Button>
+              </DialogClose>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
