@@ -33,6 +33,7 @@ import PaymentManagement from "./pages/Admin/PaymentManagement";
 import PublicProfile from "./pages/PublicProfile";
 import Messages from "./pages/Messages";
 import ResetPassword from "./pages/ResetPassword";
+import { VerifyEmail } from "./pages/VerifyEmail";
 
 const queryClient = new QueryClient();
 
@@ -51,9 +52,14 @@ function AppContent() {
     );
   }
 
-  // Permitir acesso à tela de redefinição de senha mesmo sem login
-  if (location.pathname.startsWith("/reset-password")) {
-    return <ResetPassword />;
+  // Permitir acesso à tela de redefinição de senha e verificação de email mesmo sem login
+  if (location.pathname.startsWith("/reset-password") || location.pathname.startsWith("/verify-email")) {
+    if (location.pathname.startsWith("/reset-password")) {
+      return <ResetPassword />;
+    }
+    if (location.pathname.startsWith("/verify-email")) {
+      return <VerifyEmail />;
+    }
   }
 
   if (!user) {

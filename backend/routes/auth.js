@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 const { requestPasswordReset, resetPassword } = require('../modules/passwordReset');
+const { requestEmailVerification, confirmEmailVerification, resendVerificationEmail } = require('../modules/emailVerification');
 
 const router = express.Router();
 
@@ -177,6 +178,112 @@ module.exports = (pool) => {
     } catch (err) {
       console.error('[POST /api/auth/reset-password]', err);
       res.status(400).json({ error: err.message || 'Erro ao redefinir senha.' });
+    }
+  });
+
+  // ===== VERIFICAÇÃO DE EMAIL =====
+
+  // Solicitar verificação de email (etapa 1 do cadastro)
+  router.post('/signup-request', async (req, res) => {
+    const { name, email, password } = req.body;
+    console.log('[POST /api/auth/signup-request] Recebida solicitação para:', email);
+    
+    if (!name || !email || !password) {
+      console.log('[POST /api/auth/signup-request] Erro: Dados incompletos');
+      return res.status(400).json({ error: 'Nome, email e senha são obrigatórios.' });
+    }
+    
+    try {
+      console.log('[POST /api/auth/signup-request] Iniciando processo de verificação...');
+      
+      await requestEmailVerification(req.app.locals.pool, name, email, password);
+      console.log('[POST /api/auth/signup-request] E-mail de verificação enviado com sucesso');
+      
+      res.json({ 
+        success: true, 
+        message: 'E-mail de verificação enviado. Verifique sua caixa de entrada e spam.' 
+      });
+    } catch (err) {
+      console.error('[POST /api/auth/signup-request] Erro detalhado:', err);
+      console.error('[POST /api/auth/signup-request] Stack trace:', err.stack);
+      
+      if (err.message.includes('já está cadastrado')) {
+        res.status(409).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: 'Erro ao solicitar verificação de email.' });
+      }
+    }
+  });
+
+  // Confirmar verificação de email (etapa 2 do cadastro)
+  router.post('/signup-confirm', async (req, res) => {
+    const { token } = req.body;
+    console.log('[POST /api/auth/signup-confirm] Recebida confirmação para token:', token ? token.substring(0, 10) + '...' : 'null');
+    
+    if (!token) {
+      console.log('[POST /api/auth/signup-confirm] Erro: Token não fornecido');
+      return res.status(400).json({ error: 'Token de verificação obrigatório.' });
+    }
+    
+    try {
+      console.log('[POST /api/auth/signup-confirm] Iniciando confirmação...');
+      
+      const user = await confirmEmailVerification(req.app.locals.pool, token);
+      console.log('[POST /api/auth/signup-confirm] Usuário criado com sucesso:', user.email);
+      
+      res.json({ 
+        success: true, 
+        message: 'Email confirmado com sucesso! Sua conta foi criada.',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role
+        }
+      });
+    } catch (err) {
+      console.error('[POST /api/auth/signup-confirm] Erro detalhado:', err);
+      console.error('[POST /api/auth/signup-confirm] Stack trace:', err.stack);
+      
+      if (err.message.includes('Token inválido') || err.message.includes('expirado')) {
+        res.status(400).json({ error: err.message });
+      } else if (err.message.includes('já foi verificado')) {
+        res.status(409).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: 'Erro ao confirmar verificação de email.' });
+      }
+    }
+  });
+
+  // Reenviar email de verificação
+  router.post('/resend-verification', async (req, res) => {
+    const { email } = req.body;
+    console.log('[POST /api/auth/resend-verification] Recebida solicitação de reenvio para:', email);
+    
+    if (!email) {
+      console.log('[POST /api/auth/resend-verification] Erro: E-mail não fornecido');
+      return res.status(400).json({ error: 'E-mail obrigatório.' });
+    }
+    
+    try {
+      console.log('[POST /api/auth/resend-verification] Iniciando reenvio...');
+      
+      await resendVerificationEmail(req.app.locals.pool, email);
+      console.log('[POST /api/auth/resend-verification] E-mail de reenvio enviado com sucesso');
+      
+      res.json({ 
+        success: true, 
+        message: 'Novo e-mail de verificação enviado. Verifique sua caixa de entrada e spam.' 
+      });
+    } catch (err) {
+      console.error('[POST /api/auth/resend-verification] Erro detalhado:', err);
+      console.error('[POST /api/auth/resend-verification] Stack trace:', err.stack);
+      
+      if (err.message.includes('não foi encontrada')) {
+        res.status(404).json({ error: err.message });
+      } else {
+        res.status(500).json({ error: 'Erro ao reenviar e-mail de verificação.' });
+      }
     }
   });
 

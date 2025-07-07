@@ -65,15 +65,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (name: string, email: string, password: string) => {
     console.log('AuthContext: Sign up attempt for:', email);
-    const { error } = await axios.post(`${API_URL}/auth/signup`, {
-      name,
-      email,
-      password,
-    });
-    if (error) {
+    try {
+      const response = await axios.post(`${API_URL}/auth/signup-request`, {
+        name,
+        email,
+        password,
+      });
+      
+      if (response.data.success) {
+        console.log('AuthContext: Sign up request successful');
+        return { error: null };
+      } else {
+        console.error('AuthContext: Sign up request failed:', response.data);
+        return { error: response.data.error || 'Erro ao solicitar cadastro.' };
+      }
+    } catch (error: any) {
       console.error('AuthContext: Sign up failed:', error);
+      return { error: error.response?.data?.error || 'Erro ao solicitar cadastro.' };
     }
-    return { error };
   };
 
   console.log('AuthContext: Rendering, isLoading:', isLoading, 'user:', user?.name || 'no user');

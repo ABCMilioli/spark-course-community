@@ -22,6 +22,8 @@ export function LoginForm() {
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [forgotError, setForgotError] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +39,8 @@ export function LoginForm() {
       if (signUpError) {
         setError(signUpError.message || 'Erro ao criar conta');
       } else {
-        sonnerToast.success('Conta criada com sucesso!', {
-          description: 'Enviamos um link de confirmação para o seu email.',
-        });
+        setVerificationEmail(email);
+        setShowVerificationMessage(true);
         setActiveTab('login'); // Switch to login tab after successful signup
       }
     }
@@ -193,6 +194,36 @@ export function LoginForm() {
               </DialogClose>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de verificação de email */}
+      <Dialog open={showVerificationMessage} onOpenChange={setShowVerificationMessage}>
+        <DialogContent className="max-w-md w-full">
+          <DialogHeader>
+            <DialogTitle>Verificação de Email</DialogTitle>
+            <DialogDescription>
+              Enviamos um link de verificação para o seu email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Alert>
+              <AlertDescription>
+                <p className="mb-2">
+                  <strong>Email enviado para:</strong> {verificationEmail}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Clique no link enviado para confirmar seu email e ativar sua conta. 
+                  Verifique também sua pasta de spam.
+                </p>
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button className="w-full">Entendi</Button>
+              </DialogClose>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
