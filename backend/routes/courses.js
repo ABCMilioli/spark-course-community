@@ -182,11 +182,10 @@ module.exports = (pool, sendWebhook) => {
   // Criar novo curso
   router.post('/', authenticateToken, async (req, res) => {
     try {
-      const { title, description, category, level, price, thumbnail, demo_video, isPaid } = req.body;
+      const { title, description, category, level, price, thumbnail, demo_video, isPaid, payment_gateway = 'mercadopago', external_checkout_url = null } = req.body;
       if (!title || !description || !level) {
         return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
       }
-
       // Validação do preço baseada no tipo de curso
       let finalPrice = 0;
       if (isPaid) {
@@ -195,50 +194,16 @@ module.exports = (pool, sendWebhook) => {
         }
         finalPrice = parseFloat(price);
       }
-
       const id = crypto.randomUUID();
       const created_at = new Date();
-      const thumbnailUrl = thumbnail && thumbnail.trim() !== '' ? thumbnail : null;
-      const demoVideoUrl = demo_video && demo_video.trim() !== '' ? demo_video : null;
-      
       await pool.query(
-        'INSERT INTO courses (id, title, description, level, price, thumbnail_url, demo_video, tags, instructor_id, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-        [id, title, description, level, finalPrice, thumbnailUrl, demoVideoUrl, category ? [category] : [], req.user.id, created_at]
+        `INSERT INTO courses (id, title, description, category, level, price, thumbnail_url, demo_video, isPaid, payment_gateway, external_checkout_url, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [id, title, description, category, level, finalPrice, thumbnail, demo_video, isPaid, payment_gateway, external_checkout_url, created_at, created_at]
       );
-      
-      // Disparar webhook para criação de curso
-      try {
-        await sendWebhook('course.created', {
-          id,
-          title,
-          description,
-          level,
-          price: finalPrice,
-          thumbnail_url: thumbnailUrl,
-          demo_video: demoVideoUrl,
-          tags: category ? [category] : [],
-          instructor_id: req.user.id,
-          instructor_name: req.user.name,
-          created_at: created_at.toISOString()
-        });
-      } catch (webhookError) {
-        console.error('[WEBHOOK] Erro ao enviar webhook course.created:', webhookError);
-      }
-      
-      res.status(201).json({ 
-        id, 
-        title, 
-        description, 
-        level, 
-        price: finalPrice, 
-        thumbnail_url: thumbnailUrl, 
-        demo_video: demoVideoUrl,
-        tags: category ? [category] : [], 
-        instructor_id: req.user.id, 
-        created_at 
-      });
+      res.status(201).json({ id, title, payment_gateway, external_checkout_url });
     } catch (err) {
-      console.error(err);
+      console.error('[POST /api/courses]', err);
       res.status(500).json({ error: 'Erro ao criar curso.' });
     }
   });
@@ -247,54 +212,32 @@ module.exports = (pool, sendWebhook) => {
   router.put('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
-      const { title, description, category, level, price, thumbnail, demo_video, isPaid } = req.body;
-      if (!title || !description || !level) {
-        return res.status(400).json({ error: 'Campos obrigatórios não preenchidos.' });
+      const { title, description, category, level, price, thumbnail, demo_video, isPaid, payment_gateway, external_checkout_url } = req.body;
+      // Atualiza apenas os campos enviados
+      const fields = [];
+      const values = [];
+      let idx = 1;
+      if (title) { fields.push(`title = $${idx++}`); values.push(title); }
+      if (description) { fields.push(`description = $${idx++}`); values.push(description); }
+      if (category) { fields.push(`category = $${idx++}`); values.push(category); }
+      if (level) { fields.push(`level = $${idx++}`); values.push(level); }
+      if (price) { fields.push(`price = $${idx++}`); values.push(price); }
+      if (thumbnail) { fields.push(`thumbnail_url = $${idx++}`); values.push(thumbnail); }
+      if (demo_video) { fields.push(`demo_video = $${idx++}`); values.push(demo_video); }
+      if (isPaid !== undefined) { fields.push(`isPaid = $${idx++}`); values.push(isPaid); }
+      if (payment_gateway) { fields.push(`payment_gateway = $${idx++}`); values.push(payment_gateway); }
+      if (external_checkout_url) { fields.push(`external_checkout_url = $${idx++}`); values.push(external_checkout_url); }
+      if (fields.length === 0) {
+        return res.status(400).json({ error: 'Nenhum campo para atualizar.' });
       }
-
-      // Validação do preço baseada no tipo de curso
-      let finalPrice = 0;
-      if (isPaid) {
-        if (!price || parseFloat(price) <= 0) {
-          return res.status(400).json({ error: 'Para cursos pagos, o preço deve ser maior que zero.' });
-        }
-        finalPrice = parseFloat(price);
-      }
-
-      const thumbnailUrl = thumbnail && thumbnail.trim() !== '' ? thumbnail : null;
-      const demoVideoUrl = demo_video && demo_video.trim() !== '' ? demo_video : null;
-
-      const result = await pool.query(
-        'UPDATE courses SET title = $1, description = $2, level = $3, price = $4, thumbnail_url = $5, demo_video = $6, tags = $7, instructor_id = $8 WHERE id = $9 RETURNING *',
-        [title, description, level, finalPrice, thumbnailUrl, demoVideoUrl, category ? [category] : [], req.user.id, id]
-      );
-      if (result.rowCount === 0) {
-        return res.status(404).json({ error: 'Curso não encontrado ou sem permissão.' });
-      }
-      
-      // Disparar webhook para atualização de curso
-      try {
-        await sendWebhook('course.updated', {
-          id,
-          title,
-          description,
-          level,
-          price: finalPrice,
-          thumbnail_url: thumbnailUrl,
-          demo_video: demoVideoUrl,
-          tags: category ? [category] : [],
-          instructor_id: req.user.id,
-          instructor_name: req.user.name,
-          updated_at: new Date().toISOString()
-        });
-      } catch (webhookError) {
-        console.error('[WEBHOOK] Erro ao enviar webhook course.updated:', webhookError);
-      }
-      
-      res.json(result.rows[0]);
+      fields.push(`updated_at = $${idx++}`); values.push(new Date());
+      values.push(id);
+      const query = `UPDATE courses SET ${fields.join(', ')} WHERE id = $${idx}`;
+      await pool.query(query, values);
+      res.json({ success: true });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Erro ao editar curso.' });
+      console.error('[PUT /api/courses/:id]', err);
+      res.status(500).json({ error: 'Erro ao atualizar curso.' });
     }
   });
 

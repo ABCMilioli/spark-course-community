@@ -1962,3 +1962,6 @@ server.on('close', () => {
   console.log('[SERVER] Servidor fechado');
   pool.end();
 }); 
+
+const externalRoutes = require('./routes/external')(pool);
+app.use('/api/external', externalRoutes);

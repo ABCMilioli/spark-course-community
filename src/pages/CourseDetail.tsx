@@ -15,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { parsePrice, formatPrice, isFreeCourse } from '@/lib/price';
+import { useState } from 'react';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -39,6 +40,8 @@ export default function CourseDetail() {
   const { user } = useAuth();
   const { courseId } = useParams<{ courseId: string }>();
   const queryClient = useQueryClient();
+  const [cpf, setCpf] = useState('');
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const { data: course, isLoading: isLoadingCourse, error } = useQuery({
     queryKey: ['course-detail', courseId],
@@ -88,6 +91,28 @@ export default function CourseDetail() {
     } else {
       // Curso pago - ir para página de pagamento
       navigate(`/payment?courseId=${courseId}`);
+    }
+  };
+
+  // Novo: fluxo para pagamento externo
+  const handleExternalPayment = async () => {
+    if (!cpf || cpf.length < 11) {
+      toast.error('Informe um CPF válido');
+      return;
+    }
+    setIsRedirecting(true);
+    try {
+      // Salvar CPF no backend (cria usuário se não existir)
+      await axios.post(`${API_URL}/external/enroll`, {
+        user: { cpf },
+        course_id: course.id,
+        action: 'enroll'
+      });
+      // Redirecionar para o checkout externo
+      window.location.href = course.external_checkout_url;
+    } catch (err) {
+      toast.error('Erro ao processar matrícula/checkout');
+      setIsRedirecting(false);
     }
   };
 
@@ -322,6 +347,37 @@ export default function CourseDetail() {
               </Card>
             )}
           </div>
+        </div>
+        <div className="mt-8">
+          {/* Botão de pagamento/matrícula */}
+          {isEnrolled ? (
+            <Button onClick={() => navigate(`/player?courseId=${courseId}`)}>
+              Acessar Curso
+            </Button>
+          ) : isFreeCourse(course.price) ? (
+            <Button onClick={handleEnrollClick}>
+              Matricular-se Gratuitamente
+            </Button>
+          ) : course.payment_gateway === 'mercadopago' ? (
+            <Button onClick={handleEnrollClick}>
+              Comprar com Mercado Pago
+            </Button>
+          ) : course.payment_gateway && course.external_checkout_url ? (
+            <div className="flex flex-col gap-2 max-w-xs">
+              <input
+                type="text"
+                placeholder="Digite seu CPF"
+                value={cpf}
+                onChange={e => setCpf(e.target.value.replace(/\D/g, ''))}
+                maxLength={14}
+                className="border rounded px-3 py-2 text-base"
+                disabled={isRedirecting}
+              />
+              <Button onClick={handleExternalPayment} disabled={isRedirecting}>
+                Ir para Checkout Externo
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
