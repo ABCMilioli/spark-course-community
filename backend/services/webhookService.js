@@ -175,6 +175,33 @@ class WebhookService {
                 );
                 console.log(`[MERCADOPAGO WEBHOOK] ✅ Matrícula criada: ${enrollmentId}`);
               }
+
+              // --- NOVO: Matrícula automática em turmas privadas ---
+              // Buscar todas as turmas privadas associadas ao curso
+              const privateClasses = await this.pool.query(`
+                SELECT c.id as class_id
+                FROM class_courses cc
+                JOIN classes c ON cc.class_id = c.id
+                WHERE cc.course_id = $1 AND c.is_public = false
+              `, [updatedPayment.course_id]);
+
+              for (const row of privateClasses.rows) {
+                // Verificar se o aluno já está matriculado na turma
+                const classEnrollCheck = await this.pool.query(
+                  'SELECT id FROM class_enrollments WHERE class_id = $1 AND user_id = $2',
+                  [row.class_id, updatedPayment.user_id]
+                );
+                if (classEnrollCheck.rows.length === 0) {
+                  const classEnrollId = crypto.randomUUID();
+                  await this.pool.query(
+                    'INSERT INTO class_enrollments (id, class_id, user_id, enrolled_at, role, status) VALUES ($1, $2, $3, $4, $5, $6)',
+                    [classEnrollId, row.class_id, updatedPayment.user_id, new Date(), 'student', 'active']
+                  );
+                  console.log(`[MERCADOPAGO WEBHOOK] ✅ Matrícula automática em turma privada: turma=${row.class_id}, aluno=${updatedPayment.user_id}`);
+                }
+              }
+              // --- FIM NOVO ---
+
               // Disparar webhook personalizado
               try {
                 await this.sendWebhook('payment.succeeded', {
