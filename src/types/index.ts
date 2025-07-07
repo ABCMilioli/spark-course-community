@@ -648,3 +648,121 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
   [WEBHOOK_EVENTS.FORUM_REPLY_DELETED]: 'Resposta do Fórum Deletada',
   [WEBHOOK_EVENTS.NOTIFICATION_CREATED]: 'Notificação Criada',
 };
+
+// Sistema de Campanhas de Email
+export interface EmailCampaign {
+  id: string;
+  name: string;
+  subject: string;
+  html_content: string;
+  text_content?: string;
+  status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+  campaign_type: 'post' | 'forum' | 'course' | 'lesson' | 'class_material' | 'custom';
+  target_audience: 'all' | 'instructors' | 'students' | 'specific_classes' | 'custom_filter';
+  target_classes?: string[];
+  custom_filter?: any;
+  scheduled_at?: string;
+  sent_at?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  reference_id?: string;
+  reference_type?: string;
+  total_recipients: number;
+  sent_count: number;
+  opened_count: number;
+  clicked_count: number;
+  creator_name?: string;
+  recipients_count?: number;
+}
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  subject_template: string;
+  html_template: string;
+  text_template?: string;
+  campaign_type: 'post' | 'forum' | 'course' | 'lesson' | 'class_material' | 'custom';
+  is_default: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  creator_name?: string;
+}
+
+export interface EmailRecipient {
+  id: string;
+  campaign_id: string;
+  user_id: string;
+  email: string;
+  name: string;
+  status: 'pending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+  sent_at?: string;
+  delivered_at?: string;
+  opened_at?: string;
+  clicked_at?: string;
+  bounce_reason?: string;
+  created_at: string;
+}
+
+export interface EmailSendLog {
+  id: string;
+  campaign_id: string;
+  recipient_id: string;
+  user_id: string;
+  email: string;
+  action: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+  details?: any;
+  created_at: string;
+  user_name?: string;
+}
+
+export interface CampaignStats {
+  campaign: EmailCampaign;
+  stats: {
+    total_recipients: number;
+    sent_count: number;
+    delivered_count: number;
+    opened_count: number;
+    clicked_count: number;
+    bounced_count: number;
+    failed_count: number;
+  };
+  recent_logs: EmailSendLog[];
+}
+
+export interface RecipientPreview {
+  count: number;
+  recipients: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  }>;
+}
+
+export interface ContentData {
+  post_title?: string;
+  post_excerpt?: string;
+  post_url?: string;
+  author_name?: string;
+  created_at?: string;
+  topic_title?: string;
+  course_title?: string;
+  course_description?: string;
+  course_url?: string;
+  instructor_name?: string;
+  total_lessons?: number;
+  course_level?: string;
+  course_duration?: string;
+  lesson_title?: string;
+  lesson_description?: string;
+  lesson_url?: string;
+  module_title?: string;
+  lesson_duration?: string;
+  material_title?: string;
+  material_description?: string;
+  material_url?: string;
+  class_name?: string;
+  material_type?: string;
+}

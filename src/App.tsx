@@ -34,6 +34,7 @@ import PublicProfile from "./pages/PublicProfile";
 import Messages from "./pages/Messages";
 import ResetPassword from "./pages/ResetPassword";
 import { VerifyEmail } from "./pages/VerifyEmail";
+import EmailCampaigns from "./pages/EmailCampaigns";
 
 const queryClient = new QueryClient();
 
@@ -95,6 +96,7 @@ function AppContent() {
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/course/edit/:courseId" element={<CourseAdmin />} />
               <Route path="/admin/payments" element={<PaymentManagement />} />
+              <Route path="/admin/email-campaigns" element={<EmailCampaigns />} />
               <Route path="/payment" element={<Payment />} />
               <Route path="/payment/success" element={<PaymentSuccess />} />
               <Route path="/payment/failure" element={<PaymentFailure />} />

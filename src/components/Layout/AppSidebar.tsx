@@ -10,7 +10,7 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users, MessageCircle, Mail } from "lucide-react";
+import { Home, MessageSquare, BookOpen, Search, Settings, User, LogOut, Users, MessageCircle, Mail, Send } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,12 @@ const adminItems = [
     title: "Administração",
     url: "/admin",
     icon: Settings,
+    roles: ['admin']
+  },
+  {
+    title: "Campanhas de Email",
+    url: "/admin/email-campaigns",
+    icon: Send,
     roles: ['admin']
   }
 ];

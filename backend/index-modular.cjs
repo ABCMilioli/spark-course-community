@@ -126,10 +126,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Configurar pool no app.locals para uso nos módulos
-app.locals.pool = pool;
-app.locals.s3Client = s3Client;
-
 // ===== MÓDULOS IMPORTADOS =====
 
 // Middlewares
@@ -138,12 +134,19 @@ const upload = require('./middleware/upload');
 
 // Serviços
 const { sendWebhook } = require('./services/webhookService');
+const { sendMail } = require('./services/emailService');
+
+// Configurar pool no app.locals para uso nos módulos
+app.locals.pool = pool;
+app.locals.s3Client = s3Client;
+app.locals.sendMail = sendMail;
 
 // Utilitários
 const { uploadFile } = require('./utils/upload');
 
 // Rotas
 const messagesRouter = require('./routes/messages');
+const emailCampaignsRouter = require('./routes/emailCampaigns');
 
 // ===== FUNÇÕES AUXILIARES =====
 
@@ -271,6 +274,7 @@ app.use('/api/notifications', notificationRoutes(pool));
 // Rotas de mensagens (precisa de pool, createNotification e getUserName)
 console.log('[ROUTES] Registrando rotas de mensagens...');
 app.use('/api', messagesRouter(pool, createNotification, getUserName));
+app.use('/api/email-campaigns', emailCampaignsRouter);
 console.log('[ROUTES] Rotas de mensagens registradas com sucesso');
 
 // ===== ENDPOINT DE MATRÍCULAS =====
