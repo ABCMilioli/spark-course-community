@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend, Area, AreaChart
@@ -46,7 +47,12 @@ interface PaymentMethod {
   type: string;
 }
 
-const PaymentManagement: React.FC = () => {
+export default function PaymentManagement() {
+  const { user } = useAuth();
+  if (!user || user.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+
   const [stats, setStats] = useState<PaymentStats[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
@@ -634,6 +640,4 @@ const PaymentManagement: React.FC = () => {
       </Dialog>
     </div>
   );
-};
-
-export default PaymentManagement; 
+}; 

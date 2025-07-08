@@ -466,15 +466,25 @@ module.exports = (pool, sendWebhook) => {
       console.log('[GET /api/courses/:id/player] Buscando dados do player para curso:', id);
       console.log('[GET /api/courses/:id/player] Usuário:', req.user.id, req.user.role);
       
-      // Verificar se o usuário está matriculado no curso
+      // Verificar se o usuário está matriculado no curso ou é instrutor/admin
       const enrollmentCheck = await pool.query(
         'SELECT * FROM enrollments WHERE user_id = $1 AND course_id = $2',
         [req.user.id, id]
       );
       
-      if (enrollmentCheck.rows.length === 0 && req.user.role !== 'admin') {
-        console.log('[GET /api/courses/:id/player] Usuário não matriculado e não é admin');
-        return res.status(403).json({ error: 'Você precisa estar matriculado neste curso.' });
+      // Verificar se é instrutor do curso
+      const courseCheck = await pool.query(
+        'SELECT instructor_id FROM courses WHERE id = $1',
+        [id]
+      );
+      
+      const isInstructor = courseCheck.rows.length > 0 && courseCheck.rows[0].instructor_id === req.user.id;
+      const isEnrolled = enrollmentCheck.rows.length > 0;
+      const isAdmin = req.user.role === 'admin';
+      
+      if (!isEnrolled && !isInstructor && !isAdmin) {
+        console.log('[GET /api/courses/:id/player] Usuário não tem acesso ao curso');
+        return res.status(403).json({ error: 'Você precisa estar matriculado neste curso ou ser o instrutor.' });
       }
       
       const { rows } = await pool.query(`

@@ -736,7 +736,7 @@ app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
     if (existingRating.rows.length > 0) {
       // Atualizar avaliação existente
       const result = await pool.query(
-        'UPDATE course_ratings SET rating = $1, comment = $2, updated_at = now() WHERE course_id = $3 AND user_id = $4 RETURNING *',
+        'UPDATE course_ratings SET rating = $1, review = $2, updated_at = now() WHERE course_id = $3 AND user_id = $4 RETURNING *',
         [rating, comment || null, courseId, userId]
       );
       
@@ -762,7 +762,7 @@ app.post('/api/courses/:courseId/rate', authenticateToken, async (req, res) => {
       // Criar nova avaliação
       const ratingId = crypto.randomUUID();
       const result = await pool.query(
-        'INSERT INTO course_ratings (id, course_id, user_id, rating, comment) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+        'INSERT INTO course_ratings (id, course_id, user_id, rating, review) VALUES ($1, $2, $3, $4, $5) RETURNING *',
         [ratingId, courseId, userId, rating, comment || null]
       );
       

@@ -38,10 +38,16 @@ import {
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { DatabaseMigration } from '@/components/Admin/DatabaseMigration';
+import { useAuth } from "@/contexts/AuthContext";
+import { Navigate } from "react-router-dom";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 export default function Admin() {
+  const { user } = useAuth();
+  if (!user || user.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   

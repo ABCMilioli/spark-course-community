@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -105,6 +105,11 @@ export default function ClassManagement() {
     is_public: false,
     max_students: ""
   });
+
+  // Proteger a rota: só renderizar a página se o usuário for admin ou instrutor
+  if (!user || (user.role !== "admin" && user.role !== "instructor")) {
+    return <Navigate to="/" replace />;
+  }
 
   // Queries
   const { data: classDetails, isLoading: isLoadingClass } = useQuery({

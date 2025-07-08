@@ -28,7 +28,7 @@ export default function VideoPlayer() {
   
   const [currentLesson, setCurrentLesson] = useState<LessonWithCompletion | null>(null);
 
-  const { data: course, isLoading: isLoadingCourse } = useQuery({
+  const { data: course, isLoading: isLoadingCourse, error: courseError } = useQuery({
     queryKey: ['course-for-player', courseId],
     queryFn: async () => {
       if (!user || !courseId) return null;
@@ -133,6 +133,45 @@ export default function VideoPlayer() {
   
   if (isLoadingCourse) {
     return <div className="container mx-auto px-6 py-8 text-center"><p>Carregando...</p></div>;
+  }
+
+  // Verificar se houve erro de acesso negado
+  if (courseError) {
+    const axiosError = courseError as any; // Tratar como AxiosError
+    const isAccessDenied = axiosError.response?.status === 403;
+    
+    // Se for erro de acesso negado, redirecionar para a página do curso
+    if (isAccessDenied && courseId) {
+      navigate(`/course/${courseId}`);
+      return null; // Não renderizar nada durante o redirecionamento
+    }
+    
+    // Para outros erros, mostrar mensagem de erro
+    const errorMessage = axiosError.response?.data?.error || 'Erro ao carregar o curso';
+    
+    return (
+      <div className="container mx-auto px-6 py-8">
+        <div className="max-w-md mx-auto text-center">
+          <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-destructive mb-4">
+              Erro
+            </h2>
+            <p className="text-muted-foreground mb-6">
+              {errorMessage}
+            </p>
+            <div className="space-y-3">
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/courses')}
+                className="w-full"
+              >
+                Voltar para Cursos
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!course || !currentLesson) {

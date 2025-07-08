@@ -151,9 +151,9 @@ export default function CourseDetail() {
       if (course?.tags && course.tags.length > 0) {
         return data.filter((post: PostWithAuthor) => 
           post.tags && post.tags.some(tag => course.tags.includes(tag))
-        ).slice(0, 3); // Limitar a 3 posts
+        ).slice(0, 2); // Limitar a 2 posts
       }
-      return data.slice(0, 3); // Retornar apenas 3 posts se não houver filtro
+      return data.slice(0, 2); // Retornar apenas 2 posts se não houver filtro
     },
     enabled: !!courseId && !!course,
   });

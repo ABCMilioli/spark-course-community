@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import type { CourseRating as CourseRatingType, CourseRatingStats, CreateRatingData } from '@/types';
 
 interface CourseRatingProps {
@@ -22,6 +23,7 @@ export function CourseRating({ courseId, onRatingChange }: CourseRatingProps) {
   const [reviewText, setReviewText] = useState('');
   const [hoveredStar, setHoveredStar] = useState(0);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Buscar dados de avaliação
   const fetchRatingData = async () => {
@@ -46,7 +48,14 @@ export function CourseRating({ courseId, onRatingChange }: CourseRatingProps) {
       });
       if (statsResponse.ok) {
         const statsData = await statsResponse.json();
-        setRatingStats(statsData);
+        setRatingStats({
+          ...statsData,
+          five_star_count: statsData.rating_distribution?.[5] || 0,
+          four_star_count: statsData.rating_distribution?.[4] || 0,
+          three_star_count: statsData.rating_distribution?.[3] || 0,
+          two_star_count: statsData.rating_distribution?.[2] || 0,
+          one_star_count: statsData.rating_distribution?.[1] || 0,
+        });
       }
 
       // Buscar todas as avaliações
@@ -103,6 +112,8 @@ export function CourseRating({ courseId, onRatingChange }: CourseRatingProps) {
         setShowReviewForm(false);
         fetchRatingData();
         onRatingChange?.();
+        queryClient.invalidateQueries({ queryKey: ['course-rating-stats', courseId] });
+        queryClient.invalidateQueries({ queryKey: ['courses'] });
       } else {
         const error = await response.json();
         toast({
@@ -144,6 +155,8 @@ export function CourseRating({ courseId, onRatingChange }: CourseRatingProps) {
         setShowReviewForm(false);
         fetchRatingData();
         onRatingChange?.();
+        queryClient.invalidateQueries({ queryKey: ['course-rating-stats', courseId] });
+        queryClient.invalidateQueries({ queryKey: ['courses'] });
       }
     } catch (error) {
       console.error('Erro ao deletar avaliação:', error);

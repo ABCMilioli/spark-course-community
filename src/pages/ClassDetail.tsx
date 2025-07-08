@@ -25,6 +25,7 @@ import {
 import { Class, ClassEnrollment, ClassCourse, ClassInstanceContent } from "@/types";
 import { AddCourseToClassModal } from "@/components/Admin/AddCourseToClassModal";
 import { CreateClassContentModal } from "@/components/Admin/CreateClassContentModal";
+import { AddStudentToClassModal } from "@/components/Admin/AddStudentToClassModal";
 import { toast } from "sonner";
 
 async function fetchClassDetails(classId: string) {
@@ -121,6 +122,7 @@ export default function ClassDetail() {
   const [activeTab, setActiveTab] = useState("overview");
   const [isAddCourseModalOpen, setIsAddCourseModalOpen] = useState(false);
   const [isCreateContentModalOpen, setIsCreateContentModalOpen] = useState(false);
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [courseToRemove, setCourseToRemove] = useState<ClassCourse | null>(null);
 
   const { data: classDetails, isLoading: isLoadingClass } = useQuery({
@@ -200,7 +202,7 @@ export default function ClassDetail() {
       if (contentData.file) {
         formData.append('file', contentData.file);
       }
-      
+
       const response = await fetch(`/api/classes/${classId}/content`, {
         method: 'POST',
         headers: {
@@ -208,18 +210,46 @@ export default function ClassDetail() {
         },
         body: formData
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Erro ao criar conteúdo');
       }
-      
+
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['class-content', classId] });
-      setIsCreateContentModalOpen(false);
       toast.success('Conteúdo criado com sucesso!');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    }
+  });
+
+  // Mutation para matricular usuário
+  const enrollUserMutation = useMutation({
+    mutationFn: async (data: { user_id: string; role: string }) => {
+      const response = await fetch(`/api/classes/${classId}/enroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao matricular usuário');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-enrollments', classId] });
+      queryClient.invalidateQueries({ queryKey: ['class', classId] });
+      toast.success('Usuário matriculado com sucesso!');
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -251,10 +281,24 @@ export default function ClassDetail() {
 
   const handleContentSuccess = (contentData: { title: string; content: string; content_type: 'announcement' | 'material' | 'assignment'; is_pinned: boolean; file?: File }) => {
     createContentMutation.mutate(contentData);
+    setIsCreateContentModalOpen(false);
+  };
+
+  const handleAddStudent = () => {
+    setIsAddStudentModalOpen(true);
+  };
+
+  const handleStudentSuccess = (data: { user_id: string; role: string }) => {
+    enrollUserMutation.mutate(data);
+    setIsAddStudentModalOpen(false);
   };
 
   const handleViewCourse = (courseId: string) => {
     navigate(`/course/${courseId}`);
+  };
+
+  const handleSettings = () => {
+    navigate(`/classes/${classId}/manage`);
   };
 
   if (isLoadingClass) {
@@ -315,7 +359,7 @@ export default function ClassDetail() {
         </div>
 
         {(isInstructor || isAdmin) && (
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleSettings}>
             <Settings className="w-4 h-4 mr-2" />
             Configurações
           </Button>
@@ -484,7 +528,7 @@ export default function ClassDetail() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Matrículas</h2>
             {(isInstructor || isAdmin) && (
-              <Button size="sm">
+              <Button size="sm" onClick={handleAddStudent}>
                 <UserPlus className="w-4 h-4 mr-2" />
                 Adicionar Aluno
               </Button>
@@ -506,7 +550,7 @@ export default function ClassDetail() {
                   Ainda não há alunos matriculados nesta turma.
                 </p>
                 {(isInstructor || isAdmin) && (
-                  <Button>
+                  <Button onClick={handleAddStudent}>
                     <UserPlus className="w-4 h-4 mr-2" />
                     Adicionar Primeiro Aluno
                   </Button>
@@ -758,6 +802,15 @@ export default function ClassDetail() {
         onClose={() => setIsCreateContentModalOpen(false)}
         onSubmit={handleContentSuccess}
         isLoading={createContentMutation.isPending}
+      />
+
+      {/* Modal para adicionar aluno */}
+      <AddStudentToClassModal
+        isOpen={isAddStudentModalOpen}
+        onClose={() => setIsAddStudentModalOpen(false)}
+        onSuccess={handleStudentSuccess}
+        classId={classId!}
+        isLoading={enrollUserMutation.isPending}
       />
     </div>
   );

@@ -19,11 +19,10 @@ export function CourseCard({ course, onPlay, showProgress = false }: CourseCardP
   const navigate = useNavigate();
 
   const handlePlay = () => {
-    if (isPaidCourse(course.price)) {
-      navigate(`/payment/${course.id}`);
-    } else {
-      onPlay?.(course.id);
-    }
+    // Sempre redirecionar para a página de detalhes do curso
+    // A página de detalhes irá verificar se o usuário já possui o curso
+    // e decidir se deve mostrar o botão de compra ou acesso
+    navigate(`/course/${course.id}`);
   };
 
   const instructor = course.instructor || { name: course.instructor_name, avatar_url: course.instructor_avatar };
