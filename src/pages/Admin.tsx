@@ -40,6 +40,8 @@ import { useNavigate } from "react-router-dom";
 import { DatabaseMigration } from '@/components/Admin/DatabaseMigration';
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate } from "react-router-dom";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -295,376 +297,408 @@ export default function Admin() {
     queryClient.invalidateQueries({ queryKey: ['webhooks'] });
   };
   
+  const [activeTab, setActiveTab] = useState('users');
+  const isMobile = useIsMobile();
+  
   return (
-    <div className="flex-1 p-6 space-y-6 bg-muted/40">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Painel de Administração</h1>
-          <p className="text-muted-foreground">Gerencie usuários, cursos e posts da plataforma.</p>
+    <div className="min-h-screen bg-muted/40">
+      {/* Header fixo e sempre 100% */}
+      <header className="w-full px-2 sm:px-6 py-4 bg-muted/40 shadow z-20">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-xl sm:text-2xl font-semibold">Painel de Administração</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Gerencie usuários, cursos e posts da plataforma.</p>
         </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* ... (stats cards code - can be updated later to show real counts) ... */}
-      </div>
-
-              <Tabs defaultValue="users">
-          <div className="flex justify-between items-end">
-            <TabsList>
-              <TabsTrigger value="users">Usuários</TabsTrigger>
-              <TabsTrigger value="courses">Cursos</TabsTrigger>
-              <TabsTrigger value="posts">Posts</TabsTrigger>
-              <TabsTrigger value="payments">Pagamentos</TabsTrigger>
-              <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
-              <TabsTrigger value="minio">MinIO Test</TabsTrigger>
-            </TabsList>
-            {/* Add buttons */}
+      </header>
+      {/* Conteúdo principal com scroll lateral */}
+      <div className="max-w-7xl mx-auto px-0 pt-2 sm:pt-6">
+        <div className="space-y-4 sm:space-y-6">
+          {/* Stats Cards */}
+          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+            {/* ... (stats cards code - pode ser atualizado depois) ... */}
           </div>
 
-        {/* Users Tab */}
-        <TabsContent value="users">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Usuários</CardTitle>
-                <Button onClick={() => setUserModalOpen(true)} variant="outline" size="sm">Novo Usuário</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingUsers ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Usuário</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Data de Ingresso</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users?.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarImage src={user.avatar_url ?? undefined} />
-                              <AvatarFallback>{user.name[0]}</AvatarFallback>
-                            </Avatar>
-                            <span>{user.name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Badge>{user.role}</Badge>
-                        </TableCell>
-                        <TableCell>{format(new Date(user.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditUser(user)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeleteUser(user)} className="text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Deletar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Courses Tab */}
-        <TabsContent value="courses">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Cursos</CardTitle>
-                <Button onClick={() => setCourseModalOpen(true)} variant="outline" size="sm">Novo Curso</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingCourses ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Nível</TableHead>
-                      <TableHead>Instrutor</TableHead>
-                      <TableHead>Data de Criação</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {courses?.map((course) => (
-                      <TableRow key={course.id}>
-                        <TableCell>{course.title}</TableCell>
-                        <TableCell><Badge>{course.level}</Badge></TableCell>
-                        <TableCell>{course.instructor_name || '---'}</TableCell>
-                        <TableCell>{format(new Date(course.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditCourse(course)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleManageCourseContent(course)}>
-                                <Settings className="w-4 h-4 mr-2" />
-                                Gerenciar Conteúdo
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeleteCourse(course)} className="text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Deletar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Posts Tab */}
-        <TabsContent value="posts">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Posts</CardTitle>
-                <Button onClick={() => setPostModalOpen(true)} variant="outline" size="sm">Novo Post</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingPosts ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Autor</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {posts?.map((post) => (
-                      <TableRow key={post.id}>
-                        <TableCell>{post.title}</TableCell>
-                        <TableCell>{post.author_name || '---'}</TableCell>
-                        <TableCell>{post.category || '---'}</TableCell>
-                        <TableCell>{format(new Date(post.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
-                        <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreHorizontal className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleEditPost(post)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDeletePost(post)} className="text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Deletar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Payments Tab */}
-        <TabsContent value="payments">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Gerenciamento de Pagamentos</CardTitle>
-                <Button 
-                  onClick={() => navigate('/admin/payments')} 
-                  variant="outline" 
-                  size="sm"
-                >
-                  Ver Página Completa
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
+          <div className="overflow-x-auto">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              {/* Dropdown para mobile */}
+              {isMobile ? (
                 <div className="mb-4">
-                  <CreditCard className="w-12 h-12 text-muted-foreground mx-auto" />
+                  <Select value={activeTab} onValueChange={setActiveTab}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecione uma opção" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="users">Usuários</SelectItem>
+                      <SelectItem value="courses">Cursos</SelectItem>
+                      <SelectItem value="posts">Posts</SelectItem>
+                      <SelectItem value="payments">Pagamentos</SelectItem>
+                      <SelectItem value="webhooks">Webhooks</SelectItem>
+                      <SelectItem value="minio">MinIO Test</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <h3 className="text-lg font-medium mb-2">Sistema de Pagamentos</h3>
-                <p className="text-muted-foreground mb-4">
-                  Acesse a página completa de gerenciamento de pagamentos para visualizar estatísticas, 
-                  histórico de transações e configurar gateways de pagamento.
-                </p>
-                <Button onClick={() => navigate('/admin/payments')}>
-                  Acessar Gerenciamento de Pagamentos
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Webhooks Tab */}
-        <TabsContent value="webhooks">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Webhooks</CardTitle>
-                <Button onClick={() => setWebhookModalOpen(true)} variant="outline" size="sm">Novo Webhook</Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {webhooksError && (
-                <div className="text-center py-4">
-                  <p className="text-destructive">Erro ao carregar webhooks: {webhooksError.message}</p>
-                  <Button 
-                    onClick={() => queryClient.invalidateQueries({ queryKey: ['webhooks'] })}
-                    variant="outline"
-                    className="mt-2"
-                  >
-                    Tentar Novamente
-                  </Button>
+              ) : (
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2 sm:gap-0 mb-2 sm:mb-4">
+                  <TabsList className="flex flex-wrap gap-2 sm:gap-3 p-1 sm:p-2 mb-2 sm:mb-0">
+                    <TabsTrigger value="users" className="min-w-[90px]">Usuários</TabsTrigger>
+                    <TabsTrigger value="courses" className="min-w-[90px]">Cursos</TabsTrigger>
+                    <TabsTrigger value="posts" className="min-w-[90px]">Posts</TabsTrigger>
+                    <TabsTrigger value="payments" className="min-w-[90px]">Pagamentos</TabsTrigger>
+                    <TabsTrigger value="webhooks" className="min-w-[90px]">Webhooks</TabsTrigger>
+                    <TabsTrigger value="minio" className="min-w-[90px]">MinIO Test</TabsTrigger>
+                  </TabsList>
+                  {/* Add buttons */}
                 </div>
               )}
-              {isLoadingWebhooks ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : !webhooksError && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>URL</TableHead>
-                      <TableHead>Eventos</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data de Criação</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Array.isArray(webhooks) && webhooks.length > 0 ? (
-                      webhooks.map((webhook: Webhook) => (
-                        <TableRow key={webhook.id}>
-                          <TableCell className="font-medium">{webhook.name}</TableCell>
-                          <TableCell className="max-w-xs truncate">{webhook.url}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {Array.isArray(webhook.events) && webhook.events.slice(0, 2).map((event) => (
-                                <Badge key={event} variant="outline" className="text-xs">
-                                  {event}
-                                </Badge>
-                              ))}
-                              {Array.isArray(webhook.events) && webhook.events.length > 2 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{webhook.events.length - 2}
-                                </Badge>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={webhook.is_active ? "default" : "secondary"}>
-                              {webhook.is_active ? "Ativo" : "Inativo"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{format(new Date(webhook.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
-                          <TableCell className="text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleEditWebhook(webhook)}>
-                                  <Edit className="w-4 h-4 mr-2" />
-                                  Editar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleViewWebhookLogs(webhook)}>
-                                  <FileText className="w-4 h-4 mr-2" />
-                                  Ver Logs
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteWebhook(webhook)} className="text-destructive">
-                                  <Trash2 className="w-4 h-4 mr-2" />
-                                  Deletar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </TableCell>
-                        </TableRow>
-                      ))
+              {/* TabsContent aqui... */}
+
+              {/* Users Tab */}
+              <TabsContent value="users">
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                      <CardTitle>Usuários</CardTitle>
+                      <Button onClick={() => setUserModalOpen(true)} variant="outline" size="sm" className="w-full sm:w-auto">Novo Usuário</Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingUsers ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
                     ) : (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                          Nenhum webhook encontrado. Clique em "Novo Webhook" para criar um.
-                        </TableCell>
-                      </TableRow>
+                      <div className="overflow-x-auto">
+                        <Table className="w-full">
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Usuário</TableHead>
+                              <TableHead>Email</TableHead>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Data de Ingresso</TableHead>
+                              <TableHead className="text-right">Ações</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {users?.map((user) => (
+                              <TableRow key={user.id}>
+                                <TableCell>
+                                  <div className="flex items-center gap-3">
+                                    <Avatar>
+                                      <AvatarImage src={user.avatar_url ?? undefined} />
+                                      <AvatarFallback>{user.name[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <span>{user.name}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{user.email}</TableCell>
+                                <TableCell>
+                                  <Badge>{user.role}</Badge>
+                                </TableCell>
+                                <TableCell>{format(new Date(user.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                                <TableCell className="text-right">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm">
+                                        <MoreHorizontal className="w-4 h-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Editar
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDeleteUser(user)} className="text-destructive">
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Deletar
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-        {/* MinIO Test Tab */}
-        <TabsContent value="minio">
-          <MinioTest />
-        </TabsContent>
-      </Tabs>
+              {/* Courses Tab */}
+              <TabsContent value="courses">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Cursos</CardTitle>
+                      <Button onClick={() => setCourseModalOpen(true)} variant="outline" size="sm">Novo Curso</Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingCourses ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Título</TableHead>
+                            <TableHead>Nível</TableHead>
+                            <TableHead>Instrutor</TableHead>
+                            <TableHead>Data de Criação</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {courses?.map((course) => (
+                            <TableRow key={course.id}>
+                              <TableCell>{course.title}</TableCell>
+                              <TableCell><Badge>{course.level}</Badge></TableCell>
+                              <TableCell>{course.instructor_name || '---'}</TableCell>
+                              <TableCell>{format(new Date(course.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm">
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleEditCourse(course)}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Editar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleManageCourseContent(course)}>
+                                      <Settings className="w-4 h-4 mr-2" />
+                                      Gerenciar Conteúdo
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeleteCourse(course)} className="text-destructive">
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Deletar
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Posts Tab */}
+              <TabsContent value="posts">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Posts</CardTitle>
+                      <Button onClick={() => setPostModalOpen(true)} variant="outline" size="sm">Novo Post</Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingPosts ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Título</TableHead>
+                            <TableHead>Autor</TableHead>
+                            <TableHead>Categoria</TableHead>
+                            <TableHead>Data</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {posts?.map((post) => (
+                            <TableRow key={post.id}>
+                              <TableCell>{post.title}</TableCell>
+                              <TableCell>{post.author_name || '---'}</TableCell>
+                              <TableCell>{post.category || '---'}</TableCell>
+                              <TableCell>{format(new Date(post.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm">
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleEditPost(post)}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Editar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleDeletePost(post)} className="text-destructive">
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Deletar
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Payments Tab */}
+              <TabsContent value="payments">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Gerenciamento de Pagamentos</CardTitle>
+                      <Button 
+                        onClick={() => navigate('/admin/payments')} 
+                        variant="outline" 
+                        size="sm"
+                      >
+                        Ver Página Completa
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center py-8">
+                      <div className="mb-4">
+                        <CreditCard className="w-12 h-12 text-muted-foreground mx-auto" />
+                      </div>
+                      <h3 className="text-lg font-medium mb-2">Sistema de Pagamentos</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Acesse a página completa de gerenciamento de pagamentos para visualizar estatísticas, 
+                        histórico de transações e configurar gateways de pagamento.
+                      </p>
+                      <Button onClick={() => navigate('/admin/payments')}>
+                        Acessar Gerenciamento de Pagamentos
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Webhooks Tab */}
+              <TabsContent value="webhooks">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Webhooks</CardTitle>
+                      <Button onClick={() => setWebhookModalOpen(true)} variant="outline" size="sm">Novo Webhook</Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {webhooksError && (
+                      <div className="text-center py-4">
+                        <p className="text-destructive">Erro ao carregar webhooks: {webhooksError.message}</p>
+                        <Button 
+                          onClick={() => queryClient.invalidateQueries({ queryKey: ['webhooks'] })}
+                          variant="outline"
+                          className="mt-2"
+                        >
+                          Tentar Novamente
+                        </Button>
+                      </div>
+                    )}
+                    {isLoadingWebhooks ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : !webhooksError && (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>URL</TableHead>
+                            <TableHead>Eventos</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Data de Criação</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Array.isArray(webhooks) && webhooks.length > 0 ? (
+                            webhooks.map((webhook: Webhook) => (
+                              <TableRow key={webhook.id}>
+                                <TableCell className="font-medium">{webhook.name}</TableCell>
+                                <TableCell className="max-w-xs truncate">{webhook.url}</TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-1">
+                                    {Array.isArray(webhook.events) && webhook.events.slice(0, 2).map((event) => (
+                                      <Badge key={event} variant="outline" className="text-xs">
+                                        {event}
+                                      </Badge>
+                                    ))}
+                                    {Array.isArray(webhook.events) && webhook.events.length > 2 && (
+                                      <Badge variant="outline" className="text-xs">
+                                        +{webhook.events.length - 2}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={webhook.is_active ? "default" : "secondary"}>
+                                    {webhook.is_active ? "Ativo" : "Inativo"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{format(new Date(webhook.created_at), "dd/MM/yyyy", { locale: ptBR })}</TableCell>
+                                <TableCell className="text-right">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="sm">
+                                        <MoreHorizontal className="w-4 h-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handleEditWebhook(webhook)}>
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Editar
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleViewWebhookLogs(webhook)}>
+                                        <FileText className="w-4 h-4 mr-2" />
+                                        Ver Logs
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDeleteWebhook(webhook)} className="text-destructive">
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Deletar
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          ) : (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                Nenhum webhook encontrado. Clique em "Novo Webhook" para criar um.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* MinIO Test Tab */}
+              <TabsContent value="minio">
+                <MinioTest />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
 
       {/* Modais */}
       <CreateUserModal 

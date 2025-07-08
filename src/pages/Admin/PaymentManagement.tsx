@@ -281,29 +281,29 @@ export default function PaymentManagement() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="w-full max-w-7xl mx-auto p-2 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
         <div>
-          <h1 className="text-3xl font-bold">Gestão de Pagamentos</h1>
-          <p className="text-gray-600">Dashboard administrativo de transações</p>
+          <h1 className="text-xl sm:text-3xl font-bold">Gestão de Pagamentos</h1>
+          <p className="text-sm sm:text-base text-gray-600">Dashboard administrativo de transações</p>
         </div>
-        <Button onClick={exportToCSV} className="flex items-center gap-2">
+        <Button onClick={exportToCSV} className="flex items-center gap-2 w-full sm:w-auto">
           <Download className="h-4 w-4" />
           Exportar CSV
         </Button>
       </div>
 
       {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total de Pagamentos</p>
-                <p className="text-2xl font-bold">{totalStats.total_payments}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total de Pagamentos</p>
+                <p className="text-lg sm:text-2xl font-bold">{totalStats.total_payments}</p>
               </div>
-              <CreditCard className="h-8 w-8 text-blue-500" />
+              <CreditCard className="h-7 w-7 sm:h-8 sm:w-8 text-blue-500" />
             </div>
           </CardContent>
         </Card>
@@ -351,13 +351,13 @@ export default function PaymentManagement() {
       {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Filter className="h-5 w-5" />
             Filtros
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
@@ -427,25 +427,29 @@ export default function PaymentManagement() {
                 <CardTitle>Distribuição por Status</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} ${(Number(percent) * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+                {statusData.every(entry => entry.value === 0) ? (
+                  <div className="text-center text-muted-foreground py-12">Nenhum dado para exibir</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={statusData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name} ${(Number(percent) * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {statusData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -519,11 +523,14 @@ export default function PaymentManagement() {
         <TabsContent value="history">
           <Card>
             <CardHeader>
-              <CardTitle>Histórico de Pagamentos ({filteredPayments.length})</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <CreditCard className="h-5 w-5" />
+                Histórico de Pagamentos ({filteredPayments.length})
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="w-full">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Data</TableHead>
