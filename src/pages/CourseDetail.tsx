@@ -205,36 +205,40 @@ export default function CourseDetail() {
   const instructor = course.instructor || { name: course.instructor_name, avatar_url: course.instructor_avatar };
 
   return (
-    <div className="flex-1 p-6 bg-muted/40">
+    <div className="flex-1 p-4 sm:p-6 bg-muted/40">
       <div className="max-w-7xl mx-auto">
         {/* Course Header */}
         <div className="mb-6">
           <p className="text-primary font-semibold mb-1">{course.level}</p>
-          <h1 className="text-4xl font-bold mb-2">{course.title}</h1>
-          <p className="text-lg text-muted-foreground">{course.description}</p>
-          <div className="flex items-center gap-6 mt-4 text-sm text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">{course.title}</h1>
+          <p className="text-base sm:text-lg text-muted-foreground">{course.description}</p>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 mt-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4" />
-              {course.total_duration ? formatDuration(course.total_duration) : course.duration || 'Duração não informada'}
+              <span className="hidden sm:inline">{course.total_duration ? formatDuration(course.total_duration) : course.duration || 'Duração não informada'}</span>
+              <span className="sm:hidden">{course.total_duration ? formatDuration(course.total_duration) : course.duration || 'Duração'}</span>
             </div>
             <div className="flex items-center gap-2">
               <BarChart className="w-4 h-4" />
-              {course.enrolled_students_count || course.students_count || 0} estudantes
+              <span className="hidden sm:inline">{course.enrolled_students_count || course.students_count || 0} estudantes</span>
+              <span className="sm:hidden">{course.enrolled_students_count || course.students_count || 0}</span>
             </div>
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4" />
-              {typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'} ({ratingStats?.total_ratings || 0} Avaliações)
+              <span className="hidden sm:inline">{typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'} ({ratingStats?.total_ratings || 0} Avaliações)</span>
+              <span className="sm:hidden">{typeof ratingStats?.average_rating === 'number' && !isNaN(ratingStats.average_rating) ? ratingStats.average_rating.toFixed(1) : '0.0'}</span>
             </div>
             <div className="flex items-center gap-2">
               <Play className="w-4 h-4" />
-              {course.total_lessons || 0} aulas
+              <span className="hidden sm:inline">{course.total_lessons || 0} aulas</span>
+              <span className="sm:hidden">{course.total_lessons || 0}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-8">
+          <div className="xl:col-span-2 space-y-6 lg:space-y-8">
             <Card>
               <img src={course.thumbnail_url || '/placeholder.svg'} alt={course.title} className="w-full h-auto object-cover rounded-t-lg" />
               <CardContent className="p-6">
@@ -302,7 +306,7 @@ export default function CourseDetail() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="space-y-4 lg:space-y-6">
             <Card className="overflow-hidden">
               <CardContent className="p-6">
                 <Button 

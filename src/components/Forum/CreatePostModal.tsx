@@ -208,7 +208,7 @@ export function CreatePostModal({ isOpen, onClose, onSuccess, topicId, topicTitl
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Criar Novo Post</DialogTitle>
           <DialogDescription>

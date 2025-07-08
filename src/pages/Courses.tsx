@@ -181,18 +181,18 @@ export default function Courses() {
   );
 
   return (
-    <div className="flex-1 p-6 bg-muted/40">
+    <div className="flex-1 p-4 sm:p-6 bg-muted/40">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Cursos</h1>
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Cursos</h1>
           <p className="text-muted-foreground">
             Explore nossa coleção de cursos e continue aprendendo
           </p>
         </div>
 
         {/* Search */}
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
@@ -213,11 +213,11 @@ export default function Courses() {
 
           <TabsContent value="enrolled" className="space-y-6">
             {isLoadingEnrolled ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
               </div>
             ) : filteredEnrolledCourses && filteredEnrolledCourses.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {filteredEnrolledCourses.map((course) => {
                   console.log('Card curso:', course);
                   return (
@@ -298,11 +298,11 @@ export default function Courses() {
 
           <TabsContent value="available" className="space-y-6">
             {isLoadingAvailable ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-96 w-full" />)}
               </div>
             ) : filteredAvailableCourses && filteredAvailableCourses.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
                 {filteredAvailableCourses.map((course) => (
                   <CourseCardWithStats
                     key={course.id}

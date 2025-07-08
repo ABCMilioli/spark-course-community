@@ -303,13 +303,13 @@ export default function ClassDetail() {
 
   if (isLoadingClass) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="space-y-6">
-          <Skeleton className="h-8 w-1/3" />
-          <Skeleton className="h-4 w-1/2" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="container mx-auto p-4 sm:p-6">
+        <div className="space-y-4 sm:space-y-6">
+          <Skeleton className="h-6 sm:h-8 w-2/3 sm:w-1/3" />
+          <Skeleton className="h-4 w-full sm:w-1/2" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-32" />
+              <Skeleton key={i} className="h-24 sm:h-32" />
             ))}
           </div>
         </div>
@@ -319,10 +319,10 @@ export default function ClassDetail() {
 
   if (!classDetails) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto p-4 sm:p-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Turma não encontrada</h1>
-          <p className="text-muted-foreground mb-4">A turma que você está procurando não existe ou você não tem acesso.</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-red-600 mb-4">Turma não encontrada</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mb-4">A turma que você está procurando não existe ou você não tem acesso.</p>
           <Button asChild>
             <Link to="/classes">Voltar para Turmas</Link>
           </Button>
@@ -332,453 +332,459 @@ export default function ClassDetail() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" asChild>
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+        <Button variant="outline" size="sm" asChild className="w-fit">
           <Link to="/classes">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar
           </Link>
         </Button>
         
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-3xl font-bold">{classDetails.instance_name}</h1>
-            {classDetails.is_public ? (
-              <Eye className="w-5 h-5 text-green-600" />
-            ) : (
-              <Lock className="w-5 h-5 text-orange-600" />
-            )}
-            <Badge variant={classDetails.is_public ? "default" : "secondary"}>
-              {classDetails.is_public ? "Pública" : "Privada"}
-            </Badge>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold truncate">{classDetails.instance_name}</h1>
+            <div className="flex items-center gap-2">
+              {classDetails.is_public ? (
+                <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+              ) : (
+                <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+              )}
+              <Badge variant={classDetails.is_public ? "default" : "secondary"} className="text-xs sm:text-sm">
+                {classDetails.is_public ? "Pública" : "Privada"}
+              </Badge>
+            </div>
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Criada por {classDetails.instructor_name} • {new Date(classDetails.created_at).toLocaleDateString('pt-BR')}
           </p>
         </div>
 
         {(isInstructor || isAdmin) && (
-          <Button variant="outline" size="sm" onClick={handleSettings}>
+          <Button variant="outline" size="sm" onClick={handleSettings} className="w-fit">
             <Settings className="w-4 h-4 mr-2" />
-            Configurações
+            <span className="hidden sm:inline">Configurações</span>
           </Button>
         )}
       </div>
 
       {classDetails.instance_description && (
         <Card>
-          <CardContent className="p-6">
-            <p className="text-muted-foreground">{classDetails.instance_description}</p>
+          <CardContent className="p-4 sm:p-6">
+            <p className="text-sm sm:text-base text-muted-foreground">{classDetails.instance_description}</p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-primary" />
+          <CardContent className="p-3 sm:p-6">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Users className="w-4 h-4 sm:w-6 sm:h-6 text-primary" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{classDetails.current_students}</p>
-                <p className="text-sm text-muted-foreground">Alunos</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg sm:text-2xl font-bold">{classDetails.current_students}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Alunos</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-blue-500" />
+          <CardContent className="p-3 sm:p-6">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-blue-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <BookOpen className="w-4 h-4 sm:w-6 sm:h-6 text-blue-500" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{courses?.length || 0}</p>
-                <p className="text-sm text-muted-foreground">Cursos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <MessageSquare className="w-6 h-6 text-green-500" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{content?.length || 0}</p>
-                <p className="text-sm text-muted-foreground">Conteúdo</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg sm:text-2xl font-bold">{courses?.length || 0}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Cursos</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-orange-500" />
+          <CardContent className="p-3 sm:p-6">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-green-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-4 h-4 sm:w-6 sm:h-6 text-green-500" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">
+              <div className="min-w-0 flex-1">
+                <p className="text-lg sm:text-2xl font-bold">{content?.length || 0}</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Conteúdo</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:p-6">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="w-8 h-8 sm:w-12 sm:h-12 bg-orange-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Calendar className="w-4 h-4 sm:w-6 sm:h-6 text-orange-500" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg sm:text-2xl font-bold">
                   {classDetails.max_students ? `${classDetails.current_students}/${classDetails.max_students}` : '∞'}
                 </p>
-                <p className="text-sm text-muted-foreground">Capacidade</p>
+                <p className="text-xs sm:text-sm text-muted-foreground">Capacidade</p>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="enrollments">Matrículas</TabsTrigger>
-          <TabsTrigger value="courses">Cursos</TabsTrigger>
-          <TabsTrigger value="content">Conteúdo</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 p-1 sm:p-2 mb-6 sm:mb-8 bg-background border-b border-border rounded-t-lg sticky top-0 z-10">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-3 h-auto min-h-[44px] sm:min-h-[48px]">Visão Geral</TabsTrigger>
+          <TabsTrigger value="enrollments" className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-3 h-auto min-h-[44px] sm:min-h-[48px]">Matrículas</TabsTrigger>
+          <TabsTrigger value="courses" className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-3 h-auto min-h-[44px] sm:min-h-[48px]">Cursos</TabsTrigger>
+          <TabsTrigger value="content" className="text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-3 h-auto min-h-[44px] sm:min-h-[48px]">Conteúdo</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Conteúdo Recente
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingContent ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-16" />
-                    ))}
-                  </div>
-                ) : content?.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">Nenhum conteúdo ainda</p>
-                ) : (
-                  <div className="space-y-3">
-                    {content?.slice(0, 3).map((item: ClassInstanceContent) => (
-                      <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border">
-                        {item.is_pinned && <Pin className="w-4 h-4 text-orange-500 mt-1" />}
-                        <div className="flex-1">
-                          <h4 className="font-medium">{item.title}</h4>
-                          <p className="text-sm text-muted-foreground">{item.author_name}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                            </p>
-                            {item.file_url && (
-                              <File className="w-3 h-3 text-blue-500" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Matrículas Recentes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoadingEnrollments ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-16" />
-                    ))}
-                  </div>
-                ) : enrollments?.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">Nenhuma matrícula ainda</p>
-                ) : (
-                  <div className="space-y-3">
-                    {enrollments?.slice(0, 3).map((enrollment: ClassEnrollment) => (
-                      <div key={enrollment.id} className="flex items-center gap-3 p-3 rounded-lg border">
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${enrollment.user_name}`} />
-                          <AvatarFallback>{enrollment.user_name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <h4 className="font-medium">{enrollment.user_name}</h4>
-                          <p className="text-sm text-muted-foreground capitalize">{enrollment.role}</p>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          {new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="enrollments" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Matrículas</h2>
-            {(isInstructor || isAdmin) && (
-              <Button size="sm" onClick={handleAddStudent}>
-                <UserPlus className="w-4 h-4 mr-2" />
-                Adicionar Aluno
-              </Button>
-            )}
-          </div>
-
-          {isLoadingEnrollments ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-32" />
-              ))}
-            </div>
-          ) : enrollments?.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Users className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Nenhuma matrícula</h3>
-                <p className="text-muted-foreground mb-4">
-                  Ainda não há alunos matriculados nesta turma.
-                </p>
-                {(isInstructor || isAdmin) && (
-                  <Button onClick={handleAddStudent}>
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Adicionar Primeiro Aluno
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {enrollments?.map((enrollment: ClassEnrollment) => (
-                <Card key={enrollment.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4 mb-4">
-                      <Avatar className="w-12 h-12">
-                        <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${enrollment.user_name}`} />
-                        <AvatarFallback>{enrollment.user_name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <h3 className="font-semibold">{enrollment.user_name}</h3>
-                        <p className="text-sm text-muted-foreground">{enrollment.user_email}</p>
-                      </div>
+        <div className="pt-2 sm:pt-4"> {/* Adiciona espaçamento superior para separar as abas do conteúdo */}
+          <TabsContent value="overview" className="space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <Card>
+                <CardHeader className="pb-3 sm:pb-6">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Conteúdo Recente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingContent ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 sm:h-16" />
+                      ))}
                     </div>
-                    
-                    <div className="flex items-center justify-between text-sm">
-                      <Badge variant="outline" className="capitalize">
-                        {enrollment.role}
-                      </Badge>
-                      <span className="text-muted-foreground">
-                        {new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="courses" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Cursos da Turma</h2>
-            {(isInstructor || isAdmin) && (
-              <Button size="sm" onClick={handleAddCourse}>
-                <Plus className="w-4 h-4 mr-2" />
-                Adicionar Curso
-              </Button>
-            )}
-          </div>
-
-          {isLoadingCourses ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-48" />
-              ))}
-            </div>
-          ) : courses?.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <BookOpen className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Nenhum curso</h3>
-                <p className="text-muted-foreground mb-4">
-                  Ainda não há cursos associados a esta turma.
-                </p>
-                {(isInstructor || isAdmin) && (
-                  <Button onClick={handleAddCourse}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Adicionar Primeiro Curso
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {courses?.map((course: ClassCourse) => (
-                <Card key={course.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg">{course.course_title}</CardTitle>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {course.course_description}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {course.is_required && (
-                          <Badge variant="destructive">Obrigatório</Badge>
-                        )}
-                        {(isInstructor || isAdmin) && !course.is_required && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveCourse(course)}
-                            disabled={removeCourseMutation.isPending}
-                          >
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Ordem: {course.order_index}</span>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleViewCourse(course.course_id)}
-                      >
-                        Ver Curso
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="content" className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Conteúdo da Turma</h2>
-            {(isInstructor || isAdmin) && (
-              <Button size="sm" onClick={handleCreateContent}>
-                <Plus className="w-4 h-4 mr-2" />
-                Criar Conteúdo
-              </Button>
-            )}
-          </div>
-
-          {isLoadingContent ? (
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-24" />
-              ))}
-            </div>
-          ) : content?.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <FileText className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-xl font-semibold mb-2">Nenhum conteúdo</h3>
-                <p className="text-muted-foreground mb-4">
-                  Ainda não há conteúdo criado nesta turma.
-                </p>
-                {(isInstructor || isAdmin) && (
-                  <Button onClick={handleCreateContent}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Criar Primeiro Conteúdo
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {content?.map((item: ClassInstanceContent) => (
-                <Card key={item.id} className="hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                      {item.is_pinned && (
-                        <Pin className="w-5 h-5 text-orange-500 mt-1 flex-shrink-0" />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <h3 className="font-semibold text-lg">{item.title}</h3>
+                  ) : content?.length === 0 ? (
+                    <p className="text-sm sm:text-base text-muted-foreground text-center py-4">Nenhum conteúdo ainda</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {content?.slice(0, 3).map((item: ClassInstanceContent) => (
+                        <div key={item.id} className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                          {item.is_pinned && <Pin className="w-3 h-3 sm:w-4 sm:h-4 text-orange-500 mt-1 flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm sm:text-base truncate">{item.title}</h4>
+                            <p className="text-xs sm:text-sm text-muted-foreground">{item.author_name}</p>
                             <div className="flex items-center gap-2 mt-1">
-                              <Avatar className="w-6 h-6">
-                                <AvatarImage src={item.author_avatar} />
-                                <AvatarFallback>{item.author_name.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <span className="text-sm text-muted-foreground">{item.author_name}</span>
-                              <Badge variant="outline" className="text-xs capitalize">
-                                {item.content_type}
-                              </Badge>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                              </p>
+                              {item.file_url && (
+                                <File className="w-3 h-3 text-blue-500" />
+                              )}
                             </div>
                           </div>
-                          <span className="text-sm text-muted-foreground">
-                            {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                          </span>
                         </div>
-                        
-                        {item.content && (
-                          <p className="text-muted-foreground line-clamp-2 mb-3">{item.content}</p>
-                        )}
-                        
-                        {item.file_url && (
-                          <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-                            <div className="flex items-center gap-3">
-                              <File className="w-5 h-5 text-blue-500" />
-                              <div className="flex-1">
-                                <p className="font-medium text-sm">{item.file_name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {item.file_size ? `${(item.file_size / 1024 / 1024).toFixed(1)} MB` : ''} • {item.file_type}
-                                </p>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => window.open(item.file_url, '_blank')}
-                              >
-                                Baixar
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      ))}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3 sm:pb-6">
+                  <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Matrículas Recentes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingEnrollments ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 sm:h-16" />
+                      ))}
+                    </div>
+                  ) : enrollments?.length === 0 ? (
+                    <p className="text-sm sm:text-base text-muted-foreground text-center py-4">Nenhuma matrícula ainda</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {enrollments?.slice(0, 3).map((enrollment: ClassEnrollment) => (
+                        <div key={enrollment.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border">
+                          <Avatar className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0">
+                            <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${enrollment.user_name}`} />
+                            <AvatarFallback className="text-xs sm:text-sm">{enrollment.user_name.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm sm:text-base truncate">{enrollment.user_name}</h4>
+                            <p className="text-xs sm:text-sm text-muted-foreground capitalize">{enrollment.role}</p>
+                          </div>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          )}
-        </TabsContent>
+          </TabsContent>
+
+          <TabsContent value="enrollments" className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-12 sm:mt-16">
+              <h2 className="text-xl sm:text-2xl font-bold">Matrículas</h2>
+              {(isInstructor || isAdmin) && (
+                <Button size="sm" onClick={handleAddStudent} className="w-fit">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Adicionar Aluno
+                </Button>
+              )}
+            </div>
+
+            {isLoadingEnrollments ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-24 sm:h-32" />
+                ))}
+              </div>
+            ) : enrollments?.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 sm:p-12 text-center">
+                  <Users className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg sm:text-xl font-semibold mb-2">Nenhuma matrícula</h3>
+                  <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                    Ainda não há alunos matriculados nesta turma.
+                  </p>
+                  {(isInstructor || isAdmin) && (
+                    <Button onClick={handleAddStudent}>
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Adicionar Primeiro Aluno
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {enrollments?.map((enrollment: ClassEnrollment) => (
+                  <Card key={enrollment.id}>
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
+                        <Avatar className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0">
+                          <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${enrollment.user_name}`} />
+                          <AvatarFallback className="text-sm">{enrollment.user_name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-sm sm:text-base truncate">{enrollment.user_name}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground truncate">{enrollment.user_email}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <Badge variant="outline" className="capitalize text-xs">
+                          {enrollment.role}
+                        </Badge>
+                        <span className="text-muted-foreground text-xs">
+                          {new Date(enrollment.enrolled_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="courses" className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-12 sm:mt-16">
+              <h2 className="text-xl sm:text-2xl font-bold">Cursos da Turma</h2>
+              {(isInstructor || isAdmin) && (
+                <Button size="sm" onClick={handleAddCourse} className="w-fit">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar Curso
+                </Button>
+              )}
+            </div>
+
+            {isLoadingCourses ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-36 sm:h-48" />
+                ))}
+              </div>
+            ) : courses?.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 sm:p-12 text-center">
+                  <BookOpen className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg sm:text-xl font-semibold mb-2">Nenhum curso</h3>
+                  <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                    Ainda não há cursos associados a esta turma.
+                  </p>
+                  {(isInstructor || isAdmin) && (
+                    <Button onClick={handleAddCourse}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Adicionar Primeiro Curso
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {courses?.map((course: ClassCourse) => (
+                  <Card key={course.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3 sm:pb-6">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-base sm:text-lg line-clamp-2">{course.course_title}</CardTitle>
+                          <p className="text-xs sm:text-sm text-muted-foreground mt-2 line-clamp-2">
+                            {course.course_description}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                          {course.is_required && (
+                            <Badge variant="destructive" className="text-xs">Obrigatório</Badge>
+                          )}
+                          {(isInstructor || isAdmin) && !course.is_required && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveCourse(course)}
+                              disabled={removeCourseMutation.isPending}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between text-xs sm:text-sm">
+                        <span className="text-muted-foreground">Ordem: {course.order_index}</span>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleViewCourse(course.course_id)}
+                          className="text-xs"
+                        >
+                          Ver Curso
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="content" className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-12 sm:mt-16">
+              <h2 className="text-xl sm:text-2xl font-bold">Conteúdo da Turma</h2>
+              {(isInstructor || isAdmin) && (
+                <Button size="sm" onClick={handleCreateContent} className="w-fit">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Criar Conteúdo
+                </Button>
+              )}
+            </div>
+
+            {isLoadingContent ? (
+              <div className="space-y-3 sm:space-y-4">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 sm:h-24" />
+                ))}
+              </div>
+            ) : content?.length === 0 ? (
+              <Card>
+                <CardContent className="p-8 sm:p-12 text-center">
+                  <FileText className="w-12 h-12 sm:w-16 sm:h-16 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg sm:text-xl font-semibold mb-2">Nenhum conteúdo</h3>
+                  <p className="text-sm sm:text-base text-muted-foreground mb-4">
+                    Ainda não há conteúdo criado nesta turma.
+                  </p>
+                  {(isInstructor || isAdmin) && (
+                    <Button onClick={handleCreateContent}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Criar Primeiro Conteúdo
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3 sm:space-y-4">
+                {content?.map((item: ClassInstanceContent) => (
+                  <Card key={item.id} className="hover:shadow-lg transition-shadow">
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="flex items-start gap-3 sm:gap-4">
+                        {item.is_pinned && (
+                          <Pin className="w-4 h-4 sm:w-5 sm:h-5 text-orange-500 mt-1 flex-shrink-0" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-base sm:text-lg line-clamp-2">{item.title}</h3>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <Avatar className="w-5 h-5 sm:w-6 sm:h-6">
+                                  <AvatarImage src={item.author_avatar} />
+                                  <AvatarFallback className="text-xs">{item.author_name.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs sm:text-sm text-muted-foreground truncate">{item.author_name}</span>
+                                <Badge variant="outline" className="text-xs capitalize">
+                                  {item.content_type}
+                                </Badge>
+                              </div>
+                            </div>
+                            <span className="text-xs sm:text-sm text-muted-foreground flex-shrink-0">
+                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                            </span>
+                          </div>
+                          
+                          {item.content && (
+                            <p className="text-sm sm:text-base text-muted-foreground line-clamp-2 mb-3">{item.content}</p>
+                          )}
+                          
+                          {item.file_url && (
+                            <div className="mt-3 p-2 sm:p-3 bg-gray-50 rounded-lg border">
+                              <div className="flex items-center gap-2 sm:gap-3">
+                                <File className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-xs sm:text-sm truncate">{item.file_name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {item.file_size ? `${(item.file_size / 1024 / 1024).toFixed(1)} MB` : ''} • {item.file_type}
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(item.file_url, '_blank')}
+                                  className="text-xs flex-shrink-0"
+                                >
+                                  Baixar
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </div>
       </Tabs>
 
       {/* Modal de confirmação para remover curso */}
       <AlertDialog open={!!courseToRemove} onOpenChange={() => setCourseToRemove(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-sm sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover Curso da Turma</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-base sm:text-lg">Remover Curso da Turma</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm sm:text-base">
               Tem certeza que deseja remover o curso "{courseToRemove?.course_title}" desta turma? 
               Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel className="text-sm">Cancelar</AlertDialogCancel>
             <AlertDialogAction 
               onClick={confirmRemoveCourse}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-sm"
               disabled={removeCourseMutation.isPending}
             >
               {removeCourseMutation.isPending ? 'Removendo...' : 'Remover Curso'}
@@ -814,4 +820,4 @@ export default function ClassDetail() {
       />
     </div>
   );
-} 
+}

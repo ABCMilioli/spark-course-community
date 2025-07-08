@@ -154,7 +154,7 @@ export function CreateTopicModal({ isOpen, onClose, onSuccess }: CreateTopicModa
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[500px] w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Criar Novo Tópico</DialogTitle>
           <DialogDescription>

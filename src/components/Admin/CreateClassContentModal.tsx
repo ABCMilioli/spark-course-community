@@ -83,7 +83,7 @@ export function CreateClassContentModal({ isOpen, onClose, onSubmit, isLoading }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[600px] w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>Criar Conteúdo</DialogTitle>
           <DialogDescription>

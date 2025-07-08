@@ -27,7 +27,7 @@ export function Header() {
         <SidebarTrigger className="mr-2 lg:hidden" />
         
         {/* Search Bar */}
-        <div className="flex-1 max-w-md hidden sm:block">
+        <div className="flex-1 max-w-md hidden md:block">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
