@@ -82,18 +82,33 @@ export function EditProfileModal({ open, onOpenChange, user, onSuccess }: EditPr
     updateProfileMutation.mutate(data);
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Por enquanto, vamos usar uma URL temporária
-    // Em produção, você faria upload para um serviço como Cloudinary
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      form.setValue('avatar_url', result);
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await axios.post(`${API_URL}/profile/upload/avatar`, formData, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      if (response.data && response.data.url) {
+        form.setValue('avatar_url', response.data.url);
+        sonnerToast.success('Avatar enviado com sucesso!');
+      } else {
+        sonnerToast.error('Erro ao enviar avatar.');
+      }
+    } catch (error: any) {
+      sonnerToast.error('Erro ao enviar avatar', {
+        description: error.response?.data?.error || 'Tente novamente.'
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const removeAvatar = () => {

@@ -4,6 +4,10 @@ const router = express.Router();
 // Middleware de autenticação
 const { authenticateToken } = require('../middleware/auth');
 
+// Upload de avatar do usuário
+const upload = require('../middleware/upload');
+const { uploadFile } = require('../utils/upload');
+
 // ===== PERFIL DO USUÁRIO =====
 
 // Obter perfil do usuário autenticado
@@ -54,6 +58,33 @@ router.put('/', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[PUT /api/profile] Erro ao atualizar perfil:', err);
     res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+  }
+});
+
+// Upload de avatar do usuário
+router.post('/upload/avatar', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+    }
+    // Verificar se é uma imagem
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ error: 'Apenas imagens são permitidas para avatar' });
+    }
+    const result = await uploadFile(req.file, 'avatars');
+    res.json({
+      success: true,
+      url: result.url,
+      fileName: result.fileName,
+      size: result.size,
+      message: 'Avatar enviado com sucesso!'
+    });
+  } catch (error) {
+    console.error('[POST /api/profile/upload/avatar] Erro:', error);
+    res.status(500).json({ 
+      error: 'Erro no upload do avatar',
+      details: error.message 
+    });
   }
 });
 
