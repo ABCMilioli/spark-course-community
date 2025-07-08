@@ -67,7 +67,9 @@ module.exports = (pool, sendWebhook) => {
           rating: course.rating,
           enrolled_students_count: course.enrolled_students_count,
           total_lessons: course.total_lessons,
-          total_duration: total_duration
+          total_duration: total_duration,
+          payment_gateway: course.payment_gateway || 'mercadopago',
+          external_checkout_url: course.external_checkout_url
         };
       }));
 
@@ -163,6 +165,8 @@ module.exports = (pool, sendWebhook) => {
         modules,
         total_lessons: totalLessons,
         total_duration: totalDuration,
+        payment_gateway: course.payment_gateway || 'mercadopago',
+        external_checkout_url: course.external_checkout_url,
         instructor: {
           id: course.instructor_id,
           name: course.instructor_name,
@@ -359,7 +363,9 @@ module.exports = (pool, sendWebhook) => {
       
       const response = {
         ...course,
-        modules
+        modules,
+        payment_gateway: course.payment_gateway || 'mercadopago',
+        external_checkout_url: course.external_checkout_url
       };
       
       console.log(`[GET /api/courses/${id}/admin] Resposta enviada com ${modules.length} módulos`);

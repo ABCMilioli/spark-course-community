@@ -16,6 +16,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { parsePrice, formatPrice, isFreeCourse } from '@/lib/price';
 import { useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -42,6 +52,7 @@ export default function CourseDetail() {
   const queryClient = useQueryClient();
   const [cpf, setCpf] = useState('');
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [showCpfModal, setShowCpfModal] = useState(false);
 
   const { data: course, isLoading: isLoadingCourse, error } = useQuery({
     queryKey: ['course-detail', courseId],
@@ -89,12 +100,20 @@ export default function CourseDetail() {
         toast.error('Erro ao realizar matrícula');
       }
     } else {
-      // Curso pago - ir para página de pagamento
-      navigate(`/payment?courseId=${courseId}`);
+      // Curso pago - verificar tipo de checkout
+      const isInternalCheckout = course.payment_gateway === 'mercadopago' || course.payment_gateway === 'stripe';
+      
+      if (isInternalCheckout) {
+        // Checkout interno - redirecionar para página de pagamento
+        navigate(`/payment?courseId=${courseId}`);
+      } else {
+        // Checkout externo - abrir modal para CPF
+        setShowCpfModal(true);
+      }
     }
   };
 
-  // Novo: fluxo para pagamento externo
+  // Fluxo para pagamento externo (chamado pelo modal)
   const handleExternalPayment = async () => {
     if (!cpf || cpf.length < 11) {
       toast.error('Informe um CPF válido');
@@ -102,16 +121,21 @@ export default function CourseDetail() {
     }
     setIsRedirecting(true);
     try {
-      // Salvar CPF no backend (cria usuário se não existir)
-      await axios.post(`${API_URL}/external/enroll`, {
-        user: { cpf },
-        course_id: course.id,
-        action: 'enroll'
+      // Salvar CPF permanentemente no banco (cria usuário se não existir)
+      const token = localStorage.getItem('token');
+      await axios.post(`${API_URL}/external/save-cpf`, {
+        cpf: cpf.replace(/\D/g, ''),
+        course_id: course.id
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      // Redirecionar para o checkout externo
+      
+      // Fechar modal e redirecionar para o checkout externo
+      setShowCpfModal(false);
       window.location.href = course.external_checkout_url;
     } catch (err) {
-      toast.error('Erro ao processar matrícula/checkout');
+      console.error('Erro ao salvar CPF:', err);
+      toast.error('Erro ao processar checkout externo');
       setIsRedirecting(false);
     }
   };
@@ -349,7 +373,7 @@ export default function CourseDetail() {
           </div>
         </div>
         <div className="mt-8">
-          {/* Botão de pagamento/matrícula */}
+          {/* Botão único de pagamento/matrícula */}
           {isEnrolled ? (
             <Button onClick={() => navigate(`/player?courseId=${courseId}`)}>
               Acessar Curso
@@ -358,27 +382,64 @@ export default function CourseDetail() {
             <Button onClick={handleEnrollClick}>
               Matricular-se Gratuitamente
             </Button>
-          ) : course.payment_gateway === 'mercadopago' ? (
-            <Button onClick={handleEnrollClick}>
-              Comprar com Mercado Pago
+          ) : (
+            // Curso pago - botão único que se comporta conforme o checkout
+            <Button onClick={handleEnrollClick} className="w-full">
+              {(() => {
+                if (course.payment_gateway === 'mercadopago') return 'Comprar com Mercado Pago';
+                if (course.payment_gateway === 'stripe') return 'Comprar com Stripe';
+                if (course.payment_gateway === 'hotmart') return 'Comprar no Hotmart';
+                if (course.payment_gateway === 'kiwify') return 'Comprar no Kiwify';
+                return 'Comprar Curso';
+              })()}
             </Button>
-          ) : course.payment_gateway && course.external_checkout_url ? (
-            <div className="flex flex-col gap-2 max-w-xs">
-              <input
-                type="text"
-                placeholder="Digite seu CPF"
-                value={cpf}
-                onChange={e => setCpf(e.target.value.replace(/\D/g, ''))}
-                maxLength={14}
-                className="border rounded px-3 py-2 text-base"
-                disabled={isRedirecting}
-              />
-              <Button onClick={handleExternalPayment} disabled={isRedirecting}>
-                Ir para Checkout Externo
-              </Button>
-            </div>
-          ) : null}
+          )}
         </div>
+
+        {/* Modal para CPF (Checkout Externo) */}
+        <Dialog open={showCpfModal} onOpenChange={setShowCpfModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Informe seu CPF</DialogTitle>
+              <DialogDescription>
+                Para prosseguir com a compra no {course?.payment_gateway === 'hotmart' ? 'Hotmart' : 'Kiwify'}, 
+                precisamos do seu CPF para salvar no sistema.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cpf">CPF</Label>
+                <Input
+                  id="cpf"
+                  type="text"
+                  placeholder="000.000.000-00"
+                  value={cpf}
+                  onChange={(e) => setCpf(e.target.value.replace(/\D/g, ''))}
+                  maxLength={14}
+                  disabled={isRedirecting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Seu CPF será salvo permanentemente no sistema para facilitar futuras compras.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowCpfModal(false)}
+                disabled={isRedirecting}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleExternalPayment} 
+                disabled={isRedirecting || !cpf || cpf.length < 11}
+              >
+                {isRedirecting ? 'Processando...' : 'Continuar para Checkout'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

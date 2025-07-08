@@ -36,6 +36,8 @@ const courseSchema = z.object({
   price: z.string(),
   thumbnail: z.string().optional(),
   demo_video: z.string().optional(),
+  payment_gateway: z.enum(['mercadopago', 'stripe', 'hotmart', 'kiwify']).optional(),
+  external_checkout_url: z.string().url().optional().or(z.literal('')),
 });
 
 type CourseFormValues = z.infer<typeof courseSchema>;
@@ -65,11 +67,14 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
       isPaid: false,
       price: '0',
       thumbnail: '',
-      demo_video: ''
+      demo_video: '',
+      payment_gateway: 'mercadopago',
+      external_checkout_url: ''
     },
   });
 
   const isPaid = form.watch('isPaid');
+  const selectedGateway = form.watch('payment_gateway');
 
   const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -97,7 +102,9 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
         isPaid: isPaid,
         price: price,
         thumbnail: initialData.thumbnail || '',
-        demo_video: initialData.demo_video || ''
+        demo_video: initialData.demo_video || '',
+        payment_gateway: initialData.payment_gateway || 'mercadopago',
+        external_checkout_url: initialData.external_checkout_url || ''
       });
       setThumbnailPreview(initialData.thumbnail || '');
       setVideoPreview(initialData.demo_video || '');
@@ -110,7 +117,9 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
         isPaid: false, 
         price: '0', 
         thumbnail: '',
-        demo_video: ''
+        demo_video: '',
+        payment_gateway: 'mercadopago',
+        external_checkout_url: ''
       });
       setThumbnailPreview('');
       setVideoPreview('');
@@ -209,6 +218,12 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
         }
       }
 
+      // Validação do gateway externo
+      if ((data.payment_gateway === 'hotmart' || data.payment_gateway === 'kiwify') && !data.external_checkout_url) {
+        sonnerToast.error('Para gateways externos, a URL do checkout é obrigatória.');
+        return;
+      }
+
       // Upload de thumbnail se selecionado
       if (thumbnailFile) {
         try {
@@ -238,7 +253,9 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
 
       const courseData = {
         ...data,
-        price: finalPrice
+        price: finalPrice,
+        payment_gateway: data.payment_gateway || 'mercadopago',
+        external_checkout_url: data.external_checkout_url || null
       };
 
       const token = localStorage.getItem('token');
@@ -427,6 +444,88 @@ export function CreateCourseModal({ open, onOpenChange, onSuccess, initialData, 
               </p>
             </div>
           </div>
+
+          {/* Configuração de Gateway de Pagamento - Apenas para cursos pagos */}
+          {isPaid && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="payment_gateway">Gateway de Pagamento</Label>
+                <Select 
+                  value={selectedGateway} 
+                  onValueChange={(value) => {
+                    form.setValue("payment_gateway", value as any);
+                    // Limpar URL externa se mudar para gateway interno
+                    if (value !== 'hotmart' && value !== 'kiwify') {
+                      form.setValue("external_checkout_url", '');
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o gateway" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mercadopago">
+                      <div className="flex items-center gap-2">
+                        <span>🛒</span>
+                        <span>Mercado Pago</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="stripe">
+                      <div className="flex items-center gap-2">
+                        <span>💳</span>
+                        <span>Stripe</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="hotmart">
+                      <div className="flex items-center gap-2">
+                        <span>🔥</span>
+                        <span>Hotmart</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="kiwify">
+                      <div className="flex items-center gap-2">
+                        <span>🥝</span>
+                        <span>Kiwify</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.formState.errors.payment_gateway && (
+                  <p className="text-sm text-destructive">{form.formState.errors.payment_gateway.message}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {selectedGateway === 'mercadopago' && 'PIX, Boleto, Cartão de Crédito'}
+                  {selectedGateway === 'stripe' && 'Cartão de Crédito, PIX, Boleto'}
+                  {selectedGateway === 'hotmart' && 'Checkout externo - Hotmart'}
+                  {selectedGateway === 'kiwify' && 'Checkout externo - Kiwify'}
+                </p>
+              </div>
+
+              {/* URL de Checkout Externo - Apenas para gateways externos */}
+              {(selectedGateway === 'hotmart' || selectedGateway === 'kiwify') && (
+                <div className="space-y-2">
+                  <Label htmlFor="external_checkout_url">
+                    URL do Checkout {selectedGateway === 'hotmart' ? 'Hotmart' : 'Kiwify'}
+                  </Label>
+                  <Input
+                    id="external_checkout_url"
+                    placeholder={
+                      selectedGateway === 'hotmart' 
+                        ? "https://pay.hotmart.com/SEU_PRODUTO" 
+                        : "https://kiwify.com.br/SEU_PRODUTO"
+                    }
+                    {...form.register("external_checkout_url")}
+                  />
+                  {form.formState.errors.external_checkout_url && (
+                    <p className="text-sm text-destructive">{form.formState.errors.external_checkout_url.message}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    URL completa do checkout do seu produto no {selectedGateway === 'hotmart' ? 'Hotmart' : 'Kiwify'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Upload de Thumbnail */}
           <div className="space-y-2">

@@ -146,5 +146,86 @@ module.exports = (pool) => {
     }
   });
 
+  // Salvar CPF permanentemente (para checkout externo)
+  router.post('/save-cpf', async (req, res) => {
+    try {
+      const { cpf, course_id } = req.body;
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      
+      if (!cpf || !course_id) {
+        return res.status(400).json({ error: 'CPF e course_id são obrigatórios.' });
+      }
+
+      // Validar CPF (formato básico)
+      const cleanCpf = cpf.replace(/\D/g, '');
+      if (cleanCpf.length !== 11) {
+        return res.status(400).json({ error: 'CPF inválido.' });
+      }
+
+      // Verificar se o curso existe e é de checkout externo
+      const courseResult = await pool.query(
+        'SELECT id, title, payment_gateway, external_checkout_url FROM courses WHERE id = $1',
+        [course_id]
+      );
+      
+      if (courseResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Curso não encontrado.' });
+      }
+
+      const course = courseResult.rows[0];
+      const isExternalCheckout = course.payment_gateway === 'hotmart' || course.payment_gateway === 'kiwify';
+      
+      if (!isExternalCheckout || !course.external_checkout_url) {
+        return res.status(400).json({ error: 'Este curso não suporta checkout externo.' });
+      }
+
+      // Se o usuário está logado, atualizar o CPF dele
+      if (token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          
+          // Verificar se já existe um usuário com este CPF
+          const existingUser = await pool.query('SELECT id FROM profiles WHERE cpf = $1', [cleanCpf]);
+          
+          if (existingUser.rows.length > 0) {
+            // CPF já existe - verificar se é o mesmo usuário
+            if (existingUser.rows[0].id !== decoded.id) {
+              return res.status(409).json({ error: 'CPF já está em uso por outro usuário.' });
+            }
+          } else {
+            // Atualizar CPF do usuário logado
+            await pool.query('UPDATE profiles SET cpf = $1 WHERE id = $2', [cleanCpf, decoded.id]);
+          }
+        } catch (jwtError) {
+          console.error('Erro ao verificar token:', jwtError);
+          // Se não conseguir verificar o token, criar usuário anônimo
+        }
+      }
+
+      // Se não há usuário logado ou token inválido, criar usuário anônimo
+      if (!token) {
+        const existingUser = await pool.query('SELECT id FROM profiles WHERE cpf = $1', [cleanCpf]);
+        if (existingUser.rows.length === 0) {
+          const userId = crypto.randomUUID();
+          await pool.query(
+            'INSERT INTO profiles (id, cpf, name, created_at) VALUES ($1, $2, $3, NOW())',
+            [userId, cleanCpf, `Usuário ${cleanCpf.slice(-4)}`]
+          );
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'CPF salvo com sucesso. Redirecionando para checkout externo...',
+        course_title: course.title,
+        payment_gateway: course.payment_gateway
+      });
+    } catch (err) {
+      console.error('[POST /api/external/save-cpf]', err);
+      res.status(500).json({ error: 'Erro ao salvar CPF.' });
+    }
+  });
+
   return router;
 }; 
