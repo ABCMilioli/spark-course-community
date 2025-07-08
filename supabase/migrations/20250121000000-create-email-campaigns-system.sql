@@ -101,7 +101,7 @@ INSERT INTO public.email_templates (id, name, subject_template, html_template, t
     '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Novo conteúdo na comunidade</p>
         </div>
         
@@ -154,7 +154,7 @@ Para cancelar inscrição: {{unsubscribe_url}}',
     '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Novo post no fórum</p>
         </div>
         
@@ -210,7 +210,7 @@ Para cancelar inscrição: {{unsubscribe_url}}',
     '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Novo curso disponível</p>
         </div>
         
@@ -268,7 +268,7 @@ Para cancelar inscrição: {{unsubscribe_url}}',
     '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Nova aula disponível</p>
         </div>
         
@@ -326,7 +326,7 @@ Para cancelar inscrição: {{unsubscribe_url}}',
     '
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Novo material na sua turma</p>
         </div>
         

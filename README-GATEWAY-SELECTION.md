@@ -1,4 +1,4 @@
-# Seleção de Gateway de Pagamento - Spark Course Community
+# Seleção de Gateway de Pagamento - Konektus
 
 ## 🎯 **Visão Geral**
 

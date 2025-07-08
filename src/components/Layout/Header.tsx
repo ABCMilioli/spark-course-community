@@ -46,7 +46,7 @@ export function Header() {
 
         {/* Mobile Title & Search */}
         <div className="sm:hidden flex-1 flex items-center justify-between px-2">
-          <h1 className="font-bold text-base gradient-text">EduCommunity</h1>
+          <h1 className="font-bold text-base gradient-text">Konektus</h1>
           <Button variant="ghost" size="sm">
             <Search className="w-5 h-5" />
           </Button>

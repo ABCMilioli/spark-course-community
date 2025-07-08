@@ -68,7 +68,7 @@ Guia completo para configurar Stripe e Mercado Pago em ambiente de produção.
 1. **Acesse:** https://www.mercadopago.com.br/developers
 2. **Vá para:** Suas integrações > Criar aplicação
 3. **Configure:**
-   - **Nome:** EduCommunity Payment
+   - **Nome:** Konektus Payment
    - **Modelo de integração:** Checkout Pro
    - **Produtos:** Pagamentos online
 
@@ -104,7 +104,7 @@ POSTGRES_HOST=seu-db-host
 POSTGRES_PORT=5432
 POSTGRES_USER=seu-usuario
 POSTGRES_PASSWORD=sua-senha-segura
-POSTGRES_DB=educommunity_prod
+POSTGRES_DB=konektus_prod
 
 # Stripe (PRODUÇÃO)
 STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -192,10 +192,10 @@ Execute o script de teste:
 
 ```bash
 # Verificar logs do backend
-docker logs educommunity-backend -f
+docker logs konektus-backend -f
 
 # Filtrar logs de pagamento
-docker logs educommunity-backend 2>&1 | grep -E "STRIPE|MERCADOPAGO|PAYMENT"
+docker logs konektus-backend 2>&1 | grep -E "STRIPE|MERCADOPAGO|PAYMENT"
 ```
 
 ### 2. Métricas Importantes
@@ -226,7 +226,7 @@ docker logs educommunity-backend 2>&1 | grep -E "STRIPE|MERCADOPAGO|PAYMENT"
 echo $STRIPE_SECRET_KEY | grep "sk_live_"
 
 # Reiniciar o serviço
-docker restart educommunity-backend
+docker restart konektus-backend
 ```
 
 #### ❌ "Mercado Pago não configurado"
@@ -259,14 +259,14 @@ curl -H "Authorization: Bearer $MERCADOPAGO_ACCESS_TOKEN" \
 **Solução:**
 ```bash
 # Verificar conexão com DB
-docker exec educommunity-backend node -e "
+docker exec konektus-backend node -e "
 const { Pool } = require('pg');
 const pool = new Pool(process.env);
 pool.query('SELECT NOW()').then(console.log);
 "
 
 # Verificar se as tabelas existem
-docker exec educommunity-db psql -U postgres -d educommunity_prod -c "
+docker exec konektus-db psql -U postgres -d konektus_prod -c "
 SELECT tablename FROM pg_tables WHERE tablename = 'payments';
 "
 ```

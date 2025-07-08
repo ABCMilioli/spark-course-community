@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   app:
-    image: automacaodebaixocusto/spark-course-unificado:v1.0.10
+    image: automacaodebaixocusto/konektus:v1.0.10
     environment:
       - JWT_SECRET=Q2h5b3VldG9zZWNyZXRzZXJhbGhhZG9yYWRvcmFuZG9tMTIzIT8kKiYoKS0r
       - POSTGRES_HOST=postgres

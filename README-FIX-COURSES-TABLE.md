@@ -1,4 +1,4 @@
-# 🔧 Correção da Tabela Courses - Spark Course Community
+# 🔧 Correção da Tabela Courses - Konektus
 
 ## 🚨 **Problema Identificado**
 

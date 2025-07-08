@@ -41,7 +41,7 @@ try {
     timeout: 10000, // 10 segundos
     maxNetworkRetries: 3,
     appInfo: {
-      name: 'EduCommunity Payment System',
+              name: 'Konektus Payment System',
       version: '1.0.0',
       url: process.env.APP_URL || 'https://localhost:3000',
     },
@@ -74,7 +74,7 @@ const BRAZIL_CONFIG = {
   },
   metadata: {
     country: 'BR',
-    platform: 'educommunity',
+            platform: 'konektus',
   },
 };
 
@@ -112,7 +112,7 @@ async function createPaymentIntent(amount, currency = 'brl', metadata = {}) {
         enabled: true,
         allow_redirects: 'never', // Para evitar redirecionamentos
       },
-      statement_descriptor: 'EDUCOMMUNITY', // Aparece na fatura do cartão
+      statement_descriptor: 'KONEKTUS', // Aparece na fatura do cartão
       statement_descriptor_suffix: 'CURSO', // Sufixo adicional
     });
 

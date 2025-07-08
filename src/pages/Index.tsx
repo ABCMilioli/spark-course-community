@@ -176,7 +176,7 @@ export default function Index() {
       {/* Welcome Header */}
       <div className="mb-8">
         <h1 className="text-4xl font-bold gradient-text mb-4">
-          Bem-vindo{user ? `, ${user.name}` : ''} à EduCommunity
+          Bem-vindo{user ? `, ${user.name}` : ''} ao Konektus
         </h1>
         <p className="text-xl text-muted-foreground">
           Sua plataforma de aprendizado e conexão com a comunidade tech

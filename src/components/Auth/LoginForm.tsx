@@ -91,7 +91,7 @@ export function LoginForm() {
               <BookOpen className="w-7 h-7 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl gradient-text">EduCommunity</CardTitle>
+          <CardTitle className="text-2xl gradient-text">Konektus</CardTitle>
           <CardDescription>
             Entre na sua conta para acessar a plataforma
           </CardDescription>

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Configurando Sistema de Pagamento - Spark Course Community"
+echo "🚀 Configurando Sistema de Pagamento - Konektus"
 echo "================================================================"
 
 # Verificar se estamos no diretório correto

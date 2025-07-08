@@ -123,9 +123,9 @@ async function createPreference(items, metadata = {}) {
         ...metadata,
         created_at: new Date().toISOString(),
         environment: mercadoPagoConfig.isProduction ? 'production' : 'test',
-        platform: 'educommunity',
+        platform: 'konektus',
       },
-      statement_descriptor: 'EDUCOMMUNITY',
+      statement_descriptor: 'KONEKTUS',
       expires: true,
       expiration_date_from: new Date().toISOString(),
       expiration_date_to: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 horas
@@ -354,7 +354,7 @@ async function createPayment(paymentData) {
           ...paymentData.metadata,
           created_at: new Date().toISOString(),
           environment: mercadoPagoConfig.isProduction ? 'production' : 'test',
-          platform: 'educommunity',
+          platform: 'konektus',
         },
       },
     });

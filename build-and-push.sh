@@ -4,7 +4,7 @@
 set -e
 
 # Configurações
-IMAGE_NAME="automacaodebaixocusto/spark-course-community"
+IMAGE_NAME="automacaodebaixocusto/konektus"
 TAG="latest"
 FULL_IMAGE_NAME="${IMAGE_NAME}:${TAG}"
 

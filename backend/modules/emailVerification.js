@@ -76,11 +76,11 @@ module.exports = {
       console.log('[emailVerification] Enviando e-mail de verificação...');
       await sendMail({
         to: email,
-        subject: 'Confirme seu email - Spark Course Community',
+        subject: 'Confirme seu email - Konektus',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-              <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+              <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
               <p style="margin: 10px 0 0 0; opacity: 0.9;">Confirme seu email para completar o cadastro</p>
             </div>
             
@@ -88,7 +88,7 @@ module.exports = {
               <h2 style="color: #333; margin-bottom: 20px;">Olá ${name}!</h2>
               
               <p style="color: #666; line-height: 1.6; margin-bottom: 25px;">
-                Obrigado por se cadastrar no Spark Course Community! Para completar seu cadastro e começar a usar a plataforma, 
+                Obrigado por se cadastrar no Konektus! Para completar seu cadastro e começar a usar a plataforma, 
                 clique no botão abaixo para confirmar seu endereço de email.
               </p>
               
@@ -128,17 +128,17 @@ module.exports = {
             
             <div style="background: #343a40; padding: 20px; text-align: center; color: #adb5bd;">
               <p style="margin: 0; font-size: 14px;">
-                © 2024 Spark Course Community. Todos os direitos reservados.
+                © 2024 Konektus. Todos os direitos reservados.
               </p>
             </div>
           </div>
         `,
         text: `
-          Confirme seu email - Spark Course Community
+          Confirme seu email - Konektus
           
           Olá ${name}!
           
-          Obrigado por se cadastrar no Spark Course Community! Para completar seu cadastro, 
+          Obrigado por se cadastrar no Konektus! Para completar seu cadastro, 
           clique no link abaixo:
           
           ${verificationLink}
@@ -239,11 +239,11 @@ module.exports = {
     // Enviar novo email
     await sendMail({
       to: email,
-      subject: 'Reenvio - Confirme seu email - Spark Course Community',
+      subject: 'Reenvio - Confirme seu email - Konektus',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Spark Course Community</h1>
+            <h1 style="margin: 0; font-size: 28px;">Konektus</h1>
             <p style="margin: 10px 0 0 0; opacity: 0.9;">Reenvio - Confirme seu email</p>
           </div>
           

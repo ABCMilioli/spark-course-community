@@ -336,5 +336,5 @@ Para dúvidas ou problemas:
 ---
 
 **Sistema de Campanhas de Email v1.0**  
-Desenvolvido para Spark Course Community  
+Desenvolvido para Konektus  
 © 2024 - Todos os direitos reservados 

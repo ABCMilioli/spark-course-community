@@ -174,7 +174,7 @@ export default function Explore() {
       {/* Search and Welcome */}
       <div className="space-y-4">
         <h1 className="text-3xl font-bold">Explorar</h1>
-        <p className="text-muted-foreground">Descubra novos cursos, posts e instrutores na EduCommunity.</p>
+        <p className="text-muted-foreground">Descubra novos cursos, posts e instrutores no Konektus.</p>
         
         {/* Barra de busca */}
         <div className="relative">

@@ -2,7 +2,7 @@
 
 ## 🎯 Resumo da Implementação
 
-O sistema de verificação de email foi **implementado com sucesso** no Spark Course Community! Agora todos os novos usuários precisam confirmar seu email antes de ter acesso à plataforma.
+O sistema de verificação de email foi **implementado com sucesso** no Konektus! Agora todos os novos usuários precisam confirmar seu email antes de ter acesso à plataforma.
 
 ## 📁 Arquivos Criados/Modificados
 
@@ -178,7 +178,7 @@ Edite `backend/modules/emailVerification.js`:
 ```javascript
 await sendMail({
   to: email,
-  subject: 'Confirme seu email - Spark Course Community',
+          subject: 'Confirme seu email - Konektus',
   html: `... seu template HTML ...`
 });
 ```

@@ -128,7 +128,7 @@ export function AppSidebar() {
             <BookOpen className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-lg gradient-text">EduCommunity</h1>
+            <h1 className="font-bold text-lg gradient-text">Konektus</h1>
             <p className="text-xs text-muted-foreground">Aprenda & Compartilhe</p>
           </div>
         </div>

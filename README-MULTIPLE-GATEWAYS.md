@@ -1,4 +1,4 @@
-# Sistema de Múltiplos Gateways - Spark Course Community
+# Sistema de Múltiplos Gateways - Konektus
 
 ## Visão Geral
 
@@ -283,4 +283,4 @@ SELECT gateway, COUNT(*) FROM payments GROUP BY gateway;
 
 **Versão:** 2.0.0  
 **Última atualização:** Janeiro 2025  
-**Autor:** Spark Course Community Team 
+**Autor:** Konektus Team 

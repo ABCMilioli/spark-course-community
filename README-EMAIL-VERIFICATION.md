@@ -1,6 +1,6 @@
 # Sistema de Verificação de Email
 
-Este documento explica o sistema de verificação de email implementado no Spark Course Community, que garante que apenas usuários com emails válidos possam criar contas.
+Este documento explica o sistema de verificação de email implementado no Konektus, que garante que apenas usuários com emails válidos possam criar contas.
 
 ## 🎯 Funcionalidades
 
@@ -186,7 +186,7 @@ Edite o template em `backend/modules/emailVerification.js`:
 ```javascript
 await sendMail({
   to: email,
-  subject: 'Confirme seu email - Spark Course Community',
+          subject: 'Confirme seu email - Konektus',
   html: `
     <div style="font-family: Arial, sans-serif;">
       <h2>Olá ${name}!</h2>
@@ -335,4 +335,4 @@ Para problemas ou dúvidas:
 
 ---
 
-**Implementado com ❤️ para o Spark Course Community** 
+**Implementado com ❤️ para o Konektus** 

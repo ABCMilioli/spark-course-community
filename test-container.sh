@@ -7,7 +7,7 @@ docker rm -f test-community 2>/dev/null || true
 
 # Executar container em modo interativo para debug
 echo "🚀 Executando container em modo debug..."
-docker run -d --name test-community -p 8080:80 automacaodebaixocusto/spark-course-community:latest
+docker run -d --name test-community -p 8080:80 automacaodebaixocusto/konektus:latest
 
 # Aguardar um pouco
 sleep 5

@@ -6420,7 +6420,7 @@ async function sendWebhook(eventType, payload) {
         // Preparar headers
         const headers = {
           'Content-Type': 'application/json',
-          'User-Agent': 'EduCommunity-Webhook/1.0'
+          'User-Agent': 'Konektus-Webhook/1.0'
         };
 
         // Adicionar assinatura HMAC se houver chave secreta

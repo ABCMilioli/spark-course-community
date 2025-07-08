@@ -1,4 +1,4 @@
-# 🔄 Fluxo de Checkout - Spark Course Community
+# 🔄 Fluxo de Checkout - Konektus
 
 ## 🎯 **Visão Geral**
 

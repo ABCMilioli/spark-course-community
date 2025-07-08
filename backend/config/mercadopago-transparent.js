@@ -71,7 +71,7 @@ async function createPayment(paymentData) {
           ...paymentData.metadata,
           created_at: new Date().toISOString(),
           environment: mercadoPagoConfig.isProduction ? 'production' : 'test',
-          platform: 'educommunity',
+          platform: 'konektus',
         },
       },
     });
@@ -147,7 +147,7 @@ async function processCardPayment(courseData, cardData, userData) {
       metadata: {
         course_id: courseData.id,
         user_id: userData.id,
-        platform: 'educommunity'
+        platform: 'konektus'
       }
     });
 
@@ -183,7 +183,7 @@ async function processPixPayment(courseData, userData) {
       metadata: {
         course_id: courseData.id,
         user_id: userData.id,
-        platform: 'educommunity'
+        platform: 'konektus'
       }
     });
 
@@ -224,7 +224,7 @@ async function processBoletoPayment(courseData, userData) {
       metadata: {
         course_id: courseData.id,
         user_id: userData.id,
-        platform: 'educommunity'
+        platform: 'konektus'
       }
     });
 

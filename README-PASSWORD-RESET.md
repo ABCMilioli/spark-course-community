@@ -1,6 +1,6 @@
 # Sistema de Recuperação de Senha
 
-Este documento explica como configurar e usar o sistema de recuperação de senha implementado no Spark Course Community.
+Este documento explica como configurar e usar o sistema de recuperação de senha implementado no Konektus.
 
 ## Funcionalidades
 

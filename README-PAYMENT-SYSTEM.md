@@ -1,4 +1,4 @@
-# Sistema de Pagamento - Spark Course Community
+# Sistema de Pagamento - Konektus
 
 ## Visão Geral
 
@@ -335,4 +335,4 @@ SELECT * FROM payments ORDER BY created_at DESC LIMIT 10;
 
 **Versão:** 1.0.0  
 **Última atualização:** Janeiro 2025  
-**Autor:** Spark Course Community Team 
+**Autor:** Konektus Team 
