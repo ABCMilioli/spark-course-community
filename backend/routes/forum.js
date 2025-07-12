@@ -73,20 +73,39 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
   // Criar novo tópico
   router.post('/topics', authenticateToken, async (req, res) => {
     try {
-      const { title, description, slug } = req.body;
+      const { title, description, slug, order_index = 0, cover_image_url, banner_image_url } = req.body;
       
-      console.log('[POST /api/forum/topics] Criando tópico:', { title, description, slug });
+      console.log('[POST /api/forum/topics] Criando tópico:', { title, description, slug, order_index, cover_image_url, banner_image_url });
       console.log('[POST /api/forum/topics] Usuário:', req.user.id);
       
       if (!title || !description) {
         return res.status(400).json({ error: 'Título e descrição são obrigatórios.' });
       }
 
-      // Verificar se o slug já existe
-      if (slug) {
+      // Gerar slug automaticamente se não fornecido
+      let finalSlug = slug;
+      if (!finalSlug) {
+        const baseSlug = title.toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .trim('-');
+        
+        finalSlug = baseSlug;
+        let counter = 1;
+        
+        // Verificar se slug já existe
+        while (true) {
+          const existingSlug = await pool.query('SELECT id FROM forum_topics WHERE slug = $1', [finalSlug]);
+          if (existingSlug.rows.length === 0) break;
+          finalSlug = `${baseSlug}-${counter}`;
+          counter++;
+        }
+      } else {
+        // Verificar se o slug fornecido já existe
         const slugExists = await pool.query(
           'SELECT id FROM forum_topics WHERE slug = $1',
-          [slug]
+          [finalSlug]
         );
 
         if (slugExists.rows.length > 0) {
@@ -98,8 +117,8 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
       const created_at = new Date();
       
       await pool.query(
-        'INSERT INTO forum_topics (id, title, description, slug, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-        [id, title, description, slug, req.user.id, created_at]
+        'INSERT INTO forum_topics (id, title, description, slug, order_index, created_by, cover_image_url, banner_image_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [id, title, description, finalSlug, order_index, req.user.id, cover_image_url || null, banner_image_url || null, created_at]
       );
 
       console.log('[POST /api/forum/topics] Tópico criado com sucesso');
@@ -108,14 +127,24 @@ module.exports = (pool, sendWebhook, createNotification, getUserName) => {
       if (typeof sendWebhook === 'function') {
         try {
           await sendWebhook('forum_topic.created', {
-            id, title, description, slug, created_by: req.user.id, created_by_name: req.user.name, created_at: created_at.toISOString()
+            id, title, description, slug: finalSlug, created_by: req.user.id, created_by_name: req.user.name, created_at: created_at.toISOString()
           });
         } catch (webhookError) {
           console.error('[WEBHOOK] Erro ao enviar webhook forum_topic.created:', webhookError);
         }
       }
 
-      res.status(201).json({ id, title, description, slug, created_by: req.user.id, created_at });
+      res.status(201).json({ 
+        id, 
+        title, 
+        description, 
+        slug: finalSlug, 
+        order_index,
+        cover_image_url,
+        banner_image_url,
+        created_by: req.user.id, 
+        created_at 
+      });
     } catch (err) {
       console.error('[POST /api/forum/topics] Erro ao criar tópico:', err);
       console.error('[POST /api/forum/topics] Detalhes do erro:', {

@@ -2,6 +2,7 @@
 -- Adiciona campo CPF ao perfil do usuário
 
 ALTER TABLE public.profiles
-  ADD COLUMN IF NOT EXISTS cpf VARCHAR(14) NOT NULL UNIQUE;
+  ADD COLUMN IF NOT EXISTS cpf VARCHAR(14) UNIQUE;
+ALTER TABLE public.profiles ALTER COLUMN cpf DROP NOT NULL;
 
 COMMENT ON COLUMN public.profiles.cpf IS 'CPF do usuário, obrigatório e único.'; 

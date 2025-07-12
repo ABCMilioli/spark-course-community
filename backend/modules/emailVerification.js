@@ -25,10 +25,12 @@ async function saveVerificationData(pool, email, token, name, passwordHash) {
 
 // Função para buscar dados de verificação
 async function getVerificationData(pool, token) {
+  console.log('[DEBUG][getVerificationData] Token recebido:', token);
   const { rows } = await pool.query(
     'SELECT * FROM email_verification_tokens WHERE token = $1 AND expires_at > NOW()',
     [token]
   );
+  console.log('[DEBUG][getVerificationData] Resultado da query:', rows);
   return rows[0] || null;
 }
 
